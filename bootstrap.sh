@@ -13,12 +13,12 @@ mapfile -t PKGS < <(sed 's/#.*//' packages.txt | awk 'NF{print $1}')
 sudo dnf install -y "${PKGS[@]}"
 
 echo "==> Flathub aktivieren (voll, nicht Fedoras gefilterte Auswahl)"
-flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
 if [ -f flatpaks.txt ]; then
     echo "==> Flatpaks aus flatpaks.txt"
     mapfile -t FLATS < <(sed 's/#.*//' flatpaks.txt | awk 'NF{print $1}')
-    [ "${#FLATS[@]}" -gt 0 ] && flatpak install -y --noninteractive flathub "${FLATS[@]}"
+    [ "${#FLATS[@]}" -gt 0 ] && flatpak install --user -y --noninteractive flathub "${FLATS[@]}"
 fi
 
 echo "==> SDKMAN (Java-Toolchain-Manager, kein dnf-Paket)"

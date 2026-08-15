@@ -1,8 +1,8 @@
 # GUI-Anwendungen — eine App-ID pro Zeile, z. B.:
 org.mozilla.firefox
-org.mozilla.Thunderbird
+org.mozilla.thunderbird_esr   # Nachfolger des EOL org.mozilla.Thunderbird
 org.mozilla.firefox
-org.mozilla.Thunderbird
+org.mozilla.thunderbird_esr   # Nachfolger des EOL org.mozilla.Thunderbird
 sh.cider.Cider          # kommerziell: braucht Cider-Lizenz + Apple-Music-Abo
 im.riot.Riot            # Element
 com.slack.Slack
