@@ -30,6 +30,7 @@ pipewire-pulseaudio
 
 # --- Terminal & Basics ---
 foot                        # Wayland-nativ, schlank; Alternative: kitty, alacritty
+emacs                        # Theme: Catppuccin Mocha, vendored in dot_config/emacs/themes/
 htop
 btop
 jq
@@ -54,3 +55,8 @@ podman-docker                # docker-CLI-Kompat-Shim für Tools, die "docker" h
 podman-compose
 passt                        # rootless Netzwerk-Backend (pasta) — Minimal Install bringt das nicht sicher mit
 kubernetes-client             # kubectl
+
+# --- Netzwerk / NAS ---
+nfs-utils                     # NFS-Client — Mount selbst ist manuell/hostspezifisch
+                               # (z. B. book am anderen Standort braucht ihn nicht),
+                               # deshalb kein fstab-Eintrag im Repo. showmount/mount.nfs4.
