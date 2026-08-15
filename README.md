@@ -38,7 +38,8 @@ TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
 ## 3. Verifikation
 
 - `hyprctl configerrors` — sollte leer sein
-- `systemctl --user status xdg-desktop-portal-hyprland xdg-desktop-portal-gtk`
+- `systemctl --user status xdg-desktop-portal xdg-desktop-portal-hyprland xdg-desktop-portal-gtk`
+  — alle drei `active`, keins `Dependency failed`
 - Flatpak-Probe: eines installieren, Datei-Dialog öffnen
 - `hyprctl monitors` — echte Namen in `monitors.conf.tmpl` eintragen, apply
 - `pidof hypridle` — sollte laufen; nach 5 min Idle sperrt hyprlock automatisch
@@ -50,6 +51,8 @@ TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
   falsche Schreibweise schlägt STILL fehl). bootstrap.sh richtet sie ein.
 - **uwsm und hyprpolkitagent gibt es in F44 nicht.** Ersatz: Start über
   start-hyprland (bringt Session-/D-Bus-Setup mit) + mate-polkit als Agent.
+  ABER: start-hyprland aktiviert NICHT `graphical-session.target`, wovon
+  xdg-desktop-portal hart abhängt — siehe "Portale & Standardbrowser".
 - **dnf5 bricht bei EINEM unbekannten Paketnamen die GANZE Transaktion ab** —
   ein toter Eintrag in packages.txt verhindert alle anderen Installationen.
 - **Minimal Install hat weder flatpak noch tar** (SDKMAN braucht tar).
@@ -122,19 +125,51 @@ TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
   `--host` setzen, sonst Default `keylight.local` im Script anpassen.
   Keybind: `$mod SHIFT, K` (`$mod, K` ist schon movefocus) toggelt.
 
-## Standardbrowser (mimeapps.list)
+## Portale & Standardbrowser
 
-`~/.config/mimeapps.list` setzt Firefox als Default für `http(s)`- und
-`text/html`-Handler. Ohne DE-Ersteinrichtung passiert das sonst nie, und
-sandboxed Flatpaks (Cider, Element) brauchen genau diesen Default, um bei
-OAuth/SSO-Login-Flows über den OpenURI-Portal einen Browser zu öffnen — sonst
-tut der "Anmelden"-Klick nichts.
+Drei Schichten, die alle stimmen müssen, damit z. B. Element/Cider bei
+OAuth/SSO-Login einen Browser öffnen können. Von unten nach oben, in der
+Reihenfolge, in der wir sie live debuggt haben:
 
-Falls das nach `chezmoi apply` + Neustart der betroffenen App(s) immer noch
-nicht geht: `xdg-mime query default x-scheme-handler/https` sollte
-`org.mozilla.firefox.desktop` zeigen. Wenn nicht, hat GTK-Portal die Datei aus
-irgendeinem Grund nicht übernommen — `journalctl --user -u xdg-desktop-portal
--f` beim Login-Klick beobachten zeigt, ob der OpenURI-Call überhaupt ankommt.
+- **1. `graphical-session.target` muss aktiv sein.** `xdg-desktop-portal.service`
+  hat eine harte Dependency darauf — ohne die bleibt der komplette Portal-Dienst
+  im Zustand `Dependency failed`, dauerhaft, egal was sonst stimmt. Ein
+  Wayland-Compositor muss systemd explizit sagen "wir sind jetzt eine grafische
+  Session"; das macht normalerweise uwsm, das es in F44 nicht gibt (siehe
+  unten), und `start-hyprland` tut es NICHT. Fix: `systemd/user/hyprland-session.target`
+  (1:1 aus dem [Hyprland-Wiki](https://wiki.hypr.land/Useful-Utilities/Systemd-start/)),
+  gestartet per `exec-once` ganz am Anfang von `base.conf`. Kein Shutdown-Hook
+  (bräuchte die Lua-Config, offenes TODO) — beim echten Logout räumt
+  systemd --user sowieso alles ab.
+  Diagnose: `systemctl --user status xdg-desktop-portal.service` — `Dependency
+  failed` heißt exakt das hier. `systemctl --user cat hyprland-session.target`
+  bestätigt, ob die Unit überhaupt ankam (nach `chezmoi apply` einmalig
+  `systemctl --user daemon-reload` nötig, damit neue Units gefunden werden).
+- **2. Activation-Environment muss `XDG_DATA_DIRS` enthalten.** Portal-Backends
+  erben ihre Umgebung von der D-Bus-/systemd-Activation-Environment, NICHT von
+  der Login-Shell. Firefox ist ein `--user`-Flatpak, seine `.desktop`-Datei
+  liegt in `~/.local/share/flatpak/exports/share/applications/` — fehlt dieser
+  Pfad in dem `XDG_DATA_DIRS`, das das Portal sieht, findet es die Datei nicht.
+  `xdg-mime query default` fragt aber die *Login-Shell*, antwortet also trotzdem
+  korrekt — das Auseinanderfallen macht den Fehler verwirrend. Fix: `base.conf`
+  reicht `XDG_DATA_DIRS`/`PATH`/`XDG_SESSION_TYPE` explizit per
+  `dbus-update-activation-environment` durch.
+  Diagnose: `echo "$XDG_DATA_DIRS"` vs. `systemctl --user show-environment |
+  grep XDG_DATA_DIRS` — müssen die Flatpak-Exports enthalten und zueinander passen.
+- **3. Ein Default-Handler muss registriert sein.** `~/.config/mimeapps.list`
+  setzt Firefox für `http(s)`/`text/html`. Ohne DE-Ersteinrichtung setzt das
+  sonst nie jemand.
+  Diagnose: `xdg-mime query default x-scheme-handler/https` → `org.mozilla.firefox.desktop`.
+
+Portal-Call direkt testen, eine Zeile, ohne App dazwischen:
+
+```sh
+gdbus call --session --dest org.freedesktop.portal.Desktop --object-path /org/freedesktop/portal/desktop --method org.freedesktop.portal.OpenURI.OpenURI '' 'https://example.com' '{}'
+```
+
+Nach Änderungen an Punkt 1 oder 2 greifen bereits laufende Portale das NICHT
+automatisch — neu starten oder neu einloggen:
+`systemctl --user restart xdg-desktop-portal xdg-desktop-portal-gtk`.
 
 ## Betriebsmodus
 

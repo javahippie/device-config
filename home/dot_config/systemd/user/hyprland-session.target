@@ -1,0 +1,14 @@
+# 1:1 aus wiki.hypr.land/Useful-Utilities/Systemd-start (minimaler Ersatz für
+# uwsm, das es in F44 nicht gibt). Gestartet per exec-once in base.conf.
+# Ohne das bindet nichts graphical-session.target — xdg-desktop-portal.service
+# hat eine Dependency darauf und bleibt sonst permanent "Dependency failed",
+# egal wie sauber Env/mimeapps.list sonst sind (kein OpenURI, kein Screenshare-
+# Portal, nichts). Kein Shutdown-Hook hier (bräuchte die Lua-Config, offenes
+# TODO im README) — beim echten Logout (TTY-Session endet) räumt systemd
+# --user sowieso alles ab.
+[Unit]
+Description=Hyprland session
+BindsTo=graphical-session.target
+Wants=graphical-session-pre.target
+After=graphical-session-pre.target
+PropagatesStopTo=graphical-session.target
