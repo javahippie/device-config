@@ -76,12 +76,19 @@ TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
 - Border-Farben (`col.active_border`/`col.inactive_border` in effects.conf)
   sind die einzige bewusste Ausnahme von "Deko ausschließlich in effects.conf
   via explizite Zeilen" — der Border ist so oder so da, nur die Farbe ändert sich.
-- Waybar/mako/foot/fuzzel: Farben aus den jeweiligen offiziellen
+- Waybar/mako/foot/fuzzel/btop: Farben aus den jeweiligen offiziellen
   `catppuccin/*`-Themes (Mauve-Akzent), Font ist überall `JetBrains Mono`
   (aus packages.txt) — **kein Nerd Font installiert**, deshalb bei
   Waybar-Icons/Glyphen aufpassen (aktuell text-only, siehe config.jsonc).
   `fontawesome-fonts-all` ist zwar installiert, wird aber aktuell nirgends
   referenziert.
+- foot: Farbsektion heißt `[colors-dark]`, nicht `[colors]` — Letzteres ist
+  deprecated und foot meckert das im laufenden Terminal an. `[colors-dark]`
+  gilt automatisch als Default, solange `initial-color-theme` nicht auf
+  `light` steht (steht es nicht, kein `[colors-light]` im Repo).
+- btop: Theme-Datei liegt in `btop/themes/`, `btop.conf` referenziert sie
+  nur per Namen (`color_theme`) — der Rest der btop-Config bleibt bewusst
+  auf Werksdefaults, btop merged fehlende Keys selbst.
 
 ## Betriebsmodus
 
