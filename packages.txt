@@ -46,3 +46,4 @@ jetbrains-mono-fonts
 google-noto-sans-fonts
 google-noto-emoji-fonts
 fontawesome-fonts-all
+keepassxc                   # KeePass-Client + Secret Service (Keyring-Ersatz auf Minimal-System)
