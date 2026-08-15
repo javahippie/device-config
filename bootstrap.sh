@@ -26,6 +26,19 @@ sudo cp udev/40-streamdeck.rules /etc/udev/rules.d/40-streamdeck.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
+echo "==> Podman-Socket (rootless, Docker-API-kompatibel für Tools, die docker.sock erwarten)"
+systemctl --user enable --now podman.socket
+
+echo "==> minikube (kein dnf-Paket, offizielle Empfehlung: Binary statt Repo)"
+if ! command -v minikube >/dev/null 2>&1; then
+    TMP_MINIKUBE="$(mktemp)"
+    curl -Lo "$TMP_MINIKUBE" https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+    sudo install "$TMP_MINIKUBE" /usr/local/bin/minikube
+    rm -f "$TMP_MINIKUBE"
+else
+    echo "    bereits installiert, übersprungen"
+fi
+
 echo "==> SDKMAN (Java-Toolchain-Manager, kein dnf-Paket)"
 if [ ! -d "$HOME/.sdkman" ]; then
     curl -s "https://get.sdkman.io" | bash
@@ -39,3 +52,4 @@ printf 'sourceDir = "%s"\n' "$(pwd)/home" > "$HOME/.config/chezmoi/chezmoi.toml"
 
 echo "==> Fertig. Weiter mit: chezmoi apply && reboot"
 echo "    Toolchain danach:  source ~/.sdkman/bin/sdkman-init.sh && cd ~ && sdk env install"
+echo "    Kubernetes danach: minikube config set rootless true && minikube start --driver=podman --container-runtime=containerd"

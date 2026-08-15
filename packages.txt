@@ -47,3 +47,10 @@ google-noto-sans-fonts
 google-noto-emoji-fonts
 fontawesome-fonts-all
 keepassxc                   # KeePass-Client + Secret Service (Keyring-Ersatz auf Minimal-System)
+
+# --- Container / Kubernetes (Podman statt Docker, s. README) ---
+podman
+podman-docker                # docker-CLI-Kompat-Shim für Tools, die "docker" hardcoden
+podman-compose
+passt                        # rootless Netzwerk-Backend (pasta) — Minimal Install bringt das nicht sicher mit
+kubernetes-client             # kubectl

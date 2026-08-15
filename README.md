@@ -171,6 +171,46 @@ Nach Änderungen an Punkt 1 oder 2 greifen bereits laufende Portale das NICHT
 automatisch — neu starten oder neu einloggen:
 `systemctl --user restart xdg-desktop-portal xdg-desktop-portal-gtk`.
 
+## Container & Kubernetes (Podman, minikube)
+
+Podman statt Docker: rootless per Default, in Fedoras eigenen Repos (Docker
+braucht ein Drittanbieter-Repo), systemd-Integration nativ statt nachgerüstet.
+
+- `podman` + `podman-compose` + `podman-docker` (packages.txt). Letzteres ist
+  der `docker`-CLI-Kompat-Shim für Tools, die den Namen hardcoden.
+- `passt` extra gelistet: liefert `pasta`, Podmans rootless-Netzwerk-Backend
+  seit 5.0 — bei Minimal Install nur eine "Recommends"-Abhängigkeit, kommt
+  also nicht sicher mit (gleiche Kategorie Fehler wie flatpak/tar, s.o.).
+- `kubernetes-client` (packages.txt) liefert `kubectl`.
+- `podman.socket` wird von bootstrap.sh aktiviert (`systemctl --user enable
+  --now`) — Docker-API-kompatibler Socket unter
+  `$XDG_RUNTIME_DIR/podman/podman.sock` für Tools, die einen echten
+  `docker.sock` erwarten. Für die brauchst du zusätzlich
+  `export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"` — absichtlich
+  NICHT in `.bash_profile` gepackt (das ist laut eigenem Datei-Header nur für
+  den Hyprland-Autostart da), sondern manuell in eine eigene `~/.bashrc`
+  eintragen, falls gebraucht.
+
+**minikube** ist kein dnf-Paket — offizielle Empfehlung ist Binary-Download,
+macht bootstrap.sh idempotent (`command -v minikube` als Guard). Podman-Treiber
+gilt laut minikube-Doku noch als **experimental**.
+
+```sh
+minikube config set rootless true
+minikube start --driver=podman --container-runtime=containerd
+minikube status
+kubectl get nodes
+```
+
+`--container-runtime=containerd` betrifft nur den Runtime *innerhalb* des
+minikube-Node-Containers (von minikube selbst mitgebracht) — dafür ist auf dem
+Host kein `containerd`-Paket nötig, nur Podman als Treiber.
+
+Falls `minikube start` mit einem sudo-Fehler abbricht: der Podman-Treiber will
+laut minikube-Doku standardmäßig passwortlos `sudo podman` können. Mit
+`rootless true` (s. o.) umgeht man das — checken, ob es wirklich gegriffen hat:
+`podman info | grep rootless`.
+
 ## Betriebsmodus
 
 - Ad-hoc `dnf install` ist erlaubt; was bleibt, wandert SOFORT in packages.txt.
