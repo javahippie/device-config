@@ -1,0 +1,10 @@
+# Java-Toolchain, deklarativ. Gelesen von `sdk env` (bzw. automatisch,
+# wenn in ~/.sdkman/etc/config  sdkman_auto_env=true  gesetzt ist).
+# Dies ist der HOME-Default — Projekte (z. B. Operaton-Checkout) dürfen
+# eine eigene .sdkmanrc mitbringen, die hier drüber gewinnt.
+#
+# Exakte Versions-Strings vor dem ersten `sdk env install` prüfen:
+#   sdk list java | grep tem
+java=21.0.8-tem
+maven=3.9.11
+mvnd=1.0.3

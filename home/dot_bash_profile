@@ -1,0 +1,8 @@
+# ~/.bash_profile — Login-Shell auf TTY1 startet direkt die Hyprland-Session.
+# Kein Display-Manager: eine Komponente, eine Fehlerquelle, ein Theming weniger.
+
+[ -f ~/.bashrc ] && . ~/.bashrc
+
+if uwsm check may-start && uwsm select; then
+    exec uwsm start default
+fi

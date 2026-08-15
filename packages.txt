@@ -1,0 +1,44 @@
+# --- Compositor & Session ---
+hyprland
+uwsm                        # startet Hyprland als systemd-User-Session (Env für D-Bus/Portale)
+hyprlock
+hypridle
+hyprpolkitagent             # GUI-Passwortabfragen; Fallback falls nicht verfügbar: lxpolkit
+
+# --- Portale (Flatpak-kritisch!) ---
+xdg-desktop-portal-hyprland # Screencast/Screenshot
+xdg-desktop-portal-gtk      # Datei-Dialoge, Settings — ohne den brechen Flatpak-Apps
+
+# --- Desktop-Plumbing ---
+waybar
+mako
+fuzzel                      # Launcher; Alternative: rofi-wayland
+wl-clipboard
+cliphist
+grim
+slurp
+qt5-qtwayland
+qt6-qtwayland
+xdg-user-dirs
+
+# --- Audio (Minimal Install bringt das nicht sicher mit) ---
+pipewire
+wireplumber
+pipewire-pulseaudio
+
+# --- Terminal & Basics ---
+foot                        # Wayland-nativ, schlank; Alternative: kitty, alacritty
+htop
+btop
+jq
+git                         # steht auch im README-Handschritt — hier für Vollständigkeit
+chezmoi
+curl                        # von SDKMAN-Install benötigt
+zip                         # von SDKMAN benötigt
+unzip
+
+# --- Fonts (waybar-Icons brauchen fontawesome) ---
+jetbrains-mono-fonts
+google-noto-sans-fonts
+google-noto-emoji-fonts
+fontawesome-fonts-all
