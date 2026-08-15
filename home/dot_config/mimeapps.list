@@ -4,9 +4,15 @@
 # diesem Default, um einen Browser zu öffnen. Ohne Default-Eintrag entweder
 # stiller Fehlschlag oder ein App-Chooser-Dialog, der bei diesem Setup nicht
 # zuverlässig irgendwo auf dem Screen landet — noch nicht live verifiziert.
+#
+# firefox.desktop, NICHT org.mozilla.firefox.desktop: Firefox ist seit dem
+# KeePassXC-Browser-Umbau ein natives dnf-Paket (s. packages.txt), keine
+# Flatpak mehr — Native Messaging für die Extension geht in der Flatpak-
+# Sandbox nicht zuverlässig. Das XDG_DATA_DIRS-Portal-Problem aus base.conf
+# betrifft Firefox dadurch nicht mehr, bleibt aber für Cider/Element nötig.
 [Default Applications]
-text/html=org.mozilla.firefox.desktop
-x-scheme-handler/http=org.mozilla.firefox.desktop
-x-scheme-handler/https=org.mozilla.firefox.desktop
-x-scheme-handler/about=org.mozilla.firefox.desktop
-x-scheme-handler/unknown=org.mozilla.firefox.desktop
+text/html=firefox.desktop
+x-scheme-handler/http=firefox.desktop
+x-scheme-handler/https=firefox.desktop
+x-scheme-handler/about=firefox.desktop
+x-scheme-handler/unknown=firefox.desktop

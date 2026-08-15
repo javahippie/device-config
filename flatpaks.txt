@@ -1,5 +1,7 @@
 # GUI-Anwendungen — eine App-ID pro Zeile, z. B.:
-org.mozilla.firefox
+# Firefox bewusst NICHT hier: natives dnf-Paket (packages.txt), sonst kann
+# KeePassXC-Browser kein Native Messaging zur Extension aufbauen — Flatpak-
+# Sandbox blockt das grundsätzlich, es gibt noch keinen fertigen Fix dafür.
 org.mozilla.thunderbird_esr   # Nachfolger des EOL org.mozilla.Thunderbird
 sh.cider.Cider          # kommerziell: braucht Cider-Lizenz + Apple-Music-Abo
 im.riot.Riot            # Element

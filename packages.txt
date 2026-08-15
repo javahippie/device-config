@@ -30,6 +30,9 @@ pipewire-pulseaudio
 
 # --- Terminal & Basics ---
 foot                        # Wayland-nativ, schlank; Alternative: kitty, alacritty
+firefox                      # NICHT als Flatpak (s. flatpaks.txt) — KeePassXC-Browser
+                              # braucht Native Messaging, das geht in der Flatpak-Sandbox
+                              # nicht zuverlässig. Einzige Ausnahme von "GUI nur Flatpak".
 emacs                        # Theme: Catppuccin Mocha, vendored in dot_config/emacs/themes/
 htop
 btop

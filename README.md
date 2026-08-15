@@ -147,19 +147,22 @@ Reihenfolge, in der wir sie live debuggt haben:
   `systemctl --user daemon-reload` nötig, damit neue Units gefunden werden).
 - **2. Activation-Environment muss `XDG_DATA_DIRS` enthalten.** Portal-Backends
   erben ihre Umgebung von der D-Bus-/systemd-Activation-Environment, NICHT von
-  der Login-Shell. Firefox ist ein `--user`-Flatpak, seine `.desktop`-Datei
-  liegt in `~/.local/share/flatpak/exports/share/applications/` — fehlt dieser
-  Pfad in dem `XDG_DATA_DIRS`, das das Portal sieht, findet es die Datei nicht.
+  der Login-Shell. Betrifft `--user`-Flatpaks (Thunderbird, Cider, Element,
+  Slack, Signal) — deren `.desktop`-Dateien liegen in
+  `~/.local/share/flatpak/exports/share/applications/`; fehlt dieser Pfad in
+  dem `XDG_DATA_DIRS`, das das Portal sieht, findet es die Datei nicht.
   `xdg-mime query default` fragt aber die *Login-Shell*, antwortet also trotzdem
   korrekt — das Auseinanderfallen macht den Fehler verwirrend. Fix: `base.conf`
   reicht `XDG_DATA_DIRS`/`PATH`/`XDG_SESSION_TYPE` explizit per
-  `dbus-update-activation-environment` durch.
+  `dbus-update-activation-environment` durch. Firefox selbst ist davon nicht
+  mehr betroffen, seit es ein natives Paket ist (s. "Firefox: nativ statt
+  Flatpak" unten) — für alle anderen Flatpaks bleibt es relevant.
   Diagnose: `echo "$XDG_DATA_DIRS"` vs. `systemctl --user show-environment |
   grep XDG_DATA_DIRS` — müssen die Flatpak-Exports enthalten und zueinander passen.
 - **3. Ein Default-Handler muss registriert sein.** `~/.config/mimeapps.list`
   setzt Firefox für `http(s)`/`text/html`. Ohne DE-Ersteinrichtung setzt das
   sonst nie jemand.
-  Diagnose: `xdg-mime query default x-scheme-handler/https` → `org.mozilla.firefox.desktop`.
+  Diagnose: `xdg-mime query default x-scheme-handler/https` → `firefox.desktop`.
 
 Portal-Call direkt testen, eine Zeile, ohne App dazwischen:
 
@@ -234,10 +237,31 @@ Manager-Tools sind installiert, die Sprachversionen zieht man erst bei Bedarf.
   Danach neu einloggen (oder `~/.bashrc` neu sourcen), dann zieht
   `mise install` die in `config.toml` deklarierten Versionen.
 
+## Firefox: nativ statt Flatpak
+
+Einzige bewusste Ausnahme von "GUI nur Flatpak". Grund: KeePassXC-Browser
+(die Extension) braucht Native Messaging, um mit dem laufenden KeePassXC zu
+sprechen — startet also einen Host-Prozess von außerhalb der Sandbox. Flatpak
+blockt das grundsätzlich; der kommende Standard-Fix dafür
+(`xdg-native-messaging-proxy`, D-Bus-basiert) ist laut den offenen
+KeePassXC-Issues dazu weder in Fedora paketiert noch in Firefox stabil
+verfügbar — für heute keine Option. Der dokumentierte manuelle Workaround
+(Wrapper-Skript + `flatpak override` in Firefox' Sandbox-Datenverzeichnis
+gefrickelt) ist fragil und versionsabhängig genug, dass "einfach das native
+Paket nehmen" die robustere Wahl war.
+
+- `packages.txt`: `firefox` (dnf, kein COPR nötig — normales Fedora-Repo-Paket).
+- `flatpaks.txt`: **kein** `org.mozilla.firefox` mehr.
+- `mimeapps.list`: `firefox.desktop` statt `org.mozilla.firefox.desktop` —
+  anderer Desktop-File-Name, weil natives Paket statt Flatpak-Export.
+- Betrifft NUR Firefox. Thunderbird/Cider/Element/Slack/Signal bleiben
+  Flatpak — für die gilt Punkt 2 aus "Portale & Standardbrowser" weiterhin.
+
 ## Betriebsmodus
 
 - Ad-hoc `dnf install` ist erlaubt; was bleibt, wandert SOFORT in packages.txt.
-- GUI-Apps nur als Flatpak (flatpaks.txt), Dev-Toolchain über SDKMAN/mise.
+- GUI-Apps nur als Flatpak (flatpaks.txt), außer Firefox (s. o.).
+  Dev-Toolchain über SDKMAN/mise.
 - Config-Änderungen enden immer im Repo: live editiert ⇒ `chezmoi re-add`.
 - `./drift-check.sh` zeigt handinstallierte Pakete, die nicht im Repo stehen.
 - Vor jedem Commit: `git status` + `git diff` (Repo ist public!). TODO: gitleaks-Hook.
