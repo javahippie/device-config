@@ -1,0 +1,12 @@
+# Ohne DE-Ersteinrichtung setzt das nie jemand — ohne das hier bleibt
+# x-scheme-handler/https ohne Default-Handler. Sandboxed Apps (Cider, Element,
+# ...) fragen für OAuth/SSO-Login-Flows über den OpenURI-Portal nach genau
+# diesem Default, um einen Browser zu öffnen. Ohne Default-Eintrag entweder
+# stiller Fehlschlag oder ein App-Chooser-Dialog, der bei diesem Setup nicht
+# zuverlässig irgendwo auf dem Screen landet — noch nicht live verifiziert.
+[Default Applications]
+text/html=org.mozilla.firefox.desktop
+x-scheme-handler/http=org.mozilla.firefox.desktop
+x-scheme-handler/https=org.mozilla.firefox.desktop
+x-scheme-handler/about=org.mozilla.firefox.desktop
+x-scheme-handler/unknown=org.mozilla.firefox.desktop

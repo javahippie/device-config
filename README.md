@@ -122,6 +122,20 @@ TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
   `--host` setzen, sonst Default `keylight.local` im Script anpassen.
   Keybind: `$mod SHIFT, K` (`$mod, K` ist schon movefocus) toggelt.
 
+## Standardbrowser (mimeapps.list)
+
+`~/.config/mimeapps.list` setzt Firefox als Default für `http(s)`- und
+`text/html`-Handler. Ohne DE-Ersteinrichtung passiert das sonst nie, und
+sandboxed Flatpaks (Cider, Element) brauchen genau diesen Default, um bei
+OAuth/SSO-Login-Flows über den OpenURI-Portal einen Browser zu öffnen — sonst
+tut der "Anmelden"-Klick nichts.
+
+Falls das nach `chezmoi apply` + Neustart der betroffenen App(s) immer noch
+nicht geht: `xdg-mime query default x-scheme-handler/https` sollte
+`org.mozilla.firefox.desktop` zeigen. Wenn nicht, hat GTK-Portal die Datei aus
+irgendeinem Grund nicht übernommen — `journalctl --user -u xdg-desktop-portal
+-f` beim Login-Klick beobachten zeigt, ob der OpenURI-Call überhaupt ankommt.
+
 ## Betriebsmodus
 
 - Ad-hoc `dnf install` ist erlaubt; was bleibt, wandert SOFORT in packages.txt.
