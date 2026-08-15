@@ -5,3 +5,5 @@ sh.cider.Cider          # kommerziell: braucht Cider-Lizenz + Apple-Music-Abo
 im.riot.Riot            # Element
 com.slack.Slack
 org.signal.Signal
+me.amankhanna.opendeck  # Stream Deck, GPL, spielt Original-Elgato-Plugins ab.
+                        # Braucht zusätzlich udev/40-streamdeck.rules (bootstrap.sh).

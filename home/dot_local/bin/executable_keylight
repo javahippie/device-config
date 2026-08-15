@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# CLI für Elgato Key Light — spricht direkt die undokumentierte HTTP-API auf
+# Port 9123 (JSON, keine Auth) statt ein GUI-Tool zu installieren.
+# Kein neues Paket nötig: nur curl+jq, beide schon in packages.txt.
+# API-Referenz: github.com/adamesch/elgato-key-light-api
+#
+# Keine mDNS-Discovery — bewusst simpel gehalten. IP/Hostname fest eintragen
+# oder KEYLIGHT_HOST setzen bzw. --host verwenden.
+set -euo pipefail
+
+HOST="${KEYLIGHT_HOST:-keylight.local}"
+
+usage() {
+    cat <<EOF
+Usage: keylight [--host HOST] <on|off|toggle|status|brightness N|temp KELVIN>
+
+  on|off|toggle     Licht schalten
+  status            Aktuellen Zustand zeigen
+  brightness N      Helligkeit in Prozent (0-100)
+  temp KELVIN       Farbtemperatur in Kelvin (2900-7000)
+
+HOST-Default: \$KEYLIGHT_HOST oder "keylight.local" (Default oben im Script
+anpassen, oder --host setzen).
+EOF
+}
+
+if [ "${1:-}" = "--host" ]; then
+    HOST="${2:?--host braucht einen Wert}"
+    shift 2
+fi
+
+URL="http://${HOST}:9123/elgato/lights"
+cmd="${1:-}"
+
+case "$cmd" in
+    on)
+        curl -sf -X PUT "$URL" -d '{"numberOfLights":1,"lights":[{"on":1}]}' >/dev/null
+        ;;
+    off)
+        curl -sf -X PUT "$URL" -d '{"numberOfLights":1,"lights":[{"on":0}]}' >/dev/null
+        ;;
+    toggle)
+        state=$(curl -sf "$URL" | jq '.lights[0].on')
+        next=$((1 - state))
+        curl -sf -X PUT "$URL" -d "{\"numberOfLights\":1,\"lights\":[{\"on\":${next}}]}" >/dev/null
+        ;;
+    status)
+        curl -sf "$URL" | jq '.lights[0] | {on, brightness, temperature_kelvin: (1000000 / .temperature | round)}'
+        ;;
+    brightness)
+        val="${2:?Prozent 0-100 angeben}"
+        curl -sf -X PUT "$URL" -d "{\"numberOfLights\":1,\"lights\":[{\"brightness\":${val}}]}" >/dev/null
+        ;;
+    temp)
+        kelvin="${2:?Kelvin angeben, z.B. 4000}"
+        api_val=$(jq -n --argjson k "$kelvin" '(1000000 / $k | round)')
+        curl -sf -X PUT "$URL" -d "{\"numberOfLights\":1,\"lights\":[{\"temperature\":${api_val}}]}" >/dev/null
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac

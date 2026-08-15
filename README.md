@@ -102,6 +102,26 @@ TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
   `rules.conf` die Workspaces 1-6 zusätzlich als `persistent:true` in
   Hyprland selbst.
 
+## Elgato-Hardware (Stream Deck, Key Light)
+
+- **Stream Deck** → [OpenDeck](https://github.com/nekename/OpenDeck) (GPL-3.0,
+  Flatpak `me.amankhanna.opendeck` in flatpaks.txt), spielt die meisten
+  echten Elgato-Plugins ab, statt nur eine Mini-Reimplementierung zu sein.
+  Braucht zusätzlich `udev/40-streamdeck.rules` (1:1 aus
+  `OpenActionAPI/rust-elgato-streamdeck`, MIT) — bootstrap.sh installiert die
+  nach `/etc/udev/rules.d/` und triggert einen Reload. Ohne die Regel sieht
+  auch die Flatpak-Version kein Gerät (Flatpak kann USB/hidraw-Rechte nicht
+  selbst herstellen). Nach dem ersten `bootstrap.sh`-Lauf Stream Deck einmal
+  aus- und wieder einstecken.
+- **Key Light** → kein GUI-Tool, sondern `~/.local/bin/keylight`
+  (`home/dot_local/bin/executable_keylight`): spricht die undokumentierte,
+  authfreie HTTP-API auf Port 9123 direkt an, nur mit curl+jq (schon in
+  packages.txt) — kein neues Paket, kein Electron-Client.
+  `keylight on|off|toggle|status|brightness N|temp KELVIN`.
+  **Keine mDNS-Discovery** (bewusst simpel) — Host per `KEYLIGHT_HOST` oder
+  `--host` setzen, sonst Default `keylight.local` im Script anpassen.
+  Keybind: `$mod SHIFT, K` (`$mod, K` ist schon movefocus) toggelt.
+
 ## Betriebsmodus
 
 - Ad-hoc `dnf install` ist erlaubt; was bleibt, wandert SOFORT in packages.txt.

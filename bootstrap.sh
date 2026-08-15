@@ -21,6 +21,11 @@ if [ -f flatpaks.txt ]; then
     [ "${#FLATS[@]}" -gt 0 ] && flatpak install --user -y --noninteractive flathub "${FLATS[@]}"
 fi
 
+echo "==> udev-Regel: Stream Deck ohne root nutzbar (OpenDeck-Flatpak braucht das trotzdem)"
+sudo cp udev/40-streamdeck.rules /etc/udev/rules.d/40-streamdeck.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
 echo "==> SDKMAN (Java-Toolchain-Manager, kein dnf-Paket)"
 if [ ! -d "$HOME/.sdkman" ]; then
     curl -s "https://get.sdkman.io" | bash
