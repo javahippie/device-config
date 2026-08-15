@@ -185,6 +185,17 @@ braucht ein Drittanbieter-Repo), systemd-Integration nativ statt nachgerüstet.
   seit 5.0 — bei Minimal Install nur eine "Recommends"-Abhängigkeit, kommt
   also nicht sicher mit (gleiche Kategorie Fehler wie flatpak/tar, s.o.).
 - `kubernetes-client` (packages.txt) liefert `kubectl`.
+- `helm` (packages.txt) liefert Helm 3. Anders als minikube ist Helm ein
+  normales Fedora-Repo-Paket — also dnf statt Binary-Download aus dem
+  Install-Skript (`get-helm-3`), damit es `dnf upgrade` mitnimmt. Repos fügt
+  man erst bei Bedarf hinzu, das ist Benutzerzustand unter
+  `~/.config/helm/repositories.yaml` und bewusst nicht im Repo:
+  ```sh
+  helm repo add bitnami https://charts.bitnami.com/bitnami
+  helm repo update
+  ```
+  Helm redet über dieselbe Kubeconfig wie `kubectl`, braucht für minikube also
+  keine Extra-Konfiguration.
 - `podman.socket` wird von bootstrap.sh aktiviert (`systemctl --user enable
   --now`) — Docker-API-kompatibler Socket unter
   `$XDG_RUNTIME_DIR/podman/podman.sock` für Tools, die einen echten

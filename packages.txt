@@ -58,6 +58,7 @@ podman-docker                # docker-CLI-Kompat-Shim für Tools, die "docker" h
 podman-compose
 passt                        # rootless Netzwerk-Backend (pasta) — Minimal Install bringt das nicht sicher mit
 kubernetes-client             # kubectl
+helm                          # Helm 3 — normales Fedora-Repo-Paket, kein COPR/Binary nötig
 
 # --- Netzwerk / NAS ---
 nfs-utils                     # NFS-Client — Mount selbst ist manuell/hostspezifisch
