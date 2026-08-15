@@ -1,5 +1,7 @@
 // Text-only, bewusst: packages.txt installiert JetBrains Mono + Font Awesome,
 // aber keine Nerd-Font-Glyphen — Icon-Glyphen würden hier zu Tofu-Boxen führen.
+// App-Icons im Workspace-Switcher nutzen deshalb Noto-Emoji (auch aus
+// packages.txt) statt Nerd-Font-Glyphen wie in den meisten geteilten Configs.
 // battery-Modul blendet sich auf Hosts ohne Akku (cube) von selbst aus.
 {
     "layer": "top",
@@ -12,7 +14,27 @@
     "modules-right": ["pulseaudio", "network", "battery", "tray"],
 
     "hyprland/workspaces": {
-        "format": "{id}"
+        // Immer 1-6 zeigen, auch leer (persistent:true dafür in rules.conf).
+        // all-outputs:true heißt auf "book" (2 Monitore): beide Bars zeigen
+        // dieselben 6 Buttons — bei Bedarf später per Output aufteilen.
+        "format": "{id} {windows}",
+        "all-outputs": true,
+        "persistent-workspaces": {
+            "*": [1, 2, 3, 4, 5, 6]
+        },
+        "unique-icons": true,
+        "window-rewrite-default": "•",
+        // Klassen sind Vermutungen — vor dem ersten Vertrauen mit
+        // `hyprctl clients` gegenprüfen (Konvention aus rules.conf).
+        "window-rewrite": {
+            "class<foot>": "🖥",
+            "class<[Ff]irefox>": "🦊",
+            "class<[Tt]hunderbird>": "✉️",
+            "class<[Ss]lack>": "💬",
+            "class<[Ee]lement>": "🔷",
+            "class<[Ss]ignal>": "🔒",
+            "class<[Cc]ider>": "🎵"
+        }
     },
     "hyprland/window": {
         "max-length": 60

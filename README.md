@@ -89,6 +89,18 @@ TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
 - btop: Theme-Datei liegt in `btop/themes/`, `btop.conf` referenziert sie
   nur per Namen (`color_theme`) — der Rest der btop-Config bleibt bewusst
   auf Werksdefaults, btop merged fehlende Keys selbst.
+- Waybar-Workspaces: immer 1-6 sichtbar (auch leer), mit Mini-App-Icons pro
+  laufendem Fenster. Icons sind Noto-Emoji statt der in geteilten Configs
+  üblichen Nerd-Font-Glyphen (kein Nerd Font installiert, siehe oben).
+  Die `class<...>`-Regeln in `window-rewrite` sind Vermutungen basierend auf
+  den üblichen WM_CLASS-Werten — vor dem ersten Vertrauen mit
+  `hyprctl clients` gegenprüfen und ggf. anpassen. Auf "book" (2 Monitore,
+  `all-outputs:true`) zeigen aktuell BEIDE Bars dieselben 6 Buttons — falls
+  unerwünscht, `persistent-workspaces` in `waybar/config.jsonc` auf
+  Output-Namen aufteilen (siehe Waybar-Doku für `hyprland/workspaces`).
+  Damit Waybars `persistent-workspaces` überhaupt greift, deklariert
+  `rules.conf` die Workspaces 1-6 zusätzlich als `persistent:true` in
+  Hyprland selbst.
 
 ## Betriebsmodus
 
