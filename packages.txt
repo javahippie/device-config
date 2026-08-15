@@ -1,15 +1,17 @@
-# --- Compositor & Session ---
+# ACHTUNG dnf5: EIN unbekannter Paketname bricht die komplette Transaktion ab.
+# Neue Einträge daher immer erst mit `dnf info <name>` gegenprüfen.
+
+# --- Compositor & Session (aus COPR ashbuk/Hyprland-Fedora — seit F43 nicht mehr in Fedora) ---
 hyprland
-uwsm                        # startet Hyprland als systemd-User-Session (Env für D-Bus/Portale)
 hyprlock
 hypridle
-hyprpolkitagent             # GUI-Passwortabfragen; Fallback falls nicht verfügbar: lxpolkit
+xdg-desktop-portal-hyprland # Screencast/Screenshot — ebenfalls COPR
 
-# --- Portale (Flatpak-kritisch!) ---
-xdg-desktop-portal-hyprland # Screencast/Screenshot
+# --- Session-Plumbing ---
+mate-polkit                 # Polkit-Agent (hyprpolkitagent existiert in F44 nicht)
 xdg-desktop-portal-gtk      # Datei-Dialoge, Settings — ohne den brechen Flatpak-Apps
 
-# --- Desktop-Plumbing ---
+# --- Desktop ---
 waybar
 mako
 fuzzel                      # Launcher; Alternative: rofi-wayland
@@ -31,8 +33,10 @@ foot                        # Wayland-nativ, schlank; Alternative: kitty, alacri
 htop
 btop
 jq
-git                         # steht auch im README-Handschritt — hier für Vollständigkeit
+git                         # auch Handschritt vor dem Clone — hier für Vollständigkeit
 chezmoi
+flatpak                     # NICHT im Minimal Install enthalten
+tar                         # NICHT im Minimal Install enthalten; SDKMAN braucht es
 curl                        # von SDKMAN-Install benötigt
 zip                         # von SDKMAN benötigt
 unzip

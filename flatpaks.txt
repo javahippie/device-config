@@ -1,0 +1,2 @@
+# GUI-Anwendungen — eine App-ID pro Zeile, z. B.:
+# org.mozilla.firefox

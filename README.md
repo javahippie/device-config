@@ -1,54 +1,69 @@
-# cube-bootstrap
+# device-config
 
-Reproduzierbares Setup für den Tuxedo Cube: Fedora Minimal + Hyprland.
-Struktur: `bootstrap.sh` + `packages.txt` = Systemschicht,
-`home/` = chezmoi-Source für die Dotfiles.
+Reproduzierbares Setup: Fedora Minimal + Hyprland.
+Erprobt auf dem Cube (Fedora 44, Hyprland 0.56 aus COPR), Book folgt später.
+`bootstrap.sh` + `packages.txt` = Systemschicht, `home/` = chezmoi-Source.
 
-## 0. Vorbereitung (jetzt, ohne Hardware)
+## 0. Vorbereitung (ohne Zielhardware)
 
-1. Dieses Repo zu Git pushen (Forgejo/GitHub, egal — muss nur vom
-   frischen System aus erreichbar sein).
-2. Fedora **Everything**-Netinstall-ISO laden:
-   https://fedoraproject.org/everything/download
-   (Nicht "Workstation" — die bringt GNOME mit.)
-3. Auf einen USB-Stick schreiben, z. B.:
-   `sudo dd if=Fedora-Everything-netinst-x86_64-*.iso of=/dev/sdX bs=8M status=progress oflag=direct`
-   (oder Fedora Media Writer, wenn's bequem sein soll)
+1. Fedora **Everything**-Netinstall-ISO: https://fedoraproject.org/everything/download
+2. Auf USB-Stick: `sudo dd if=Fedora-Everything-netinst-x86_64-*.iso of=/dev/sdX bs=8M status=progress oflag=direct`
 
-## 1. Installation
+## 1. Installation (Anaconda)
 
-- Vom Stick booten, Installer starten.
-- **Softwareauswahl: "Minimal Install"** — keine Zusatzgruppen anhaken.
-- Partitionierung: Automatisch, Btrfs-Default übernehmen.
-- Benutzer anlegen, als Administrator markieren (sudo).
-- Root-Account kann deaktiviert bleiben.
+- Softwareauswahl: Basisumgebung **"Fedora Custom Operating System"**
+  (= Minimal auf dem Everything-Installer), rechte Spalte: NICHTS anhaken.
+- Installationsziel: ganze NVMe, automatisch, Btrfs-Default, Bestand löschen.
+- Netzwerk & Hostname: Hostname setzen (`cube` / `book`) — daran hängt
+  die Monitor-Template-Weiche. Nachholen geht mit
+  `sudo hostnamectl set-hostname cube`.
+- Benutzer als Administrator anlegen, Root deaktiviert lassen.
 
-## 2. Erster Boot (TTY, nacktes System)
+## 2. Erster Boot (TTY)
 
 ```sh
-sudo dnf install -y git chezmoi
-git clone <REPO-URL> ~/cube-bootstrap
-cd ~/cube-bootstrap
-./bootstrap.sh                      # Systemschicht: Pakete, Flathub, greetd-frei
-chezmoi init --apply --source ~/cube-bootstrap/home
+sudo dnf install -y git chezmoi        # die zwei Handschritte vor dem Clone
+git clone https://github.com/javahippie/device-config ~/sources/device-config
+cd ~/sources/device-config
+./bootstrap.sh        # COPR, Pakete, Flathub, SDKMAN, chezmoi-sourceDir
+chezmoi apply
 reboot
 ```
 
-Nach dem Reboot: am TTY einloggen — `.bash_profile` startet Hyprland
-über uwsm automatisch (bewusst kein Display-Manager, eine Fehlerquelle
-weniger; wer doch einen will: greetd + tuigreet nachrüsten).
+Nach dem Reboot: TTY1-Login startet Hyprland automatisch über den
+`start-hyprland`-Wrapper (0.53+ verlangt den — nackter `Hyprland`-Start
+lässt Session-Setup aus). Kein Display-Manager, bewusst.
+TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
 
-## 3. Danach
+## 3. Verifikation
 
-- `flatpak install flathub org.mozilla.firefox` etc. — GUI-Apps nur als Flatpak.
-- Java-Toolchain über SDKMAN/mise, Container über podman — nichts davon per dnf.
-- Neue dnf-Pakete, die bleiben dürfen: **sofort in `packages.txt` nachtragen.**
-- Drift-Check: `./drift-check.sh` zeigt, was per Hand installiert wurde
-  und (noch) nicht im Repo steht.
+- `hyprctl configerrors` — sollte leer sein
+- `systemctl --user status xdg-desktop-portal-hyprland xdg-desktop-portal-gtk`
+- Flatpak-Probe: eines installieren, Datei-Dialog öffnen
+- `hyprctl monitors` — echte Namen in `monitors.conf.tmpl` eintragen, apply
 
-## Konventionen
+## Gelernt auf echter Hardware (Fedora 44, August 2026)
 
-- `home/dot_config/hypr/` ist gesplittet: `base` / `binds` / `rules` / `effects`.
-  Deko lebt NUR in `effects.conf` — die startet als expliziter Null-Zustand.
-- Jede Zeile in diesem Repo ist selbst geschrieben oder bewusst übernommen.
-  Nichts wird aus Fertig-Configs geerbt.
+- **Hyprland ist seit Fedora 43 aus den offiziellen Repos retired.**
+  Quelle ist die COPR `ashbuk/Hyprland-Fedora` (Name strikt kleingeschrieben,
+  falsche Schreibweise schlägt STILL fehl). bootstrap.sh richtet sie ein.
+- **uwsm und hyprpolkitagent gibt es in F44 nicht.** Ersatz: Start über
+  start-hyprland (bringt Session-/D-Bus-Setup mit) + mate-polkit als Agent.
+- **dnf5 bricht bei EINEM unbekannten Paketnamen die GANZE Transaktion ab** —
+  ein toter Eintrag in packages.txt verhindert alle anderen Installationen.
+- **Minimal Install hat weder flatpak noch tar** (SDKMAN braucht tar).
+  Beides steht deshalb in packages.txt.
+- **windowrule-Grammatik ist seit 0.53 komplett neu:** `match:class <regex>`
+  plus Effekte mit Werten (`no_blur on`). windowrulev2 existiert nicht mehr.
+- **.conf-Config wird mit Hyprland 0.57 entfernt** (Lua-Migration).
+  Offenes TODO — Konverter: Hyprland-Repo Discussion #13115.
+- Die ashbuk-COPR lässt Qt-GUI-Helfer (hyprland-qtutils/guiutils) bewusst
+  weg — die Startup-Notiz dazu ist ignorierbar.
+
+## Betriebsmodus
+
+- Ad-hoc `dnf install` ist erlaubt; was bleibt, wandert SOFORT in packages.txt.
+- GUI-Apps nur als Flatpak (flatpaks.txt), Dev-Toolchain über SDKMAN/mise.
+- Config-Änderungen enden immer im Repo: live editiert ⇒ `chezmoi re-add`.
+- `./drift-check.sh` zeigt handinstallierte Pakete, die nicht im Repo stehen.
+- Vor jedem Commit: `git status` + `git diff` (Repo ist public!). TODO: gitleaks-Hook.

@@ -1,8 +1,11 @@
-# ~/.bash_profile — Login-Shell auf TTY1 startet direkt die Hyprland-Session.
-# Kein Display-Manager: eine Komponente, eine Fehlerquelle, ein Theming weniger.
+# ~/.bash_profile — TTY1-Login startet die Hyprland-Session.
+# Kein Display-Manager: eine Komponente, eine Fehlerquelle weniger.
+# WICHTIG: seit Hyprland 0.53 über den Wrapper starten, nie 'Hyprland' direkt —
+# der nackte Start lässt Session-/D-Bus-Setup aus (tote Portale, totes Input-Handling).
+# TTY2+ bleibt bewusst Hyprland-frei: das ist der Debug-Ausgang.
 
 [ -f ~/.bashrc ] && . ~/.bashrc
 
-if uwsm check may-start && uwsm select; then
-    exec uwsm start default
+if [ -z "$WAYLAND_DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
+    exec start-hyprland
 fi

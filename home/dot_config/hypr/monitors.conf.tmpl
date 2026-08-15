@@ -1,0 +1,12 @@
+{{ if eq .chezmoi.hostname "cube" -}}
+# Cube: echte Monitor-Namen nach `hyprctl monitors` eintragen
+monitor = , preferred, auto, 1
+{{- else if eq .chezmoi.hostname "book" -}}
+# Book: Laptop offen links neben dem externen Monitor, WS1 aufs Panel
+monitor = eDP-1, preferred, 0x0, 1
+monitor = DP-1, preferred, auto-right, 1
+workspace = 1, monitor:eDP-1, default:true
+workspace = 2, monitor:DP-1, default:true
+{{- else -}}
+monitor = , preferred, auto, 1
+{{- end }}
