@@ -211,6 +211,29 @@ laut minikube-Doku standardmäßig passwortlos `sudo podman` können. Mit
 `rootless true` (s. o.) umgeht man das — checken, ob es wirklich gegriffen hat:
 `podman info | grep rootless`.
 
+## Dev-Toolchain (SDKMAN + mise)
+
+Zwei Versionsmanager, klar getrennt: **SDKMAN** für die JVM-Welt (Java/Maven/
+mvnd, `dot_sdkmanrc`), **mise** für den Rest (Ruby/Node/...). Beide sind
+bewusst KEINE dnf-Pakete für ihre verwalteten Sprachversionen selbst — nur die
+Manager-Tools sind installiert, die Sprachversionen zieht man erst bei Bedarf.
+
+- mise kommt über die COPR `jdxcode/mise` — laut mise-eigener Doku der
+  empfohlene Weg für Fedora 41+ (Alternative wäre `curl https://mise.run/bash
+  | sh`, aber das hätte NOCH ein curl-Bootstrap-Muster neben SDKMAN/minikube
+  eingeführt; die COPR macht mise stattdessen zu einem stinknormalen,
+  `dnf upgrade`-fähigen Paket).
+- `~/.config/mise/config.toml` (aus dem Repo) setzt global `ruby=latest`,
+  `node=lts` als HOME-Default — analog zu `dot_sdkmanrc`, ein `.mise.toml` im
+  jeweiligen Projekt-Checkout gewinnt darüber.
+- **Shell-Aktivierung ist NICHT Teil des Repos**, aus demselben Grund wie
+  `DOCKER_HOST` oben: `~/.bashrc` wird hier nicht verwaltet. Einmalig von Hand:
+  ```sh
+  echo 'eval "$(mise activate bash)"' >> ~/.bashrc
+  ```
+  Danach neu einloggen (oder `~/.bashrc` neu sourcen), dann zieht
+  `mise install` die in `config.toml` deklarierten Versionen.
+
 ## Betriebsmodus
 
 - Ad-hoc `dnf install` ist erlaubt; was bleibt, wandert SOFORT in packages.txt.

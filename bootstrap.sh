@@ -8,6 +8,9 @@ echo "==> COPR: Hyprland (seit Fedora 43 nicht mehr in den offiziellen Repos)"
 sudo dnf install -y dnf5-plugins
 sudo dnf copr enable -y ashbuk/Hyprland-Fedora   # Name strikt kleingeschrieben!
 
+echo "==> COPR: mise (offiziell empfohlener Weg für Fedora 41+, s. mise-Doku)"
+sudo dnf copr enable -y jdxcode/mise
+
 echo "==> dnf-Pakete aus packages.txt"
 mapfile -t PKGS < <(sed 's/#.*//' packages.txt | awk 'NF{print $1}')
 sudo dnf install -y "${PKGS[@]}"
@@ -53,3 +56,4 @@ printf 'sourceDir = "%s"\n' "$(pwd)/home" > "$HOME/.config/chezmoi/chezmoi.toml"
 echo "==> Fertig. Weiter mit: chezmoi apply && reboot"
 echo "    Toolchain danach:  source ~/.sdkman/bin/sdkman-init.sh && cd ~ && sdk env install"
 echo "    Kubernetes danach: minikube config set rootless true && minikube start --driver=podman --container-runtime=containerd"
+echo "    Ruby/Node danach:  einmalig 'eval \"\$(mise activate bash)\"' in ~/.bashrc eintragen (nicht Teil des Repos), dann neu einloggen"

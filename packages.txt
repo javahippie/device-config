@@ -60,3 +60,9 @@ kubernetes-client             # kubectl
 nfs-utils                     # NFS-Client — Mount selbst ist manuell/hostspezifisch
                                # (z. B. book am anderen Standort braucht ihn nicht),
                                # deshalb kein fstab-Eintrag im Repo. showmount/mount.nfs4.
+
+# --- Dev-Toolchain (Nicht-JVM; JVM läuft über SDKMAN, s. dot_sdkmanrc) ---
+mise                           # Ruby/Node/... Versionsmanager, aus COPR jdxcode/mise
+                                # (offiziell empfohlener Fedora-41+-Weg, s. mise-Doku).
+                                # Shell-Aktivierung ist manuell, s. README — nicht Teil
+                                # dieses Repos (~/.bashrc wird hier nicht verwaltet).

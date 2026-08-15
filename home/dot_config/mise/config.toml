@@ -1,0 +1,9 @@
+# Ruby/Node-Toolchain, deklarativ. HOME-Default — ein Projekt-.mise.toml im
+# jeweiligen Checkout gewinnt darüber (gleiches Prinzip wie dot_sdkmanrc).
+# Exakte Versionen statt "latest"/"lts" vor dem ersten `mise install` prüfen:
+# mise ls-remote ruby | tail -5
+# mise ls-remote node | tail -5
+
+[tools]
+ruby = "latest"
+node = "lts"
