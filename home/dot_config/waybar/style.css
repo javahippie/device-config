@@ -1,0 +1,62 @@
+/* Catppuccin Mocha, Mauve-Akzent — github.com/catppuccin/waybar (MIT), Palette
+   direkt inline statt @import (Waybar-Config bleibt eine Datei, kein Zusatzpfad). */
+@define-color base     #1e1e2e;
+@define-color surface0 #313244;
+@define-color surface1 #45475a;
+@define-color text     #cdd6f4;
+@define-color subtext1 #bac2de;
+@define-color mauve    #cba6f7;
+@define-color red      #f38ba8;
+@define-color yellow   #f9e2af;
+
+/* Deko-Nullpunkt gilt auch hier: keine Rundung, kein Schatten. */
+* {
+    font-family: "JetBrains Mono";
+    font-size: 13px;
+    border: none;
+    border-radius: 0;
+    min-height: 0;
+}
+
+window#waybar {
+    background-color: @base;
+    color: @text;
+}
+
+#workspaces button {
+    padding: 0 8px;
+    color: @subtext1;
+    background: transparent;
+}
+
+#workspaces button.active {
+    color: @base;
+    background: @mauve;
+}
+
+#workspaces button.urgent {
+    color: @base;
+    background: @red;
+}
+
+#window,
+#clock,
+#pulseaudio,
+#network,
+#battery,
+#tray {
+    padding: 0 10px;
+    color: @text;
+}
+
+#battery.warning {
+    color: @yellow;
+}
+
+#battery.critical {
+    color: @red;
+}
+
+#network.disconnected {
+    color: @red;
+}

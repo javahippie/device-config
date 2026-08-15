@@ -1,0 +1,44 @@
+// Text-only, bewusst: packages.txt installiert JetBrains Mono + Font Awesome,
+// aber keine Nerd-Font-Glyphen — Icon-Glyphen würden hier zu Tofu-Boxen führen.
+// battery-Modul blendet sich auf Hosts ohne Akku (cube) von selbst aus.
+{
+    "layer": "top",
+    "position": "top",
+    "height": 30,
+    "spacing": 4,
+
+    "modules-left": ["hyprland/workspaces", "hyprland/window"],
+    "modules-center": ["clock"],
+    "modules-right": ["pulseaudio", "network", "battery", "tray"],
+
+    "hyprland/workspaces": {
+        "format": "{id}"
+    },
+    "hyprland/window": {
+        "max-length": 60
+    },
+    "clock": {
+        "format": "{:%H:%M   %a, %d.%m.}"
+    },
+    "pulseaudio": {
+        "format": "Vol {volume}%",
+        "format-muted": "Vol muted",
+        "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
+    },
+    "network": {
+        "format-wifi": "{essid} {signalStrength}%",
+        "format-ethernet": "eth {ipaddr}",
+        "format-disconnected": "offline"
+    },
+    "battery": {
+        "format": "Bat {capacity}%",
+        "format-charging": "Bat {capacity}% +",
+        "states": {
+            "warning": 20,
+            "critical": 10
+        }
+    },
+    "tray": {
+        "spacing": 8
+    }
+}

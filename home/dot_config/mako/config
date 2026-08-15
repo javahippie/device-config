@@ -1,0 +1,26 @@
+# Catppuccin Mocha, Mauve-Akzent — Farben 1:1 aus github.com/catppuccin/mako (MIT).
+# Sizing/Timeout kamen bisher nicht aus dem Repo (mako lief auf Werksdefaults).
+
+font=JetBrains Mono 10
+layer=overlay
+anchor=top-right
+width=320
+height=110
+margin=8
+padding=10
+border-size=2
+border-radius=0
+default-timeout=6000
+ignore-timeout=false
+
+background-color=#1e1e2e
+text-color=#cdd6f4
+border-color=#cba6f7
+progress-color=over #313244
+
+[urgency=low]
+border-color=#585b70
+
+[urgency=high]
+border-color=#fab387
+default-timeout=0

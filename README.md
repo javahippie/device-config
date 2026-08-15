@@ -41,6 +41,7 @@ TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
 - `systemctl --user status xdg-desktop-portal-hyprland xdg-desktop-portal-gtk`
 - Flatpak-Probe: eines installieren, Datei-Dialog öffnen
 - `hyprctl monitors` — echte Namen in `monitors.conf.tmpl` eintragen, apply
+- `pidof hypridle` — sollte laufen; nach 5 min Idle sperrt hyprlock automatisch
 
 ## Gelernt auf echter Hardware (Fedora 44, August 2026)
 
@@ -59,6 +60,28 @@ TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
   Offenes TODO — Konverter: Hyprland-Repo Discussion #13115.
 - Die ashbuk-COPR lässt Qt-GUI-Helfer (hyprland-qtutils/guiutils) bewusst
   weg — die Startup-Notiz dazu ist ignorierbar.
+
+## Theming (Catppuccin Mocha)
+
+- `hypr/mocha.conf` ist die einzige Quelle der Palette (Farbwerte aus dem
+  offiziellen `catppuccin/hyprlock`-Theme) — gesourct von `hyprland.conf`
+  UND direkt von `hyprlock.conf`, damit beide nie auseinanderlaufen.
+  Sourcing-Reihenfolge in `hyprland.conf` ist wichtig: `mocha.conf` muss vor
+  `base.conf`/`effects.conf` stehen, die seine Variablen referenzieren.
+- Wallpaper ist bewusst keine Bilddatei: `background_color` im `misc`-Block
+  (base.conf) füllt den Hintergrund mit der flachen Mocha-Base-Farbe. Kein
+  hyprpaper/swaybg, kein Binary im Repo — passt zum Deko-Nullpunkt-Prinzip
+  aus effects.conf. Wer ein echtes Bild will: hyprpaper zu packages.txt,
+  ein `exec-once` in base.conf, fertig.
+- Border-Farben (`col.active_border`/`col.inactive_border` in effects.conf)
+  sind die einzige bewusste Ausnahme von "Deko ausschließlich in effects.conf
+  via explizite Zeilen" — der Border ist so oder so da, nur die Farbe ändert sich.
+- Waybar/mako/foot/fuzzel: Farben aus den jeweiligen offiziellen
+  `catppuccin/*`-Themes (Mauve-Akzent), Font ist überall `JetBrains Mono`
+  (aus packages.txt) — **kein Nerd Font installiert**, deshalb bei
+  Waybar-Icons/Glyphen aufpassen (aktuell text-only, siehe config.jsonc).
+  `fontawesome-fonts-all` ist zwar installiert, wird aber aktuell nirgends
+  referenziert.
 
 ## Betriebsmodus
 
