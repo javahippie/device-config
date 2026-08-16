@@ -52,24 +52,25 @@ notify() {
     printf '%s\n' "$1" | fuzzel --dmenu --prompt 'wallpaper: ' >/dev/null 2>&1 || true
 }
 
+# Aus einem Keybind gestartet gibt es kein Terminal für stderr — ohne die
+# fuzzel-Meldung wäre jeder Fehler von "Bindung kaputt" nicht zu unterscheiden.
+fail() {
+    echo "$1" >&2
+    [ -t 2 ] || notify "$1"
+    exit 1
+}
+
 require_images() {
     mapfile -t IMAGES < <(list_images)
-    if [ "${#IMAGES[@]}" -eq 0 ]; then
-        msg="wallpaper: keine Bilder in $DIR"
-        echo "$msg" >&2
-        # Aus einem Keybind gestartet gibt es kein Terminal für stderr — dann
-        # ist die Bindung sonst nicht von "kaputt" zu unterscheiden.
-        [ -t 2 ] || notify "$msg"
-        exit 1
-    fi
+    [ "${#IMAGES[@]}" -gt 0 ] || fail "wallpaper: keine Bilder in $DIR"
 }
 
 apply() {
     local img="$1" old
-    if [ ! -f "$img" ]; then
-        echo "wallpaper: keine Datei: $img" >&2
-        exit 1
-    fi
+    [ -f "$img" ] || fail "wallpaper: keine Datei: $img"
+    # Sonst wird brav der State geschrieben und trotzdem passiert nichts.
+    command -v swaybg >/dev/null 2>&1 \
+        || fail "wallpaper: swaybg fehlt — sudo dnf install swaybg"
     # Erst den neuen swaybg starten, dann die alten abräumen — andersherum
     # blitzt für einen Frame die Hyprland-Hintergrundfarbe durch.
     old="$(pgrep -x swaybg || true)"
