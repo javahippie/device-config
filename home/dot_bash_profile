@@ -1,11 +1,16 @@
-# ~/.bash_profile — TTY1-Login startet die Hyprland-Session.
-# Kein Display-Manager: eine Komponente, eine Fehlerquelle weniger.
+# ~/.bash_profile — TTY1-Login startet die Hyprland-Session, ABER nur als Notfallpfad.
+#
+# Regulär übernimmt SDDM den Session-Start (s. README "Login-Screen"). Der Block
+# unten greift nur, wenn sddm.service NICHT läuft — also wenn der Display-Manager
+# kaputt ist und man auf einem TTY landet. Dann kommt man wie früher direkt in
+# die Session, statt vor einem toten System zu stehen.
 # WICHTIG: seit Hyprland 0.53 über den Wrapper starten, nie 'Hyprland' direkt —
 # der nackte Start lässt Session-/D-Bus-Setup aus (tote Portale, totes Input-Handling).
 # TTY2+ bleibt bewusst Hyprland-frei: das ist der Debug-Ausgang.
 
 [ -f ~/.bashrc ] && . ~/.bashrc
 
-if [ -z "$WAYLAND_DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
+if [ -z "$WAYLAND_DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ] \
+   && ! systemctl is-active --quiet sddm.service; then
     exec start-hyprland
 fi

@@ -11,12 +11,23 @@ xdg-desktop-portal-hyprland # Screencast/Screenshot — ebenfalls COPR
 mate-polkit                 # Polkit-Agent (hyprpolkitagent existiert in F44 nicht)
 xdg-desktop-portal-gtk      # Datei-Dialoge, Settings — ohne den brechen Flatpak-Apps
 
+# --- Login-Screen (SDDM) ---
+sddm
+sddm-wayland-generic        # PFLICHT, nicht optional: ohne das Subpaket fällt SDDM
+                            # auf den X11-Greeter zurück — und auf diesem System
+                            # ist KEIN Xorg installiert, der Login-Screen käme also
+                            # gar nicht hoch. Theme kommt aus bootstrap.sh (Catppuccin,
+                            # kein Fedora-Paket).
+
 # --- Desktop ---
 waybar
 mako
 fuzzel                      # Launcher; Alternative: rofi-wayland
 wl-clipboard
 cliphist
+swaybg                      # Wallpaper. NICHT hyprpaper: das ist wie hyprland selbst
+                            # aus Fedora raus (letzte Version F41), swaybg ist regulär
+                            # paketiert. Switcher: dot_local/bin/wallpaper.
 grim
 slurp
 qt5-qtwayland

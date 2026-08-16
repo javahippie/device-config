@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# Wallpaper-Switcher für swaybg.
+#
+# Bilder liegen BEWUSST nicht im Repo (das ist public, dazu Bildrechte), sondern
+# in ~/Pictures/wallpapers. Der Ordner darf leer sein oder ganz fehlen: dann
+# passiert schlicht nichts und Hyprlands `background_color` (flaches Mocha-Base
+# aus base.conf) bleibt stehen. Das ist der Fallback, kein Fehlerfall.
+#
+# swaybg statt hyprpaper: hyprpaper ist aus den Fedora-Repos raus (letzte
+# Version F41, hyprland selbst F42 — gleiche Retire-Welle wie im README), swaybg
+# ist regulär paketiert und damit `dnf upgrade`-fähig. swaybg hat kein IPC,
+# gewechselt wird deshalb per Prozess-Neustart — für einen manuellen Switcher
+# völlig ausreichend.
+set -euo pipefail
+
+DIR="${WALLPAPER_DIR:-$HOME/Pictures/wallpapers}"
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper"
+MODE="${WALLPAPER_MODE:-fill}"
+
+usage() {
+    cat <<EOF
+Usage: wallpaper <pick|next|random|set PFAD|restore|clear|status>
+
+  pick          Bild per fuzzel auswählen (wie die cliphist-Bindung)
+  next          Nächstes Bild im Ordner (alphabetisch, wrap-around)
+  random        Zufälliges Bild
+  set PFAD      Konkretes Bild setzen
+  restore       Gemerktes Bild wieder setzen — für exec-once beim Session-Start
+  clear         swaybg beenden, zurück auf die flache Mocha-Base-Farbe
+  status        Aktuell gesetztes Bild zeigen
+
+Ordner-Default: \$WALLPAPER_DIR oder ~/Pictures/wallpapers
+Skalierung:     \$WALLPAPER_MODE oder "fill" (s. swaybg(1): stretch/fit/center/tile)
+EOF
+}
+
+list_images() {
+    [ -d "$DIR" ] || return 0
+    find "$DIR" -maxdepth 1 -type f \
+        \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \) \
+        | sort
+}
+
+current() {
+    [ -f "$STATE" ] && cat "$STATE" || true
+}
+
+require_images() {
+    mapfile -t IMAGES < <(list_images)
+    if [ "${#IMAGES[@]}" -eq 0 ]; then
+        echo "wallpaper: keine Bilder in $DIR" >&2
+        exit 1
+    fi
+}
+
+apply() {
+    local img="$1" old
+    if [ ! -f "$img" ]; then
+        echo "wallpaper: keine Datei: $img" >&2
+        exit 1
+    fi
+    # Erst den neuen swaybg starten, dann die alten abräumen — andersherum
+    # blitzt für einen Frame die Hyprland-Hintergrundfarbe durch.
+    old="$(pgrep -x swaybg || true)"
+    swaybg -m "$MODE" -i "$img" >/dev/null 2>&1 &
+    disown
+    if [ -n "$old" ]; then
+        sleep 0.3
+        # shellcheck disable=SC2086  # Wortsplitting ist hier gewollt (mehrere PIDs)
+        kill $old 2>/dev/null || true
+    fi
+    mkdir -p "$(dirname "$STATE")"
+    printf '%s\n' "$img" > "$STATE"
+}
+
+cmd="${1:-}"
+
+case "$cmd" in
+    pick)
+        require_images
+        sel="$(printf '%s\n' "${IMAGES[@]##*/}" | fuzzel --dmenu --prompt 'Wallpaper: ' || true)"
+        [ -n "$sel" ] || exit 0          # Auswahl abgebrochen — kein Fehler
+        apply "$DIR/$sel"
+        ;;
+    next)
+        require_images
+        cur="$(current)"
+        idx=-1
+        for i in "${!IMAGES[@]}"; do
+            if [ "${IMAGES[$i]}" = "$cur" ]; then idx=$i; break; fi
+        done
+        apply "${IMAGES[$(( (idx + 1) % ${#IMAGES[@]} ))]}"
+        ;;
+    random)
+        require_images
+        apply "$(printf '%s\n' "${IMAGES[@]}" | shuf -n1)"
+        ;;
+    set)
+        apply "${2:?Pfad zum Bild angeben}"
+        ;;
+    restore)
+        # Läuft aus exec-once. Darf NIE mit Fehler enden, sonst hängt eine
+        # rote Zeile im Hyprland-Log an einer Situation, die völlig normal ist
+        # (frische Maschine, Ordner noch leer).
+        cur="$(current)"
+        if [ -n "$cur" ] && [ -f "$cur" ]; then
+            apply "$cur"
+        else
+            first="$(list_images | head -n1)"
+            [ -n "$first" ] && apply "$first" || true
+        fi
+        ;;
+    clear)
+        pkill -x swaybg || true
+        rm -f "$STATE"
+        ;;
+    status)
+        cur="$(current)"
+        if [ -n "$cur" ]; then
+            echo "$cur"
+        else
+            echo "kein Wallpaper gesetzt (flache Mocha-Base-Farbe aus base.conf)"
+        fi
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac

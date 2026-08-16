@@ -30,10 +30,12 @@ chezmoi apply
 reboot
 ```
 
-Nach dem Reboot: TTY1-Login startet Hyprland automatisch über den
-`start-hyprland`-Wrapper (0.53+ verlangt den — nackter `Hyprland`-Start
-lässt Session-Setup aus). Kein Display-Manager, bewusst.
+Nach dem Reboot kommt SDDM (s. "Login-Screen"). Dort einmalig die Session
+**"Hyprland (start-hyprland)"** wählen — SDDM merkt sie sich danach.
 TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
+Fällt SDDM aus, greift der Notfallpfad in `.bash_profile`: TTY1-Login startet
+Hyprland dann wie früher direkt über den `start-hyprland`-Wrapper (0.53+
+verlangt den — nackter `Hyprland`-Start lässt Session-Setup aus).
 
 ## 3. Verifikation
 
@@ -43,6 +45,10 @@ TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
 - Flatpak-Probe: eines installieren, Datei-Dialog öffnen
 - `hyprctl monitors` — echte Namen in `monitors.conf.tmpl` eintragen, apply
 - `pidof hypridle` — sollte laufen; nach 5 min Idle sperrt hyprlock automatisch
+- `systemctl status sddm` — `active`, und der Greeter zeigt Catppuccin statt
+  des grauen Werks-Themes
+- `echo $PATH | tr : '\n' | grep local/bin` — muss `~/.local/bin` enthalten,
+  sonst finden die Bindings `keylight`/`wallpaper` nicht (s. "Login-Screen")
 
 ## Gelernt auf echter Hardware (Fedora 44, August 2026)
 
@@ -71,11 +77,9 @@ TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
   UND direkt von `hyprlock.conf`, damit beide nie auseinanderlaufen.
   Sourcing-Reihenfolge in `hyprland.conf` ist wichtig: `mocha.conf` muss vor
   `base.conf`/`effects.conf` stehen, die seine Variablen referenzieren.
-- Wallpaper ist bewusst keine Bilddatei: `background_color` im `misc`-Block
-  (base.conf) füllt den Hintergrund mit der flachen Mocha-Base-Farbe. Kein
-  hyprpaper/swaybg, kein Binary im Repo — passt zum Deko-Nullpunkt-Prinzip
-  aus effects.conf. Wer ein echtes Bild will: hyprpaper zu packages.txt,
-  ein `exec-once` in base.conf, fertig.
+- Wallpaper: siehe eigenen Abschnitt weiter unten. `background_color` im
+  `misc`-Block (base.conf) ist seitdem nicht mehr *das* Wallpaper, sondern der
+  Fallback, wenn kein Bild gesetzt ist.
 - Border-Farben (`col.active_border`/`col.inactive_border` in effects.conf)
   sind die einzige bewusste Ausnahme von "Deko ausschließlich in effects.conf
   via explizite Zeilen" — der Border ist so oder so da, nur die Farbe ändert sich.
@@ -104,6 +108,77 @@ TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
   Damit Waybars `persistent-workspaces` überhaupt greift, deklariert
   `rules.conf` die Workspaces 1-6 zusätzlich als `persistent:true` in
   Hyprland selbst.
+
+## Wallpaper
+
+**Die Bilder liegen bewusst NICHT im Repo**, sondern in `~/Pictures/wallpapers`.
+Grund: das Repo ist public, und Wallpaper sind fast immer fremde Bilder mit
+Lizenz dran. Preis dieser Entscheidung: auf einer frisch aufgesetzten Maschine
+ist der Ordner leer, das ist der einzige Teil des Setups, der nicht
+reproduzierbar ist. Bilder also selbst rüberkopieren (`rsync`, s. packages.txt).
+
+**swaybg statt hyprpaper**, obwohl hyprpaper der "native" Weg wäre: hyprpaper
+ist aus den Fedora-Repos raus (letzte Version F41), hyprland selbst F42 —
+dieselbe Retire-Welle. swaybg ist regulär paketiert und damit
+`dnf upgrade`-fähig, statt an der COPR zu hängen. swaybg hat kein IPC,
+gewechselt wird per Prozess-Neustart; der Switcher startet den neuen Prozess vor
+dem Abräumen des alten, sonst blitzt kurz die Hintergrundfarbe durch.
+
+Switcher ist `dot_local/bin/wallpaper` (gleiche Bauart wie `keylight`):
+
+```sh
+wallpaper pick        # fuzzel-Auswahl — SUPER+SHIFT+W
+wallpaper next        # nächstes Bild     — SUPER+ALT+W
+wallpaper random
+wallpaper clear       # zurück auf die flache Mocha-Base-Farbe
+wallpaper status
+```
+
+Die Auswahl wird in `~/.local/state/wallpaper` gemerkt und beim Session-Start
+per `exec-once = wallpaper restore` (base.conf) wieder gesetzt. Ist kein Bild
+gemerkt, nimmt `restore` das erste im Ordner; ist der Ordner leer oder fehlt,
+endet der Aufruf **still mit 0** — dann bleibt `background_color` stehen. Das
+ist Absicht: eine frische Maschine soll deswegen keine Fehlerzeile im Log haben.
+
+Für den Lockscreen gilt das NICHT — `hyprlock.conf` bleibt bei der flachen
+Farbe. Wer dort auch ein Bild will, setzt in `background {}` einen
+`path = ...` statt `color`; hyprlock kann sich das Bild aber nicht vom Switcher
+holen, das wäre ein zweiter, manuell gepflegter Pfad.
+
+## Login-Screen (SDDM)
+
+Ersetzt den früheren TTY1-Autostart. Der ist nicht weg, sondern zum Notfallpfad
+geworden: `.bash_profile` startet Hyprland nur noch dann direkt, wenn
+`sddm.service` **nicht** läuft — also wenn der Display-Manager kaputt ist. Damit
+bleibt die alte "eine Komponente weniger"-Resilienz erhalten, ohne dass sich
+beide Startwege ins Gehege kommen.
+
+- `sddm` + `sddm-wayland-generic` (packages.txt). Das Subpaket ist **Pflicht**,
+  nicht Kür: ohne es fällt SDDM auf den X11-Greeter zurück, und auf diesem
+  System ist kein Xorg installiert — der Login-Screen käme gar nicht erst hoch.
+  `/etc/sddm.conf.d/10-device-config.conf` (aus bootstrap.sh) setzt deshalb
+  `DisplayServer=wayland` explizit.
+- Theme: `catppuccin/sddm` in Mocha/Mauve, passend zum Rest. Kein Fedora-Paket,
+  deshalb Release-Zip in bootstrap.sh — dasselbe Muster wie bei minikube, mit
+  `[ -d ... ]` als Idempotenz-Guard. Version ist **gepinnt** (`v1.1.2`) statt
+  `latest`, sonst ändert sich der Login-Screen bei jedem bootstrap-Lauf.
+- Font-Anpassung (JetBrains Mono) landet in `theme.conf.user` neben der
+  `theme.conf` des Themes — SDDM liest das als Override, ein Theme-Update
+  überschreibt es nicht.
+- **Eigene Session-Datei** `hyprland-start.desktop` statt der aus dem
+  COPR-Paket, aus zwei Gründen:
+  1. Sie ruft `start-hyprland` statt `Hyprland` auf — dieselbe Regel, die im
+     `.bash_profile` steht.
+  2. `Exec=/bin/bash -lc ...`: SDDM startet die Session **ohne Login-Shell**,
+     damit fehlt `~/.local/bin` im PATH. Genau da liegen `keylight` und
+     `wallpaper`, die aus binds.conf bzw. `exec-once` aufgerufen werden — ohne
+     die Login-Shell scheitern beide still. Das ist der unangenehmste
+     Unterschied zum TTY-Login und der Grund für den PATH-Check in §3.
+  Falls die COPR-Session-Datei schon `start-hyprland` aufruft, ist Grund 1
+  hinfällig — Grund 2 bleibt. Nachsehen:
+  `grep Exec /usr/share/wayland-sessions/*.desktop`.
+- bootstrap.sh macht `systemctl enable sddm` bewusst **ohne** `--now`: das würde
+  die gerade laufende TTY-Session abschießen. Greift also erst nach dem Reboot.
 
 ## Elgato-Hardware (Stream Deck, Key Light)
 
