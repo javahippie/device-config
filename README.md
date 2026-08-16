@@ -153,11 +153,22 @@ geworden: `.bash_profile` startet Hyprland nur noch dann direkt, wenn
 bleibt die alte "eine Komponente weniger"-Resilienz erhalten, ohne dass sich
 beide Startwege ins Gehege kommen.
 
-- `sddm` + `sddm-wayland-generic` (packages.txt). Das Subpaket ist **Pflicht**,
-  nicht Kür: ohne es fällt SDDM auf den X11-Greeter zurück, und auf diesem
-  System ist kein Xorg installiert — der Login-Screen käme gar nicht erst hoch.
-  `/etc/sddm.conf.d/10-device-config.conf` (aus bootstrap.sh) setzt deshalb
-  `DisplayServer=wayland` explizit.
+- `sddm` + `sddm-wayland-generic` (packages.txt). Das Subpaket steht explizit
+  drin, damit die Wahl feststeht: `sddm` verlangt ein virtuelles
+  `sddm-greeter-displayserver`, das auch `sddm-x11` erfüllen würde — dnf könnte
+  sonst Xorg auf ein System ziehen, das keins hat.
+- **Der Greeter läuft in weston, nicht in Hyprland.** `sddm-wayland-generic`
+  enthält laut Fedora-Spec keine einzige Datei; es zieht nur weston rein und
+  markiert die Displayserver-Wahl. Das ist die wichtigste Eigenschaft dieses
+  Setups, weil daran der erste Anlauf gescheitert ist: in
+  `/etc/sddm.conf.d/10-device-config.conf` stand
+  `GreeterEnvironment=QT_WAYLAND_SHELL_INTEGRATION=layer-shell` — richtig für
+  einen wlroots-Compositor, tödlich für weston, das `wlr-layer-shell` nicht
+  kann. Qt kam hoch (Locale-Warnung im Log), bekam keine Surface und war nach
+  einer Sekunde weg: schwarzer Bildschirm, kein Input, im journal ausschließlich
+  die PAM-Zeilen von `sddm-helper` und **keine** `sddm[…]`-Zeile.
+  Die Datei setzt deshalb nur noch `[Theme] Current=`, alles andere macht
+  Fedoras Default besser. Merksatz: Greeter-Umgebung ≠ Session-Umgebung.
 - Theme: `catppuccin/sddm` in Mocha/Mauve, passend zum Rest. Kein Fedora-Paket,
   deshalb Release-Zip in bootstrap.sh — dasselbe Muster wie bei minikube, mit
   `[ -d ... ]` als Idempotenz-Guard. Version ist **gepinnt** (`v1.1.2`) statt

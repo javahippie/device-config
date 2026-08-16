@@ -75,16 +75,23 @@ Background="backgrounds/wall.png"
 UserIcon="false"
 EOF
 
-echo "==> SDDM: Wayland-Greeter + Theme aktivieren"
+echo "==> SDDM: Theme aktivieren"
+# NUR das Theme setzen, sonst nichts. Alles, was hier mal an [General]-Keys stand
+# (DisplayServer, GreeterEnvironment), war falsch und hat den Greeter zerlegt:
+#  - DisplayServer=wayland ist bei Fedora ohnehin Default. sddm-wayland-generic
+#    liefert laut Spec KEINE Dateien, es zieht nur weston rein und markiert die
+#    Displayserver-Wahl.
+#  - QT_WAYLAND_SHELL_INTEGRATION=layer-shell war der eigentliche Killer: der
+#    Greeter-Compositor ist weston, und weston kann kein wlr-layer-shell (das ist
+#    ein wlroots-Protokoll — Hyprland kann es, weston nicht). Qt kam hoch, bekam
+#    keine Surface und war nach einer Sekunde weg: schwarzer Bildschirm, kein
+#    Input, im journal NUR die PAM-Zeilen von sddm-helper.
+# Merksatz: Greeter-Umgebung ist NICHT die Session-Umgebung. Was für Hyprland
+# richtig ist, gilt hier nicht.
 sudo mkdir -p /etc/sddm.conf.d
 sudo tee /etc/sddm.conf.d/10-device-config.conf >/dev/null <<EOF
 [Theme]
 Current=$SDDM_THEME
-
-[General]
-# Wayland-Greeter erzwingen — auf diesem System gibt es kein Xorg (s. packages.txt).
-DisplayServer=wayland
-GreeterEnvironment=QT_WAYLAND_SHELL_INTEGRATION=layer-shell
 EOF
 
 # Eigene Session-Datei statt der aus dem COPR-Paket. Zwei Gründe:

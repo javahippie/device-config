@@ -13,11 +13,16 @@ xdg-desktop-portal-gtk      # Datei-Dialoge, Settings — ohne den brechen Flatp
 
 # --- Login-Screen (SDDM) ---
 sddm
-sddm-wayland-generic        # PFLICHT, nicht optional: ohne das Subpaket fällt SDDM
-                            # auf den X11-Greeter zurück — und auf diesem System
-                            # ist KEIN Xorg installiert, der Login-Screen käme also
-                            # gar nicht hoch. Theme kommt aus bootstrap.sh (Catppuccin,
-                            # kein Fedora-Paket).
+sddm-wayland-generic        # Explizit gelistet, damit die Wahl feststeht: sddm hat ein
+                            # `Requires: sddm-greeter-displayserver`, das sowohl von
+                            # diesem Paket als auch von sddm-x11 erfüllt wird — ohne
+                            # Nennung könnte dnf den X11-Greeter ziehen und damit Xorg
+                            # auf ein System schleppen, das keins hat.
+                            # Enthält selbst KEINE Dateien (s. Fedora-Spec): es zieht
+                            # nur weston rein, das ist der Compositor, in dem der
+                            # Greeter läuft. Wichtig zu wissen — weston kann kein
+                            # wlr-layer-shell, s. Kommentar in bootstrap.sh.
+                            # Theme kommt aus bootstrap.sh (Catppuccin, kein Fedora-Paket).
 
 # --- Desktop ---
 waybar
