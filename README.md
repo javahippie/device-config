@@ -31,7 +31,7 @@ reboot
 ```
 
 Nach dem Reboot kommt SDDM (s. "Login-Screen"). Dort einmalig die Session
-**"Hyprland (start-hyprland)"** wählen — SDDM merkt sie sich danach.
+**"Hyprland"** wählen — SDDM merkt sie sich danach, zusammen mit dem Benutzer.
 TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
 Fällt SDDM aus, greift der Notfallpfad in `.bash_profile`: TTY1-Login startet
 Hyprland dann wie früher direkt über den `start-hyprland`-Wrapper (0.53+
@@ -176,18 +176,23 @@ beide Startwege ins Gehege kommen.
 - Font-Anpassung (JetBrains Mono) landet in `theme.conf.user` neben der
   `theme.conf` des Themes — SDDM liest das als Override, ein Theme-Update
   überschreibt es nicht.
-- **Eigene Session-Datei** `hyprland-start.desktop` statt der aus dem
-  COPR-Paket, aus zwei Gründen:
-  1. Sie ruft `start-hyprland` statt `Hyprland` auf — dieselbe Regel, die im
-     `.bash_profile` steht.
-  2. `Exec=/bin/bash -lc ...`: SDDM startet die Session **ohne Login-Shell**,
-     damit fehlt `~/.local/bin` im PATH. Genau da liegen `keylight` und
-     `wallpaper`, die aus binds.conf bzw. `exec-once` aufgerufen werden — ohne
-     die Login-Shell scheitern beide still. Das ist der unangenehmste
-     Unterschied zum TTY-Login und der Grund für den PATH-Check in §3.
-  Falls die COPR-Session-Datei schon `start-hyprland` aufruft, ist Grund 1
-  hinfällig — Grund 2 bleibt. Nachsehen:
-  `grep Exec /usr/share/wayland-sessions/*.desktop`.
+- **Keine eigene Session-Datei** — es gilt die aus dem COPR-Paket
+  ("Hyprland" im Session-Menü des Greeters). Hier stand mal eine eigene mit
+  `Exec=/bin/bash -lc "exec start-hyprland"`, die einen **Login-Loop** erzeugt
+  hat: Session startet, stirbt sofort, Greeter kommt wieder. Zwei Denkfehler:
+  `start-hyprland` ist der Wrapper für den **TTY**-Start (er macht das Session-
+  und D-Bus-Setup, das es ohne Display-Manager sonst nicht gäbe) — unter SDDM
+  erledigt das der Display-Manager bereits. Und Anführungszeichen im `Exec=`
+  folgen der Desktop-Entry-Spec, nicht Shell-Quoting.
+  Der Session-Log dazu steht **nicht** im journal, sondern in
+  `~/.local/share/sddm/wayland-session.log` — die Datei ist bei Loops die
+  einzige brauchbare Quelle.
+- **`~/.local/bin` ist unter SDDM nicht im PATH**, weil die Session ohne
+  Login-Shell startet. `keylight` und `wallpaper` werden deshalb in
+  `binds.conf`/`base.conf` mit vollem Pfad aufgerufen (`~/.local/bin/...`,
+  Hyprland führt `exec` über `/bin/sh -c` aus, die Tilde wird expandiert).
+  Das ist der unangenehmste Unterschied zum TTY-Login und der Grund für den
+  PATH-Check in §3.
 - bootstrap.sh macht `systemctl enable sddm` bewusst **ohne** `--now`: das würde
   die gerade laufende TTY-Session abschießen. Greift also erst nach dem Reboot.
 

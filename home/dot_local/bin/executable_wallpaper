@@ -45,10 +45,21 @@ current() {
     [ -f "$STATE" ] && cat "$STATE" || true
 }
 
+# Sichtbare Rückmeldung ohne notify-send: libnotify ist NICHT installiert (mako
+# ist nur der Daemon, der Client fehlt). Also die Meldung als einzigen
+# fuzzel-Eintrag zeigen — fuzzel ist ohnehin da.
+notify() {
+    printf '%s\n' "$1" | fuzzel --dmenu --prompt 'wallpaper: ' >/dev/null 2>&1 || true
+}
+
 require_images() {
     mapfile -t IMAGES < <(list_images)
     if [ "${#IMAGES[@]}" -eq 0 ]; then
-        echo "wallpaper: keine Bilder in $DIR" >&2
+        msg="wallpaper: keine Bilder in $DIR"
+        echo "$msg" >&2
+        # Aus einem Keybind gestartet gibt es kein Terminal für stderr — dann
+        # ist die Bindung sonst nicht von "kaputt" zu unterscheiden.
+        [ -t 2 ] || notify "$msg"
         exit 1
     fi
 }

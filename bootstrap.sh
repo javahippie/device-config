@@ -94,18 +94,19 @@ sudo tee /etc/sddm.conf.d/10-device-config.conf >/dev/null <<EOF
 Current=$SDDM_THEME
 EOF
 
-# Eigene Session-Datei statt der aus dem COPR-Paket. Zwei Gründe:
-#  1. start-hyprland statt nacktem 'Hyprland' — dieselbe Regel wie im .bash_profile.
-#  2. bash -l: SDDM startet die Session OHNE Login-Shell, damit fehlt ~/.local/bin
-#     im PATH — und genau da liegen 'keylight' und 'wallpaper', die aus binds.conf
-#     bzw. exec-once aufgerufen werden. Ohne die Login-Shell scheitern beide still.
-sudo tee /usr/share/wayland-sessions/hyprland-start.desktop >/dev/null <<'EOF'
-[Desktop Entry]
-Name=Hyprland (start-hyprland)
-Comment=Hyprland über den offiziellen Wrapper, in einer Login-Shell
-Exec=/bin/bash -lc "exec start-hyprland"
-Type=Application
-EOF
+# KEINE eigene Session-Datei. Hier stand mal eine mit
+# `Exec=/bin/bash -lc "exec start-hyprland"` — die hat einen Login-Loop erzeugt
+# (Session startet, stirbt sofort, Greeter kommt wieder). Zwei Denkfehler drin:
+#  1. start-hyprland ist der Wrapper für den TTY-Start: er macht Session- und
+#     D-Bus-Setup, das es ohne Display-Manager sonst nicht gibt. Unter SDDM macht
+#     das der Display-Manager schon — der Wrapper ist da falsch, nicht nötig.
+#  2. Anführungszeichen im Exec= einer .desktop-Datei folgen der
+#     Desktop-Entry-Spec, nicht Shell-Quoting.
+# Es gilt die Session-Datei aus dem COPR-Paket, unangetastet.
+#
+# Folge davon: SDDM startet die Session OHNE Login-Shell, ~/.local/bin ist also
+# nicht im PATH. Deshalb rufen binds.conf und base.conf 'keylight' und
+# 'wallpaper' mit vollem Pfad auf — robuster als eine Login-Shell-Krücke.
 
 # enable, NICHT --now: --now würde die gerade laufende TTY-Session abschießen.
 sudo systemctl set-default graphical.target
@@ -116,7 +117,7 @@ mkdir -p "$HOME/.config/chezmoi"
 printf 'sourceDir = "%s"\n' "$(pwd)/home" > "$HOME/.config/chezmoi/chezmoi.toml"
 
 echo "==> Fertig. Weiter mit: chezmoi apply && reboot"
-echo "    Login danach:      SDDM statt TTY-Autostart — Session 'Hyprland (start-hyprland)' wählen"
+echo "    Login danach:      SDDM statt TTY-Autostart — Session 'Hyprland' wählen"
 echo "    Wallpaper danach:  Bilder nach ~/Pictures/wallpapers legen, dann SUPER+SHIFT+W"
 echo "    Toolchain danach:  source ~/.sdkman/bin/sdkman-init.sh && cd ~ && sdk env install"
 echo "    Kubernetes danach: minikube config set rootless true && minikube start --driver=podman --container-runtime=containerd"
