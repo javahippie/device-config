@@ -64,6 +64,10 @@ helm                          # Helm 3 — normales Fedora-Repo-Paket, kein COPR
 nfs-utils                     # NFS-Client — Mount selbst ist manuell/hostspezifisch
                                # (z. B. book am anderen Standort braucht ihn nicht),
                                # deshalb kein fstab-Eintrag im Repo. showmount/mount.nfs4.
+rsync                         # Maschine-zu-Maschine-Kopien; NICHT im Minimal Install
+                               # (gleiche Kategorie wie flatpak/tar/passt, s.o.).
+                               # Muss auf BEIDEN Seiten liegen, sonst bricht der
+                               # Transfer auf der Gegenseite ab.
 
 # --- Dev-Toolchain (Nicht-JVM; JVM läuft über SDKMAN, s. dot_sdkmanrc) ---
 mise                           # Ruby/Node/... Versionsmanager, aus COPR jdxcode/mise
