@@ -101,17 +101,25 @@ case "${1:-pick}" in
         # überlebt sonst und man sucht auf dem falschen Transport weiter.
         # Fehler hier sind unkritisch (Befehlsnamen wandern zwischen bluez-
         # Versionen), deshalb wird die Ausgabe verworfen.
+        # Scan-Sitzung im HINTERGRUND, und die Auswertung passiert, WÄHREND die
+        # Discovery noch läuft. Das ist keine Kosmetik: bluez wirft RSSI und die
+        # übrigen Live-Daten weg, sobald die Discovery endet ("RSSI is nil" im
+        # bluetoothctl-Log). Wer erst `scan off` schickt und dann `info` abfragt,
+        # bekommt nackte MACs ohne Name, Signalstärke und Klasse zurück.
+        #
         # NICHT `bluetoothctl --timeout N`: bei Eingabe per Pipe beendet sich
         # bluetoothctl je nach Version schon bei stdin-EOF, der Scan liefe dann
-        # null Sekunden. Stattdessen dieselbe Technik wie beim Pairing weiter
-        # unten — stdin per sleep offen halten, dann bleibt die Sitzung stehen
-        # und die Discovery läuft wirklich die volle Zeit.
+        # null Sekunden. stdin per sleep offen halten wirkt zuverlässig.
         {
             printf 'menu scan\ntransport %s\nback\nscan on\n' "$BT_TRANSPORT"
-            sleep "$secs"
+            sleep "$((secs + 30))"      # großzügig: wir beenden selbst, s. kill unten
             printf 'scan off\nquit\n'
-            sleep 1
-        } | bluetoothctl >/dev/null 2>&1 || true
+        } | bluetoothctl >/dev/null 2>&1 &
+        scan_pid=$!
+        # Beim Abbruch (Ctrl-C) nicht die Discovery laufen lassen.
+        trap 'kill "$scan_pid" 2>/dev/null || true' EXIT INT TERM
+
+        sleep "$secs"
 
         # Nur was noch nicht gekoppelt ist — Bekanntes gehört in 'pick'.
         known="$(paired_devices | awk '{print $2}')"
@@ -124,13 +132,20 @@ case "${1:-pick}" in
                   real="$(awk -F': ' '/^[[:space:]]*Name:/{print $2; exit}' <<<"$info")"
                   icon="$(awk -F': ' '/Icon:/{print $2; exit}' <<<"$info")"
                   [ -n "$real" ] && name="$real"
-                  # Ohne RSSI ans Ende sortieren, nicht rauswerfen: ein Gerät
-                  # kann zwischen Scan und Auswertung kurz still sein.
-                  printf '%s\t%s\t%s\t%s\n' "${rssi:--999}" "$mac" "$name" "${icon:-?}"
+                  # OHNE RSSI RAUSWERFEN. Weil die Discovery hier noch läuft,
+                  # heißt "kein RSSI": das Gerät ist gerade nicht in der Luft,
+                  # sondern nur eine Karteileiche in bluez' Cache von früher.
+                  # Die aufzulisten war der Grund, warum die Auswahl vorher aus
+                  # namenlosen MACs bestand, unter denen das gesuchte gar nicht war.
+                  [ -n "$rssi" ] || continue
+                  printf '%s\t%s\t%s\t%s\n' "$rssi" "$mac" "$name" "${icon:-?}"
               done | sort -rn
         )"
-        [ -n "$candidates" ] && [ "$(wc -l <<<"$candidates")" -gt 0 ] \
-            || fail "bt: nichts Neues gefunden — Gerät im Kopplungsmodus? (BT_TRANSPORT=auto probieren)"
+
+        kill "$scan_pid" 2>/dev/null || true
+        trap - EXIT INT TERM
+
+        [ -n "$candidates" ] || fail "bt: nichts gefunden. Ist das Gerät im Kopplungsmodus (Ansage abwarten) und vom Handy getrennt? Sonst: BT_TRANSPORT=auto bt pair"
 
         sel="$(printf '%s\n' "$candidates" \
             | while IFS=$'\t' read -r rssi mac name icon; do
