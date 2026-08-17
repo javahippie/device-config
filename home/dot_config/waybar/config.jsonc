@@ -53,7 +53,9 @@
     "pulseaudio": {
         "format": "Vol {volume}%",
         "format-muted": "Vol muted",
-        "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
+        // Links stummschalten (wie gehabt), rechts das Ausgabegerät wechseln.
+        "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+        "on-click-right": "~/.local/bin/audio-out pick"
     },
     "network": {
         "format-wifi": "{essid} {signalStrength}%",

@@ -44,8 +44,13 @@ xdg-user-dirs
 
 # --- Audio (Minimal Install bringt das nicht sicher mit) ---
 pipewire
-wireplumber
+wireplumber                 # liefert wpctl — damit setzt dot_local/bin/audio-out den Default
 pipewire-pulseaudio
+pipewire-utils              # pw-dump für dot_local/bin/audio-out. Eigenes Subpaket, kommt
+                            # NICHT mit pipewire mit. JSON statt der Baumansicht von
+                            # `wpctl status`, deren Format versionsabhängig ist.
+                            # ACHTUNG: pactl steckt hier NICHT drin, das käme aus
+                            # pulseaudio-utils — wird aber nirgends gebraucht.
 
 # --- Terminal & Basics ---
 foot                        # Wayland-nativ, schlank; Alternative: kitty, alacritty

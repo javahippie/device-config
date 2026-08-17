@@ -145,6 +145,35 @@ Farbe. Wer dort auch ein Bild will, setzt in `background {}` einen
 `path = ...` statt `color`; hyprlock kann sich das Bild aber nicht vom Switcher
 holen, das wäre ein zweiter, manuell gepflegter Pfad.
 
+## Audio-Ausgabegerät wechseln
+
+`dot_local/bin/audio-out` — **Rechtsklick auf das `Vol`-Modul** der Waybar oder
+`SUPER+A`. Linksklick auf das Modul schaltet weiterhin stumm.
+
+```sh
+audio-out          # = pick, fuzzel-Auswahl
+audio-out list     # Geräte mit Node-IDs, aktives mit *
+audio-out status
+audio-out set 52
+```
+
+- **`pw-dump` + jq statt `wpctl status`**: `wpctl status` ist eine Baumansicht
+  für Menschen, deren Format zwischen WirePlumber-Versionen wandern darf.
+  `pw-dump` liefert JSON. Kostet `pipewire-utils` in packages.txt — eigenes
+  Subpaket, das **nicht** mit `pipewire` mitkommt.
+- Gesetzt wird trotzdem mit `wpctl set-default` (aus `wireplumber`): der
+  unterstützte Weg, und die Wahl überlebt einen Reboot.
+- `pactl` ist auf diesem System **nicht** zwangsläufig da — es kommt aus
+  `pulseaudio-utils`, nicht aus `pipewire-pulseaudio`. Deshalb baut hier nichts
+  darauf auf.
+- Laufende Streams ohne fest gesetztes Ziel zieht WirePlumber beim Wechsel von
+  selbst mit um (anders als klassisches PulseAudio, wo der Default nur für neue
+  Streams galt). Bleibt eine App zurück, hat sie ein gepinntes Ziel — dann hilft
+  nur, sie neu zu starten oder das Ziel per Mixer zu lösen.
+- In der Auswahlliste steht die Node-ID hinten in Klammern. Das ist nicht
+  Deko: zwei baugleiche Geräte hätten dieselbe Beschreibung und wären sonst
+  nicht auseinanderzuhalten.
+
 ## Keybind-Übersicht
 
 `SUPER+F1` oder der Klick auf **"Keys"** in der Waybar zeigt die Tastenbelegung

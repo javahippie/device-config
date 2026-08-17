@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Audio-Ausgabegerät umschalten — fuzzel-Auswahl wie bei 'wallpaper pick'.
+#
+# pw-dump statt `wpctl status`: letzteres ist eine Baumansicht für Menschen,
+# deren Format zwischen WirePlumber-Versionen wandern darf. pw-dump liefert
+# JSON, das mit jq stabil auszuwerten ist. Kommt aus pipewire-utils — eigenes
+# Subpaket, steht deshalb extra in packages.txt.
+#
+# Gesetzt wird trotzdem mit `wpctl set-default` (aus wireplumber): das ist der
+# unterstützte Weg und überlebt einen Reboot. Laufende Streams ohne fest
+# gesetztes Ziel zieht WirePlumber von selbst mit um — bleibt eine App zurück,
+# hat sie ein gepinntes Ziel (z. B. weil sie mal von Hand verschoben wurde).
+set -euo pipefail
+
+for tool in pw-dump wpctl jq; do
+    command -v "$tool" >/dev/null 2>&1 || {
+        echo "audio-out: $tool fehlt (pipewire-utils / wireplumber / jq)" >&2
+        exit 1
+    }
+done
+
+usage() {
+    cat <<EOF
+Usage: audio-out [pick|list|status|set ID]
+
+  pick      Gerät per fuzzel auswählen (Default ohne Argument)
+  list      Geräte auflisten, aktives mit *
+  status    Nur das aktive Gerät
+  set ID    Gerät per Node-ID setzen (IDs siehe list)
+EOF
+}
+
+# Ein einziger pw-dump-Aufruf für alles — zwei Aufrufe könnten einen
+# inkonsistenten Zwischenstand erwischen.
+DUMP="$(pw-dump)"
+
+default_sink_name() {
+    jq -r '
+        [ .[]
+          | select(.type == "PipeWire:Interface:Metadata")
+          | select(.props["metadata.name"] == "default")
+          | .metadata[]?
+          | select(.key == "default.audio.sink")
+          # value ist je nach Version ein Objekt {"name": ...} oder direkt ein String
+          | (.value.name // .value)
+        ] | first // ""' <<<"$DUMP"
+}
+
+# TSV: ID <TAB> Beschreibung <TAB> Marker
+sinks() {
+    jq -r --arg def "$(default_sink_name)" '
+        .[]
+        | select(.type == "PipeWire:Interface:Node")
+        | select(.info.props["media.class"] == "Audio/Sink")
+        | [ .id,
+            ( .info.props["node.description"]
+              // .info.props["node.nick"]
+              // .info.props["node.name"] ),
+            ( if .info.props["node.name"] == $def then "*" else " " end )
+          ] | @tsv' <<<"$DUMP"
+}
+
+case "${1:-pick}" in
+    list)
+        sinks | while IFS=$'\t' read -r id desc mark; do
+            printf '%s %-45s (%s)\n' "$mark" "$desc" "$id"
+        done
+        ;;
+    status)
+        sinks | awk -F'\t' '$3 == "*" { print $2; found = 1 }
+                            END { if (!found) print "kein Default gesetzt" }'
+        ;;
+    set)
+        wpctl set-default "${2:?Node-ID angeben — IDs siehe: audio-out list}"
+        ;;
+    pick)
+        # Die ID hinten dran macht die Zeile eindeutig: zwei baugleiche Geräte
+        # hätten sonst dieselbe Beschreibung und wären nicht auseinanderzuhalten.
+        sel="$(sinks \
+            | while IFS=$'\t' read -r id desc mark; do
+                  printf '%s %s (%s)\n' "$mark" "$desc" "$id"
+              done \
+            | fuzzel --dmenu --prompt 'Audio: ' --width 60 || true)"
+        [ -n "$sel" ] || exit 0                 # Abbruch ist kein Fehler
+        id="${sel##*(}"; id="${id%)}"
+        [[ "$id" =~ ^[0-9]+$ ]] || { echo "audio-out: keine ID in '$sel'" >&2; exit 1; }
+        wpctl set-default "$id"
+        command -v notify-send >/dev/null 2>&1 \
+            && notify-send "Audio" "$(sed 's/ *([0-9]*)$//; s/^[* ] *//' <<<"$sel")" || true
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac
