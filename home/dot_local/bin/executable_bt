@@ -101,8 +101,17 @@ case "${1:-pick}" in
         # überlebt sonst und man sucht auf dem falschen Transport weiter.
         # Fehler hier sind unkritisch (Befehlsnamen wandern zwischen bluez-
         # Versionen), deshalb wird die Ausgabe verworfen.
-        printf 'menu scan\ntransport %s\nback\nscan on\n' "$BT_TRANSPORT" \
-            | bluetoothctl --timeout "$secs" >/dev/null 2>&1 || true
+        # NICHT `bluetoothctl --timeout N`: bei Eingabe per Pipe beendet sich
+        # bluetoothctl je nach Version schon bei stdin-EOF, der Scan liefe dann
+        # null Sekunden. Stattdessen dieselbe Technik wie beim Pairing weiter
+        # unten — stdin per sleep offen halten, dann bleibt die Sitzung stehen
+        # und die Discovery läuft wirklich die volle Zeit.
+        {
+            printf 'menu scan\ntransport %s\nback\nscan on\n' "$BT_TRANSPORT"
+            sleep "$secs"
+            printf 'scan off\nquit\n'
+            sleep 1
+        } | bluetoothctl >/dev/null 2>&1 || true
 
         # Nur was noch nicht gekoppelt ist — Bekanntes gehört in 'pick'.
         known="$(paired_devices | awk '{print $2}')"
