@@ -334,9 +334,27 @@ beide Startwege ins Gehege kommen.
   authfreie HTTP-API auf Port 9123 direkt an, nur mit curl+jq (schon in
   packages.txt) — kein neues Paket, kein Electron-Client.
   `keylight on|off|toggle|status|brightness N|temp KELVIN`.
-  **Keine mDNS-Discovery** (bewusst simpel) — Host per `KEYLIGHT_HOST` oder
-  `--host` setzen, sonst Default `keylight.local` im Script anpassen.
   Keybind: `$mod SHIFT, K` (`$mod, K` ist schon movefocus) toggelt.
+  - **Der Host steht NICHT im Repo.** Die IP des Lights ist interne Netzinfo,
+    und dieses Repo ist public. Das Skript liest sie aus
+    `~/.config/keylight.conf` — eine Zeile, von Hand angelegt, nicht von chezmoi
+    verwaltet:
+    ```sh
+    echo 'KEYLIGHT_HOST=192.168.x.y' > ~/.config/keylight.conf
+    ```
+    Reihenfolge: `--host` > `$KEYLIGHT_HOST` > diese Datei. `~/.bashrc` wäre
+    kein Weg: Hyprland führt `exec` über ein nicht-interaktives `/bin/sh` aus,
+    und unter SDDM gibt es ohnehin keine Login-Shell.
+  - **Keine mDNS-Discovery, und kein `keylight.local`-Default mehr.** Auf diesem
+    System ist mDNS gar nicht aktiv (`resolvectl mdns` sagt für alle Links `no`,
+    `nss-mdns` ist nicht installiert) — der Name hätte also nie aufgelöst. Wer
+    `.local` will, braucht `avahi` + **`nss-mdns`** (letzteres ist der Teil, der
+    glibcs Namensauflösung erweitert; avahi allein genügt nicht). Für ein Gerät
+    an fester Wandposition ist eine DHCP-Reservierung die schlichtere Lösung.
+  - Ohne konfigurierten Host **sagt das Skript das sofort**, statt in einen
+    Timeout zu laufen — wichtig auf `book`, wo es kein Key Light gibt. Alle
+    `curl`-Aufrufe sind auf `--connect-timeout 2 --max-time 5` gedeckelt, damit
+    hinter dem Keybind nichts hängen bleibt.
 
 ## Portale & Standardbrowser
 

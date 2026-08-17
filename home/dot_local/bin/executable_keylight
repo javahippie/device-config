@@ -8,7 +8,26 @@
 # oder KEYLIGHT_HOST setzen bzw. --host verwenden.
 set -euo pipefail
 
-HOST="${KEYLIGHT_HOST:-keylight.local}"
+# Der Host kommt aus einer LOKALEN Datei, die NICHT im Repo liegt: die IP des
+# Key Lights ist interne Netzinfo und hat in einem public Repo nichts zu suchen.
+# Anlegen von Hand, eine Zeile:
+#     echo 'KEYLIGHT_HOST=192.168.x.y' > ~/.config/keylight.conf
+# Kein mDNS-Default mehr ("keylight.local"): auf diesem System ist mDNS nicht
+# aktiv (`resolvectl mdns` sagt no, nss-mdns ist nicht installiert), der Name
+# hätte also nie aufgelöst. Und auf einer Maschine ohne Key Light soll das
+# Skript sofort etwas sagen statt in einen Timeout zu laufen.
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/keylight.conf"
+
+HOST="${KEYLIGHT_HOST:-}"
+if [ -z "$HOST" ] && [ -r "$CONF" ]; then
+    # shellcheck source=/dev/null
+    . "$CONF"
+    HOST="${KEYLIGHT_HOST:-}"
+fi
+
+# Kurze Deckel: das Ding hängt an einem Keybind, da darf nichts minutenlang
+# blockieren, wenn das Licht vom Netz ist.
+CURL=(curl -sf --connect-timeout 2 --max-time 5)
 
 usage() {
     cat <<EOF
@@ -19,8 +38,8 @@ Usage: keylight [--host HOST] <on|off|toggle|status|brightness N|temp KELVIN>
   brightness N      Helligkeit in Prozent (0-100)
   temp KELVIN       Farbtemperatur in Kelvin (2900-7000)
 
-HOST-Default: \$KEYLIGHT_HOST oder "keylight.local" (Default oben im Script
-anpassen, oder --host setzen).
+Host-Reihenfolge: --host > \$KEYLIGHT_HOST > ~/.config/keylight.conf
+Die Datei liegt bewusst NICHT im Repo (interne IP, Repo ist public).
 EOF
 }
 
@@ -29,32 +48,64 @@ if [ "${1:-}" = "--host" ]; then
     shift 2
 fi
 
+if [ -z "$HOST" ]; then
+    echo "keylight: kein Host konfiguriert." >&2
+    echo "  echo 'KEYLIGHT_HOST=192.168.x.y' > $CONF" >&2
+    echo "  (oder --host angeben)" >&2
+    exit 1
+fi
+
 URL="http://${HOST}:9123/elgato/lights"
+
+unreachable() {
+    echo "keylight: $HOST antwortet nicht" >&2
+    exit 1
+}
+
+# Beide Helfer laufen bewusst NICHT in einer Subshell ($(...) oder Pipe):
+# dort würde `exit` nur die Subshell beenden, und `set -e` plus `pipefail`
+# hätten das Skript vorher ohnehin wortlos mit curls Exitcode abgebrochen.
+put() {
+    "${CURL[@]}" -X PUT "$URL" -d "$1" >/dev/null || unreachable
+}
+
+# Ergebnis in der globalen RESP, damit der Aufruf im Hauptprogramm bleibt.
+read_lights() {
+    RESP="$("${CURL[@]}" "$URL" || true)"
+    [ -n "$RESP" ] || unreachable
+}
+
 cmd="${1:-}"
 
 case "$cmd" in
     on)
-        curl -sf -X PUT "$URL" -d '{"numberOfLights":1,"lights":[{"on":1}]}' >/dev/null
+        put '{"numberOfLights":1,"lights":[{"on":1}]}'
         ;;
     off)
-        curl -sf -X PUT "$URL" -d '{"numberOfLights":1,"lights":[{"on":0}]}' >/dev/null
+        put '{"numberOfLights":1,"lights":[{"on":0}]}'
         ;;
     toggle)
-        state=$(curl -sf "$URL" | jq '.lights[0].on')
-        next=$((1 - state))
-        curl -sf -X PUT "$URL" -d "{\"numberOfLights\":1,\"lights\":[{\"on\":${next}}]}" >/dev/null
+        # Zustand erst lesen, dann das Gegenteil schicken — so bleibt es auch
+        # synchron, wenn zwischendurch über die Elgato-App geschaltet wurde.
+        read_lights
+        state="$(jq '.lights[0].on' <<<"$RESP")"
+        # Ohne diese Prüfung würde $((1 - state)) bei unerwarteter Antwort mit
+        # einem Arithmetik-Fehler abbrechen — schlecht hinter einem Keybind.
+        [[ "$state" =~ ^[01]$ ]] || unreachable
+        put "{\"numberOfLights\":1,\"lights\":[{\"on\":$((1 - state))}]}"
         ;;
     status)
-        curl -sf "$URL" | jq '.lights[0] | {on, brightness, temperature_kelvin: (1000000 / .temperature | round)}'
+        read_lights
+        jq '.lights[0] | {on, brightness, temperature_kelvin: (1000000 / .temperature | round)}' <<<"$RESP"
         ;;
     brightness)
         val="${2:?Prozent 0-100 angeben}"
-        curl -sf -X PUT "$URL" -d "{\"numberOfLights\":1,\"lights\":[{\"brightness\":${val}}]}" >/dev/null
+        put "{\"numberOfLights\":1,\"lights\":[{\"brightness\":${val}}]}"
         ;;
     temp)
         kelvin="${2:?Kelvin angeben, z.B. 4000}"
         api_val=$(jq -n --argjson k "$kelvin" '(1000000 / $k | round)')
-        curl -sf -X PUT "$URL" -d "{\"numberOfLights\":1,\"lights\":[{\"temperature\":${api_val}}]}" >/dev/null
+        put "{\"numberOfLights\":1,\"lights\":[{\"temperature\":${api_val}}]}"
         ;;
     *)
         usage
