@@ -35,6 +35,11 @@ swaybg                      # Wallpaper. NICHT hyprpaper: das ist wie hyprland s
                             # paketiert. Switcher: dot_local/bin/wallpaper.
 grim                        # Screenshots, zusammen mit slurp+jq — s. dot_local/bin/screenshot
 slurp
+wev                         # Wayland-Ersatz für xev: zeigt zu einer gedrückten Taste das
+                            # Keysym. Erstes Werkzeug bei "welchen Namen hat diese Taste,
+                            # damit ich sie in binds.conf binden kann". Zeigt NICHTS für
+                            # Tasten ohne xkb-Zuordnung — dafür dann die Ebene darunter:
+                            # `libinput debug-events` aus libinput-utils (nicht installiert).
 libnotify                   # liefert notify-send. mako ist nur der Anzeige-Daemon,
                             # der Client fehlt auf einem Minimal Install komplett —
                             # ohne das hier kann KEIN Skript eine Notification schicken.
