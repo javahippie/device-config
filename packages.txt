@@ -33,8 +33,11 @@ cliphist
 swaybg                      # Wallpaper. NICHT hyprpaper: das ist wie hyprland selbst
                             # aus Fedora raus (letzte Version F41), swaybg ist regulär
                             # paketiert. Switcher: dot_local/bin/wallpaper.
-grim
+grim                        # Screenshots, zusammen mit slurp+jq — s. dot_local/bin/screenshot
 slurp
+libnotify                   # liefert notify-send. mako ist nur der Anzeige-Daemon,
+                            # der Client fehlt auf einem Minimal Install komplett —
+                            # ohne das hier kann KEIN Skript eine Notification schicken.
 qt5-qtwayland
 qt6-qtwayland
 xdg-user-dirs

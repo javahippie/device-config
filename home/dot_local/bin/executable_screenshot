@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Screenshots für Hyprland. grim schneidet, slurp wählt aus, wl-copy legt in die
+# Zwischenablage, jq liest Hyprlands JSON — alle vier stehen längst in
+# packages.txt, für diesen Weg kommt also KEIN neues Paket dazu.
+#
+# Bewusst kein grimblast (hyprland-contrib): das hängt an derselben COPR wie
+# hyprland selbst, deren Inhalt ich nicht kontrolliere. Ein Skript, das man in
+# einem Rutsch lesen kann, ist hier die robustere Wahl.
+#
+# Jeder Modus tut BEIDES: Datei speichern UND in die Zwischenablage legen.
+# Getrennte Bindings dafür wären nur mehr Tasten für dieselbe Entscheidung.
+set -euo pipefail
+
+DIR="${SCREENSHOT_DIR:-$(xdg-user-dir PICTURES 2>/dev/null || echo "$HOME/Pictures")/Screenshots}"
+
+usage() {
+    cat <<EOF
+Usage: screenshot <region|window|screen|all>
+
+  region    Rechteck mit der Maus aufziehen (slurp)
+  window    Fenster der aktuellen Workspace anklicken — slurp rastet auf die
+            Fensterkanten ein, kein pixelgenaues Zielen nötig
+  screen    Der Monitor, auf dem die aktive Workspace liegt
+  all       Alle Monitore in EIN Bild (auf "book" also ein sehr breites)
+
+Ablage: \$SCREENSHOT_DIR oder <XDG-Bilderordner>/Screenshots
+EOF
+}
+
+# mako läuft, notify-send kommt aber aus libnotify. Fehlt es, bleibt es still —
+# der Screenshot ist dann trotzdem gemacht.
+notify() {
+    command -v notify-send >/dev/null 2>&1 && notify-send "$@" || true
+}
+
+fail() {
+    echo "$1" >&2
+    # Aus einem Keybind gestartet gibt es kein Terminal für stderr.
+    [ -t 2 ] || notify "Screenshot" "$1"
+    exit 1
+}
+
+# Nur sichtbare Fenster der aktiven Workspace anbieten. `slurp -r` rastet die
+# Auswahl dann auf genau diese Rechtecke ein.
+window_geometry() {
+    local ws
+    ws="$(hyprctl activeworkspace -j | jq -r '.id')"
+    hyprctl clients -j | jq -r --argjson ws "$ws" '
+        .[]
+        | select(.workspace.id == $ws and .mapped == true and .hidden == false)
+        | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"' \
+        | slurp -r
+}
+
+mode="${1:-}"
+args=()
+
+case "$mode" in
+    region)
+        # Abbruch mit Esc ist kein Fehler, nur ein "doch nicht".
+        geom="$(slurp)" || exit 0
+        args=(-g "$geom")
+        ;;
+    window)
+        geom="$(window_geometry)" || exit 0
+        args=(-g "$geom")
+        ;;
+    screen)
+        # Gezielt -o statt -g: grim rechnet die Ausgabegröße dann selbst aus.
+        # Über hyprctl-Koordinaten zu gehen wäre auf skalierten Monitoren falsch,
+        # weil dort Pixel- und Logikmaße auseinanderfallen.
+        args=(-o "$(hyprctl activeworkspace -j | jq -r '.monitor')")
+        ;;
+    all)
+        args=()
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac
+
+mkdir -p "$DIR"
+file="$DIR/screenshot_$(date +%Y-%m-%d_%H-%M-%S).png"
+
+grim "${args[@]}" "$file" || fail "screenshot: grim ist fehlgeschlagen"
+wl-copy < "$file" || fail "screenshot: in der Zwischenablage gelandet ist nichts"
+
+notify "Screenshot" "$(basename "$file")"
+echo "$file"

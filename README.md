@@ -145,6 +145,65 @@ Farbe. Wer dort auch ein Bild will, setzt in `background {}` einen
 `path = ...` statt `color`; hyprlock kann sich das Bild aber nicht vom Switcher
 holen, das wäre ein zweiter, manuell gepflegter Pfad.
 
+## Keybind-Übersicht
+
+`SUPER+F1` oder der Klick auf **"Keys"** in der Waybar zeigt die Tastenbelegung
+als durchsuchbares fuzzel-Popup (tippen filtert).
+
+Der Witz daran: **Quelle ist `binds.conf` selbst.** `dot_local/bin/keybinds`
+parst die Datei — Bindings *und* die `# --- Abschnitt ---`-Kommentare, aus denen
+die Gliederung im Popup wird. Eine neue Bindung taucht damit automatisch auf.
+Eine von Hand gepflegte Zweitliste wäre nach dem dritten neuen Binding falsch,
+und das Repo hat mit `drift-check.sh` schon genug Meinung zu Abweichungen.
+
+- Bewusst **nicht** `hyprctl binds -j`: das kennt zwar den Live-Zustand, liefert
+  aber Modmasken statt Tastennamen und hat keine Abschnitte. Der Unterschied
+  fällt nur auf, wenn man Bindings zur Laufzeit per `hyprctl keyword` ändert —
+  die fehlen dann in der Übersicht.
+- `$mod` wird beim Anzeigen zu `SUPER`, und `~/.local/bin/` fällt bei den
+  eigenen Skripten weg, damit die Zeilen lesbar bleiben.
+- **F1 statt des sonst üblichen `SUPER+/`**: der Slash liegt auf de-Layout
+  hinter `SHIFT+7`, das Binding wäre also faktisch ein Dreifingergriff.
+- Waybar-Modul ist `custom/keybinds`, Beschriftung **Text** ("Keys") wie der
+  Rest der Bar — es ist weiterhin kein Nerd Font installiert.
+
+## Screenshots
+
+`dot_local/bin/screenshot`, vier Modi, alle über `Print`:
+
+| Taste | Modus | Was |
+|---|---|---|
+| `Print` | `region` | Rechteck mit der Maus (slurp) |
+| `SUPER`+`Print` | `window` | Fenster anklicken — slurp rastet auf die Kanten ein |
+| `SHIFT`+`Print` | `screen` | Der Monitor der aktiven Workspace |
+| `SUPER`+`SHIFT`+`Print` | `all` | Alle Monitore in ein Bild |
+
+Jeder Modus **speichert und kopiert** — Datei nach `<XDG-Bilder>/Screenshots/`,
+zusätzlich in die Zwischenablage. Getrennte Bindings für "nur kopieren" wären
+nur mehr Tasten für dieselbe Entscheidung.
+
+- Kein neues Paket für die Funktion selbst: `grim`, `slurp`, `jq` und
+  `wl-clipboard` standen schon in packages.txt. Dazu kam nur `libnotify` für die
+  Rückmeldung — mako ist der Anzeige-Daemon, der *Client* (`notify-send`) fehlt
+  auf einem Minimal Install komplett. Ohne ihn kann kein Skript im Repo eine
+  Notification schicken. Fehlt er trotzdem, bleibt das Skript still und macht
+  den Screenshot ohne Meldung.
+- **Kein grimblast** (hyprland-contrib): das hinge an derselben COPR wie
+  hyprland selbst, deren Inhalt hier niemand kontrolliert — dieselbe Überlegung
+  wie bei hyprpaper/swaybg beim Wallpaper.
+- Der Fenster-Modus listet über `hyprctl clients -j` nur die **sichtbaren
+  Fenster der aktiven Workspace** (`mapped`, nicht `hidden`) und gibt deren
+  Rechtecke an `slurp -r`. Damit rastet die Auswahl auf Fensterkanten ein,
+  statt pixelgenaues Zielen zu verlangen.
+- `screen` nutzt `grim -o <monitor>` statt Koordinaten aus `hyprctl monitors`:
+  auf skalierten Monitoren fallen Pixel- und Logikmaße auseinander, `-o` lässt
+  grim selbst rechnen.
+- Der Dateiname hat Sekundenauflösung. Zwei Screenshots in derselben Sekunde
+  überschreiben sich — praktisch nur mit gedrückt gehaltener Taste erreichbar.
+- Vorher lag das als zwei Einzeiler direkt in `binds.conf`
+  (`grim -g "$(slurp)" - | wl-copy`). Die Semantik von `SHIFT+Print` hat sich
+  dabei geändert: früher alle Monitore, jetzt der aktive.
+
 ## Login-Screen (SDDM)
 
 Ersetzt den früheren TTY1-Autostart. Der ist nicht weg, sondern zum Notfallpfad

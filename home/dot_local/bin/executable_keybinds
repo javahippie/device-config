@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Zeigt die Tastenbelegung als durchsuchbares fuzzel-Popup.
+#
+# Quelle ist binds.conf SELBST, keine zweite gepflegte Liste — eine Übersicht,
+# die man von Hand nachziehen muss, ist nach dem dritten neuen Binding falsch.
+# Auch die "# --- Abschnitt ---"-Kommentare aus der Datei werden übernommen,
+# die Gliederung steht also ebenfalls nur an einer Stelle.
+#
+# Bewusst nicht `hyprctl binds -j`: das kennt zwar den Live-Zustand, liefert
+# aber Modmasken statt Namen und hat keine Abschnitte. Der Unterschied fällt nur
+# auf, wenn man Bindings zur Laufzeit per `hyprctl keyword` ändert — dann fehlen
+# sie hier.
+set -euo pipefail
+
+CONF="${HYPR_BINDS:-$HOME/.config/hypr/binds.conf}"
+
+[ -f "$CONF" ] || { echo "keybinds: nicht gefunden: $CONF" >&2; exit 1; }
+
+format_binds() {
+    awk '
+        function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+
+        # "# --- Kern ---" und "# --- Screenshots --- (Zusatz)" -> "Kern" / "Screenshots"
+        /^[ \t]*#[ \t]*---/ {
+            h = $0
+            sub(/^[ \t]*#[ \t]*---[ \t]*/, "", h)
+            sub(/[ \t]*---.*$/, "", h)
+            section = trim(h)
+            next
+        }
+
+        /^[ \t]*bindm?[ \t]*=/ {
+            line = $0
+            sub(/^[ \t]*bindm?[ \t]*=[ \t]*/, "", line)
+
+            n = split(line, f, ",")
+            mods = trim(f[1])
+            key  = trim(f[2])
+            disp = trim(f[3])
+
+            # Alles ab Feld 4 ist das Argument — inklusive eigener Kommas,
+            # die beim Splitten verlorengegangen sind (z. B. bei exec-Pipelines).
+            args = ""
+            for (i = 4; i <= n; i++) args = args (i > 4 ? "," : "") f[i]
+            args = trim(args)
+
+            gsub(/\$mod/, "SUPER", mods)
+            gsub(/[ \t]+/, " + ", mods)
+            combo = (mods == "") ? key : mods " + " key
+
+            if (disp == "exec") {
+                what = args
+                sub(/^~\/\.local\/bin\//, "", what)   # eigene Skripte kurz halten
+            } else {
+                what = (args == "") ? disp : disp " " args
+            }
+
+            if (section != last_section) {
+                if (NR > 1 && printed) print ""
+                print "── " section
+                last_section = section
+            }
+            printed = 1
+            printf "   %-24s %s\n", combo, what
+        }
+    ' "$CONF"
+}
+
+format_binds | fuzzel --dmenu --prompt 'Keybinds: ' --width 72 >/dev/null || true

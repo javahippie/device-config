@@ -11,7 +11,15 @@
 
     "modules-left": ["hyprland/workspaces", "hyprland/window"],
     "modules-center": ["clock"],
-    "modules-right": ["pulseaudio", "network", "battery", "tray"],
+    "modules-right": ["custom/keybinds", "pulseaudio", "network", "battery", "tray"],
+
+    // Klickbares Gegenstück zu SUPER+F1. Text statt Glyphe, wie der Rest der Bar
+    // (kein Nerd Font installiert, s. Kopf dieser Datei).
+    "custom/keybinds": {
+        "format": "Keys",
+        "tooltip": false,
+        "on-click": "~/.local/bin/keybinds"
+    },
 
     "hyprland/workspaces": {
         // Immer 1-6 zeigen, auch leer (persistent:true dafür in rules.conf).

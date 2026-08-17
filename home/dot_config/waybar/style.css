@@ -44,9 +44,19 @@ window#waybar {
 #pulseaudio,
 #network,
 #battery,
+#custom-keybinds,
 #tray {
     padding: 0 10px;
     color: @text;
+}
+
+/* Klickbar — als einziges Modul in der Bar, deshalb optisch abgesetzt. */
+#custom-keybinds {
+    color: @subtext1;
+}
+
+#custom-keybinds:hover {
+    color: @mauve;
 }
 
 #battery.warning {
