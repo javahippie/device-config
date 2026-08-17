@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Bluetooth-Geräte verbinden/trennen — fuzzel-Auswahl wie 'audio-out pick'.
+#
+# BEWUSST KEIN PAIRING: das macht man pro Gerät genau einmal, dafür lohnt keine
+# Oberfläche. Neues Gerät koppeln geht mit bluetoothctl:
+#     bluetoothctl
+#     > scan on            # warten, bis die MAC auftaucht
+#     > pair   AA:BB:CC:DD:EE:FF
+#     > trust  AA:BB:CC:DD:EE:FF     # sonst muss man jedes Mal neu bestätigen
+#     > scan off
+# Danach taucht es hier auf.
+#
+# Für BT-Audio ist kein Zusatzpaket nötig: Bluetooth ist in PipeWire
+# einkompiliert und pipewire-pulseaudio ersetzt pulseaudio-module-bluetooth.
+set -euo pipefail
+
+command -v bluetoothctl >/dev/null 2>&1 || {
+    echo "bt: bluetoothctl fehlt (dnf install bluez)" >&2; exit 1
+}
+
+usage() {
+    cat <<EOF
+Usage: bt [pick|list|status|on|off]
+
+  pick      Gekoppeltes Gerät auswählen — verbindet, oder trennt es, wenn es
+            schon verbunden ist (Default ohne Argument)
+  list      Gekoppelte Geräte, verbundene mit *
+  status    Adapter- und Verbindungszustand
+  on|off    Adapter ein-/ausschalten
+
+Koppeln läuft über bluetoothctl, s. Kommentar im Skript.
+EOF
+}
+
+notify() {
+    command -v notify-send >/dev/null 2>&1 && notify-send "$@" || true
+}
+
+fail() {
+    echo "$1" >&2
+    [ -t 2 ] || { command -v fuzzel >/dev/null 2>&1 \
+        && printf '%s\n' "$1" | fuzzel --dmenu --prompt 'bt: ' >/dev/null 2>&1 || true; }
+    exit 1
+}
+
+# `devices Paired` gibt es seit bluez 5.65; ältere Versionen kennen nur
+# `paired-devices`. Beide Wege, damit das Skript nicht an der Version hängt.
+paired_devices() {
+    { bluetoothctl devices Paired 2>/dev/null || true; } | grep '^Device ' \
+        || { bluetoothctl paired-devices 2>/dev/null || true; } | grep '^Device ' \
+        || true
+}
+
+connected() {
+    bluetoothctl info "$1" 2>/dev/null | grep -q 'Connected: yes'
+}
+
+# MAC <TAB> Name <TAB> Marker
+list_devices() {
+    paired_devices | while read -r _ mac name; do
+        if connected "$mac"; then
+            printf '%s\t%s\t*\n' "$mac" "$name"
+        else
+            printf '%s\t%s\t \n' "$mac" "$name"
+        fi
+    done
+}
+
+case "${1:-pick}" in
+    list)
+        list_devices | while IFS=$'\t' read -r mac name mark; do
+            printf '%s %-32s (%s)\n' "$mark" "$name" "$mac"
+        done
+        ;;
+    status)
+        bluetoothctl show | grep -E 'Name:|Powered:|Discoverable:' || true
+        echo "--- verbunden:"
+        list_devices | awk -F'\t' '$3 == "*" { print "  " $2 }'
+        ;;
+    on)  bluetoothctl power on ;;
+    off) bluetoothctl power off ;;
+    pick)
+        # Ausgeschalteter Adapter würde sonst nur ein wortloses "connect failed"
+        # produzieren — hier lieber selbst einschalten.
+        if bluetoothctl show | grep -q 'Powered: no'; then
+            bluetoothctl power on >/dev/null
+        fi
+
+        entries="$(list_devices)"
+        [ -n "$entries" ] || fail "bt: keine gekoppelten Geräte — koppeln mit bluetoothctl"
+
+        sel="$(printf '%s\n' "$entries" \
+            | while IFS=$'\t' read -r mac name mark; do
+                  printf '%s %s (%s)\n' "$mark" "$name" "$mac"
+              done \
+            | fuzzel --dmenu --prompt 'Bluetooth: ' --width 60 || true)"
+        [ -n "$sel" ] || exit 0                  # Abbruch ist kein Fehler
+
+        mac="${sel##*(}"; mac="${mac%)}"
+        [[ "$mac" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]] \
+            || fail "bt: keine MAC in '$sel'"
+
+        name="$(sed 's/ *([^)]*)$//; s/^[* ] *//' <<<"$sel")"
+
+        # Zustand frisch abfragen statt den Marker aus der Zeile zu deuten —
+        # zwischen Anzeige und Klick kann sich das Gerät verabschiedet haben.
+        if connected "$mac"; then
+            bluetoothctl disconnect "$mac" >/dev/null && notify "Bluetooth" "$name getrennt"
+        else
+            if bluetoothctl connect "$mac" >/dev/null; then
+                notify "Bluetooth" "$name verbunden"
+            else
+                fail "bt: Verbindung zu $name fehlgeschlagen"
+            fi
+        fi
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac

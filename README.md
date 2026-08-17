@@ -145,6 +145,40 @@ Farbe. Wer dort auch ein Bild will, setzt in `background {}` einen
 `path = ...` statt `color`; hyprlock kann sich das Bild aber nicht vom Switcher
 holen, das wäre ein zweiter, manuell gepflegter Pfad.
 
+## Bluetooth
+
+`dot_local/bin/bt` — Klick auf das **`BT`-Modul** der Waybar oder `SUPER+B`.
+Auswahl verbindet ein getrenntes Gerät und trennt ein verbundenes.
+
+```sh
+bt              # = pick
+bt list         # gekoppelte Geräte, verbundene mit *
+bt status
+bt on / bt off  # Adapter
+```
+
+- **Kein Zusatzpaket für BT-Audio.** Bluetooth ist in PipeWire einkompiliert
+  (`bluez` ist BuildRequires im Fedora-Spec), und `pipewire-pulseaudio` ersetzt
+  `pulseaudio-module-bluetooth` per `Obsoletes`. LDAC ist ebenfalls drin; ein
+  `pipewire-codec-*` existiert in Fedora gar nicht. Es braucht nur `bluez`.
+- `bluez` installiert die Unit, **aktiviert sie aber nicht** — bootstrap.sh macht
+  `systemctl enable --now bluetooth.service`. Das `--now` ist hier gefahrlos
+  (anders als bei sddm), der Dienst hängt an keiner Session.
+- **Kein `blueman`.** Verbinden ist ein Zweizeiler im Picker, und ein
+  GTK-Tray-Applet wäre eine zweite Ausnahme von "GUI nur als Flatpak" für einen
+  Vorgang, den das Skript ohne neues Paket erledigt.
+- **Koppeln bleibt Handarbeit** über `bluetoothctl` — das macht man pro Gerät
+  genau einmal, dafür lohnt keine Oberfläche. Die Befehle stehen als Kommentar
+  im Skript. `trust` nicht vergessen, sonst muss jede Verbindung neu bestätigt
+  werden.
+- Der Picker schaltet einen ausgeschalteten Adapter selbst ein — sonst gäbe es
+  nur ein wortloses "connect failed".
+- Den Verbindungszustand fragt das Skript nach der Auswahl **neu** ab, statt den
+  Marker aus der angezeigten Zeile zu deuten: zwischen Anzeige und Klick kann
+  sich ein Gerät verabschieden.
+- `bluetuith` (TUI) ist **nicht** in Fedora paketiert, wäre also Go-Build oder
+  COPR — bewusst nicht genommen.
+
 ## Audio-Ausgabegerät wechseln
 
 `dot_local/bin/audio-out` — **Rechtsklick auf das `Vol`-Modul** der Waybar oder

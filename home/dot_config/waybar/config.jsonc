@@ -11,7 +11,16 @@
 
     "modules-left": ["hyprland/workspaces", "hyprland/window"],
     "modules-center": ["clock"],
-    "modules-right": ["custom/keybinds", "pulseaudio", "network", "battery", "tray"],
+    "modules-right": ["custom/keybinds", "pulseaudio", "bluetooth", "network", "battery", "tray"],
+
+    // Klick öffnet den Geräte-Picker (dot_local/bin/bt). Text statt Glyphe wie überall.
+    "bluetooth": {
+        "format-off": "BT off",
+        "format-on": "BT",
+        "format-connected": "BT {device_alias}",
+        "tooltip": false,
+        "on-click": "~/.local/bin/bt pick"
+    },
 
     // Klickbares Gegenstück zu SUPER+F1. Text statt Glyphe, wie der Rest der Bar
     // (kein Nerd Font installiert, s. Kopf dieser Datei).

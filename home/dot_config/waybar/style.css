@@ -5,6 +5,7 @@
 @define-color surface1 #45475a;
 @define-color text     #cdd6f4;
 @define-color subtext1 #bac2de;
+@define-color overlay1 #7f849c;
 @define-color mauve    #cba6f7;
 @define-color red      #f38ba8;
 @define-color yellow   #f9e2af;
@@ -42,6 +43,7 @@ window#waybar {
 #window,
 #clock,
 #pulseaudio,
+#bluetooth,
 #network,
 #battery,
 #custom-keybinds,
@@ -57,6 +59,12 @@ window#waybar {
 
 #custom-keybinds:hover {
     color: @mauve;
+}
+
+/* Aus (oder kein Adapter) ist kein Fehler — nur gedämpft, nicht rot. */
+#bluetooth.off,
+#bluetooth.disabled {
+    color: @overlay1;
 }
 
 #battery.warning {

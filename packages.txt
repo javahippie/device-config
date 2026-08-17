@@ -46,6 +46,17 @@ xdg-user-dirs
 pipewire
 wireplumber                 # liefert wpctl — damit setzt dot_local/bin/audio-out den Default
 pipewire-pulseaudio
+bluez                       # Bluetooth-Stack. Für BT-AUDIO ist nichts weiter nötig:
+                            # Bluetooth ist in PipeWire einkompiliert (bluez ist
+                            # BuildRequires im Fedora-Spec) und pipewire-pulseaudio
+                            # ersetzt pulseaudio-module-bluetooth. LDAC ist ebenfalls
+                            # drin, ein pipewire-codec-* gibt es in Fedora nicht.
+                            # Kein blueman: Verbinden läuft über dot_local/bin/bt,
+                            # Koppeln einmalig über bluetoothctl.
+alsa-utils                  # alsamixer. Diagnose-Werkzeug: PipeWire zeigt NICHT alle
+                            # Mixer-Elemente der Karte — steht wpctl auf 100 % und es ist
+                            # trotzdem leise, sieht man hier nach. (Und bei USB-Headsets
+                            # zuerst an die Taste am Gerät denken, s. README.)
 pipewire-utils              # pw-dump für dot_local/bin/audio-out. Eigenes Subpaket, kommt
                             # NICHT mit pipewire mit. JSON statt der Baumansicht von
                             # `wpctl status`, deren Format versionsabhängig ist.

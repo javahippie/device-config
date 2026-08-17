@@ -32,6 +32,10 @@ sudo udevadm trigger
 echo "==> Podman-Socket (rootless, Docker-API-kompatibel für Tools, die docker.sock erwarten)"
 systemctl --user enable --now podman.socket
 
+echo "==> Bluetooth-Dienst (bluez installiert die Unit, aktiviert sie aber nicht)"
+# --now ist hier gefahrlos, im Gegensatz zu sddm: der Dienst hängt an keiner Session.
+sudo systemctl enable --now bluetooth.service
+
 echo "==> minikube (kein dnf-Paket, offizielle Empfehlung: Binary statt Repo)"
 if ! command -v minikube >/dev/null 2>&1; then
     TMP_MINIKUBE="$(mktemp)"
