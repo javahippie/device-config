@@ -564,6 +564,67 @@ Paket nehmen" die robustere Wahl war.
 - Betrifft NUR Firefox. Thunderbird/Cider/Element/Slack/Signal bleiben
   Flatpak — für die gilt Punkt 2 aus "Portale & Standardbrowser" weiterhin.
 
+## Office (OnlyOffice statt LibreOffice)
+
+Die Suite ist `org.onlyoffice.desktopeditors` (Flatpak, s. flatpaks.txt) — die
+Wahl fiel gegen LibreOffice, und zwar am Fenstermodell, nicht am Funktionsumfang:
+
+- **LibreOffice ist ein Multi-Toplevel-Programm.** Start Center, jedes offene
+  Dokument und jeder Dialog ("Speichern unter", "Optionen", "Suchen &
+  Ersetzen") sind eigene Wayland-Toplevels. Ein Tiling-WM kachelt die alle
+  gleichberechtigt ein — der Dialog schiebt das Dokument auf die halbe Breite.
+- **Die naheliegende Gegenregel greift hier nicht.** Hyprland kann
+  `windowrule = float, match:modal 1`, aber `modal` kommt aus dem Protokoll
+  `xdg-dialog-v1`, und LibreOffices GTK3-Backend spricht das nicht. Über
+  `match:class` sind Dialoge auch nicht zu fassen: sie erben die Klasse des
+  Hauptfensters. Bliebe Matching auf Fenstertitel — lokalisiert, versionsabhängig,
+  also genau die Sorte Regel, die still kaputtgeht.
+- **OnlyOffice ist ein Ein-Fenster-Programm** mit Dokument-Tabs und in-App
+  gerenderten Dialogen. Da ist nichts zu kacheln, also braucht es auch keine
+  Regel in `rules.conf`. Zweiter Grund: die bessere Treue bei
+  `.docx`/`.xlsx`/`.pptx`.
+- **Preis:** ODF kann es, ist aber nicht seine Muttersprache; Base/Draw/Math
+  haben kein Gegenstück. Wer die braucht, holt sich LibreOffice ad hoc dazu
+  (`flatpak install --user flathub org.libreoffice.LibreOffice`) — und trägt es
+  dann, wenn es bleibt, samt MIME-Defaults nach (s. Betriebsmodus).
+
+**Fonts sind Teil der Formattreue**, deshalb stehen drei Font-Pakete in
+packages.txt (`liberation-fonts-all`, `google-carlito-fonts`,
+`google-crosextra-caladea-fonts`). Fehlt Calibri, ersetzt fontconfig es durch
+irgendetwas mit anderen Buchstabenbreiten und die Seitenumbrüche eines fremden
+Dokuments wandern. Metrik-kompatibel heißt: gleiche Breiten, gleicher Umbruch.
+Die Pakete gehören auf den Host — Flatpak blendet Host-Fonts in die Sandbox ein,
+nicht umgekehrt.
+
+**MIME-Defaults**: OnlyOffice meldet in seiner `.desktop`-Datei ~70 Typen an,
+darunter `application/pdf`, `text/plain` und `text/markdown`. Es wäre für die
+hier der einzige registrierte Handler und würde damit automatisch gewinnen —
+ein PDF-Anhang aus Thunderbird landete im Office statt in Firefox. `mimeapps.list`
+setzt deshalb die Office-Formate explizit auf OnlyOffice und holt PDF (Firefox)
+sowie plain/markdown (Emacs) explizit zurück.
+
+Noch **nicht auf Hardware verifiziert** (Stand: Ersteintrag), beim ersten Start
+mitprüfen:
+
+```sh
+flatpak run org.onlyoffice.desktopeditors     # startet es überhaupt
+hyprctl clients | grep -iA2 -e class -e onlyoffice   # Klasse + xwayland: 0/1
+xdg-mime query default application/vnd.openxmlformats-officedocument.wordprocessingml.document
+xdg-mime query default application/pdf        # muss firefox.desktop bleiben
+fc-list | grep -ci -e carlito -e caladea -e liberation
+```
+
+- Die **Fensterklasse** ist unbekannt, bis `hyprctl clients` sie zeigt: die
+  `.desktop`-Datei setzt `StartupWMClass=ONLYOFFICE`, das gilt aber nur für
+  XWayland. Läuft es nativ, setzt Qt die `app_id` selbst. Erst mit dem echten
+  Wert lohnt ein Eintrag in Waybars `window-rewrite` (s. Theming).
+- Zeigt `hyprctl clients` `xwayland: 1`, läuft die App über XWayland — auf einem
+  HiDPI-Panel (book) sieht das unscharf aus. Die Flatpak hat beide Sockets
+  (`--socket=wayland` UND `--socket=x11`), die Wahl trifft das mitgelieferte Qt.
+  Gegenmittel wäre dann ein `flatpak override --user --env=QT_QPA_PLATFORM=wayland
+  org.onlyoffice.desktopeditors` — **erst testen**, bundled Qt ohne
+  qtwayland-Plugin startet damit gar nicht.
+
 ## Betriebsmodus
 
 - Ad-hoc `dnf install` ist erlaubt; was bleibt, wandert SOFORT in packages.txt.

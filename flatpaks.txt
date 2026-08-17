@@ -9,3 +9,16 @@ com.slack.Slack
 org.signal.Signal
 me.amankhanna.opendeck  # Stream Deck, GPL, spielt Original-Elgato-Plugins ab.
                         # Braucht zusätzlich udev/40-streamdeck.rules (bootstrap.sh).
+org.onlyoffice.desktopeditors  # Office-Suite. BEWUSST nicht LibreOffice, Grund ist
+                        # der Tiling-WM: LibreOffice macht aus Start Center, jedem
+                        # Dokument und JEDEM Dialog ein eigenes Wayland-Toplevel —
+                        # Hyprland kachelt die alle mit ein, und eine saubere
+                        # "Dialoge floaten"-Regel gibt es dafür nicht: match:modal
+                        # greift nur bei xdg-dialog-v1, und LibreOffices
+                        # GTK3-Backend meldet das nicht. Bliebe Titel-Raterei.
+                        # OnlyOffice ist EIN Fenster mit Dokument-Tabs, die Dialoge
+                        # laufen in-App — es gibt schlicht nichts zu kacheln.
+                        # Zweiter Grund: bessere .docx/.xlsx/.pptx-Treue.
+                        # Preis: ODF ist Zweitbürger, kein Base/Draw/Math-Ersatz.
+                        # Gehört zusammen mit: den Metrik-Fonts in packages.txt und
+                        # den Default-Handlern in dot_config/mimeapps.list.

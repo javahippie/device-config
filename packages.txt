@@ -90,6 +90,16 @@ jetbrains-mono-fonts
 google-noto-sans-fonts
 google-noto-emoji-fonts
 fontawesome-fonts-all
+# Metrik-kompatible Ersatzfonts für die drei MS-Familien. Klingt nach Kosmetik,
+# ist keine: fehlt der Font, substituiert fontconfig einen mit ANDEREN
+# Buchstabenbreiten — Zeilen- und Seitenumbrüche eines fremden .docx wandern,
+# das Dokument sieht beim Absender anders aus als hier. Metrik-kompatibel heißt
+# exakt gleiche Breiten, also gleicher Umbruch bei anderer Zeichnung.
+# Gehören auf den HOST, nicht in die Flatpak: Flatpak blendet die Host-Fonts in
+# die Sandbox ein, umgekehrt geht es nicht.
+liberation-fonts-all           # Arial / Times New Roman / Courier New
+google-carlito-fonts           # Calibri (Word-Default seit 2007)
+google-crosextra-caladea-fonts # Cambria (Word-Überschriften-Default)
 keepassxc                   # KeePass-Client + Secret Service (Keyring-Ersatz auf Minimal-System)
 
 # --- Container / Kubernetes (Podman statt Docker, s. README) ---

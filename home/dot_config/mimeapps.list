@@ -10,9 +10,43 @@
 # Flatpak mehr — Native Messaging für die Extension geht in der Flatpak-
 # Sandbox nicht zuverlässig. Das XDG_DATA_DIRS-Portal-Problem aus base.conf
 # betrifft Firefox dadurch nicht mehr, bleibt aber für Cider/Element nötig.
+#
+# Der Office-Block darunter ist NICHT optional-kosmetisch: OnlyOffice meldet in
+# seiner .desktop-Datei ~70 MIME-Typen an, darunter application/pdf, text/plain,
+# text/csv und text/markdown. Ohne explizite Defaults hier ist es für die auf
+# diesem System der EINZIGE registrierte Handler und gewinnt automatisch — der
+# Mailanhang und `xdg-open foo.md` landen dann im Office statt in Firefox bzw.
+# Emacs. Die drei Zeilen am Ende des Blocks nehmen ihm genau das wieder weg.
+# Die .desktop-Namen stammen aus dem Flathub-Manifest (org.onlyoffice.*, die
+# Flatpak benennt die Upstream-Datei beim Bauen um) bzw. dem Fedora-Spec
+# (emacs.desktop; emacsclient.desktop löscht Fedora im %install).
 [Default Applications]
 text/html=firefox.desktop
 x-scheme-handler/http=firefox.desktop
 x-scheme-handler/https=firefox.desktop
 x-scheme-handler/about=firefox.desktop
 x-scheme-handler/unknown=firefox.desktop
+
+# Word / Writer
+application/msword=org.onlyoffice.desktopeditors.desktop
+application/vnd.openxmlformats-officedocument.wordprocessingml.document=org.onlyoffice.desktopeditors.desktop
+application/vnd.openxmlformats-officedocument.wordprocessingml.template=org.onlyoffice.desktopeditors.desktop
+application/vnd.oasis.opendocument.text=org.onlyoffice.desktopeditors.desktop
+application/rtf=org.onlyoffice.desktopeditors.desktop
+# Excel / Calc
+application/vnd.ms-excel=org.onlyoffice.desktopeditors.desktop
+application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=org.onlyoffice.desktopeditors.desktop
+application/vnd.openxmlformats-officedocument.spreadsheetml.template=org.onlyoffice.desktopeditors.desktop
+application/vnd.oasis.opendocument.spreadsheet=org.onlyoffice.desktopeditors.desktop
+# CSV bewusst ins Office, nicht in den Emacs:
+text/csv=org.onlyoffice.desktopeditors.desktop
+# PowerPoint / Impress
+application/vnd.ms-powerpoint=org.onlyoffice.desktopeditors.desktop
+application/vnd.openxmlformats-officedocument.presentationml.presentation=org.onlyoffice.desktopeditors.desktop
+application/vnd.openxmlformats-officedocument.presentationml.slideshow=org.onlyoffice.desktopeditors.desktop
+application/vnd.oasis.opendocument.presentation=org.onlyoffice.desktopeditors.desktop
+
+# Rückholer, s. Kommentar oben — hier steht bewusst NICHT OnlyOffice:
+application/pdf=firefox.desktop
+text/plain=emacs.desktop
+text/markdown=emacs.desktop
