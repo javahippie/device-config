@@ -1,0 +1,36 @@
+# lazydocker gegen Podman statt Docker.
+#
+# lazydocker spricht die Docker-API — die liefert bei uns podman.socket
+# (von bootstrap.sh aktiviert). Dafür MUSS DOCKER_HOST gesetzt sein, sonst
+# sucht lazydocker /var/run/docker.sock und findet nichts:
+#     export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
+# Das gehört nach ~/.bashrc und steht bewusst nicht im Repo — siehe README,
+# gleiche Begründung wie bei der mise-Aktivierung.
+#
+# Für Compose ruft lazydocker sonst `docker-compose` auf, das es hier nicht
+# gibt. podman-compose steht in packages.txt.
+#
+# Schlüsselnamen gegenprüfen mit:  lazydocker --config
+commandTemplates:
+  dockerCompose: podman-compose
+
+gui:
+  # Deko-Nullpunkt gilt auch hier, soweit ein TUI das zulässt.
+  returnImmediately: true
+  wrapMainPanel: true
+  # Catppuccin Mocha, Mauve-Akzent — Farbnamen sind das, was gocui versteht;
+  # freie Hex-Werte kann lazydocker hier nicht.
+  theme:
+    activeBorderColor:
+      - magenta
+      - bold
+    inactiveBorderColor:
+      - white
+    selectedLineBgColor:
+      - blue
+
+logs:
+  # Ohne Deckel liest lazydocker bei langlebigen Containern die komplette
+  # Historie ein und blockiert beim Öffnen sekundenlang.
+  timestamps: false
+  since: 60m

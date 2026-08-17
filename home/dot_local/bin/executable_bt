@@ -97,27 +97,40 @@ case "${1:-pick}" in
         # Klick in der Waybar so lange schlicht nichts.
         echo "bt: suche $secs s auf $BT_TRANSPORT — Gerät JETZT in den Kopplungsmodus bringen" >&2
         notify "Bluetooth" "Suche $secs s — Gerät jetzt in den Kopplungsmodus bringen"
+        # EINE EINZIGE bluetoothctl-Sitzung von Scan bis connect. Das ist der
+        # Kern dieser Funktion, nicht bloß Aufräumen:
+        #
+        #  - Beendet man die scannende Sitzung und koppelt in einer zweiten,
+        #    verwirft bluez die nur ENTDECKTEN (noch nicht gekoppelten) Geräte —
+        #    das `pair` scheitert dann mit "Device not available". Genau deshalb
+        #    funktioniert der Weg von Hand: dort ist alles eine Sitzung.
+        #  - bluez wirft ausserdem RSSI und Live-Daten weg, sobald die Discovery
+        #    endet ("RSSI is nil" im Log). Die Kandidaten müssen also gelesen
+        #    werden, WÄHREND der Scan läuft, sonst bleiben nackte MACs übrig.
+        #  - Der Agent lebt nur solange die Sitzung lebt, und ohne Agent
+        #    scheitert jedes Pairing, das eine Bestätigung braucht.
+        #
+        # Steuerung über eine FIFO, damit wir der laufenden Sitzung nach und
+        # nach Befehle schicken und auf Zwischenergebnisse reagieren können.
+        # (Kein `bluetoothctl --timeout N`: bei Eingabe per Pipe beendet es sich
+        # je nach Version schon bei stdin-EOF, der Scan liefe dann null Sekunden.)
+        fifo="$(mktemp -u)"; mkfifo "$fifo"
+        btlog="$(mktemp)"
+        cleanup() {
+            { printf 'quit\n' >&3; exec 3>&-; } 2>/dev/null || true
+            kill "$bt_pid" 2>/dev/null || true
+            rm -f "$fifo" "$btlog"
+        }
+        trap cleanup EXIT INT TERM
+
+        bluetoothctl <"$fifo" >"$btlog" 2>&1 &
+        bt_pid=$!
+        exec 3>"$fifo"
+
         # Filter explizit setzen: ein Rest-Filter aus einer früheren Sitzung
         # überlebt sonst und man sucht auf dem falschen Transport weiter.
-        # Fehler hier sind unkritisch (Befehlsnamen wandern zwischen bluez-
-        # Versionen), deshalb wird die Ausgabe verworfen.
-        # Scan-Sitzung im HINTERGRUND, und die Auswertung passiert, WÄHREND die
-        # Discovery noch läuft. Das ist keine Kosmetik: bluez wirft RSSI und die
-        # übrigen Live-Daten weg, sobald die Discovery endet ("RSSI is nil" im
-        # bluetoothctl-Log). Wer erst `scan off` schickt und dann `info` abfragt,
-        # bekommt nackte MACs ohne Name, Signalstärke und Klasse zurück.
-        #
-        # NICHT `bluetoothctl --timeout N`: bei Eingabe per Pipe beendet sich
-        # bluetoothctl je nach Version schon bei stdin-EOF, der Scan liefe dann
-        # null Sekunden. stdin per sleep offen halten wirkt zuverlässig.
-        {
-            printf 'menu scan\ntransport %s\nback\nscan on\n' "$BT_TRANSPORT"
-            sleep "$((secs + 30))"      # großzügig: wir beenden selbst, s. kill unten
-            printf 'scan off\nquit\n'
-        } | bluetoothctl >/dev/null 2>&1 &
-        scan_pid=$!
-        # Beim Abbruch (Ctrl-C) nicht die Discovery laufen lassen.
-        trap 'kill "$scan_pid" 2>/dev/null || true' EXIT INT TERM
+        # Unbekannte Befehlsnamen sind unkritisch, die Sitzung läuft weiter.
+        printf 'menu scan\ntransport %s\nback\nscan on\n' "$BT_TRANSPORT" >&3
 
         sleep "$secs"
 
@@ -142,8 +155,9 @@ case "${1:-pick}" in
               done | sort -rn
         )"
 
-        kill "$scan_pid" 2>/dev/null || true
-        trap - EXIT INT TERM
+        # Discovery beenden, Sitzung aber OFFEN lassen — sonst sind die eben
+        # gefundenen Geräte gleich wieder weg.
+        printf 'scan off\n' >&3
 
         [ -n "$candidates" ] || fail "bt: nichts gefunden. Ist das Gerät im Kopplungsmodus (Ansage abwarten) und vom Handy getrennt? Sonst: BT_TRANSPORT=auto bt pair"
 
@@ -158,16 +172,30 @@ case "${1:-pick}" in
         mac="${sel##*(}"; mac="${mac%)}"
         [[ "$mac" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]] || fail "bt: keine MAC in '$sel'"
 
-        # EINE bluetoothctl-Sitzung für alles: der Agent wird beim Beenden
-        # wieder abgemeldet, und ohne registrierten Agenten scheitert jedes
-        # Pairing, das eine Bestätigung braucht. Die sleeps halten stdin offen,
-        # damit die Sitzung nicht vor dem Ende des asynchronen pair zumacht.
-        out="$( {
-            printf 'agent on\ndefault-agent\npair %s\n' "$mac"
-            sleep "$PAIR_WAIT"
-            printf 'trust %s\nconnect %s\nquit\n' "$mac" "$mac"
-            sleep 5
-        } | bluetoothctl 2>&1 || true )"
+        # Weiter in DERSELBEN Sitzung, in der auch gescannt wurde. Gepollt statt
+        # stur gewartet: vorher wurde PAIR_WAIT Sekunden geschlafen und dann
+        # einmal geprüft — dauerte das Pairing länger, meldete das Skript einen
+        # Fehlschlag, obwohl es kurz danach durchlief.
+        printf 'agent on\ndefault-agent\npair %s\n' "$mac" >&3
+
+        paired=0
+        for _ in $(seq "$PAIR_WAIT"); do
+            if bluetoothctl info "$mac" </dev/null 2>/dev/null | grep -q 'Paired: yes'; then
+                paired=1
+                break
+            fi
+            sleep 1
+        done
+
+        # trust IMMER: ohne das muss jede spätere Verbindung neu bestätigt werden.
+        [ "$paired" -eq 1 ] && { printf 'trust %s\nconnect %s\n' "$mac" "$mac" >&3; sleep 3; }
+        printf 'quit\n' >&3
+        exec 3>&-
+        wait "$bt_pid" 2>/dev/null || true
+        trap - EXIT INT TERM
+
+        out="$(cat "$btlog")"
+        rm -f "$fifo" "$btlog"
 
         if bluetoothctl info "$mac" 2>/dev/null | grep -q 'Paired: yes'; then
             name="$(bluetoothctl info "$mac" | awk -F': ' '/^[[:space:]]*Name:/{print $2; exit}')"
@@ -188,8 +216,16 @@ case "${1:-pick}" in
             fi
         else
             # Die interessante Zeile aus bluetoothctls Geplapper herausfischen.
-            reason="$(grep -iE 'Failed|Error|not available' <<<"$out" | head -1)"
-            fail "bt: Koppeln fehlgeschlagen${reason:+ — $reason}"
+            reason="$(grep -iE 'Failed|Error|Authentication|Refused|not available' <<<"$out" \
+                      | tail -1 | sed 's/^[[:space:]]*//')"
+            # Bei fehlendem Grund den Rohlog behalten — sonst steht man wieder
+            # vor einem nackten "hat nicht geklappt".
+            if [ -z "$reason" ]; then
+                keep="${TMPDIR:-/tmp}/bt-pair-$mac.log"
+                printf '%s\n' "$out" > "$keep" 2>/dev/null || true
+                reason="kein Grund gemeldet, Rohlog: $keep"
+            fi
+            fail "bt: Koppeln fehlgeschlagen — $reason"
         fi
         ;;
     pick)

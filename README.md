@@ -461,6 +461,31 @@ braucht ein Drittanbieter-Repo), systemd-Integration nativ statt nachgerüstet.
   den Hyprland-Autostart da), sondern manuell in eine eigene `~/.bashrc`
   eintragen, falls gebraucht.
 
+**lazydocker** ist ebenfalls kein Fedora-Paket (geprüft: 404 auf
+packages.fedoraproject.org, lazygit übrigens auch nicht). bootstrap.sh holt
+deshalb das Release-Binary nach `/usr/local/bin`, Version **gepinnt**, mit
+`command -v` als Idempotenz-Guard — dasselbe Muster wie minikube. Ein
+Unterschied: das Projekt liefert `checksums.txt`, und die wird auch geprüft.
+Schlägt die Prüfsumme fehl, bricht der Bootstrap ab, statt eine kaputte Binary
+zu installieren.
+
+- **Ohne `DOCKER_HOST` findet lazydocker nichts.** Es spricht die Docker-API,
+  die hier von `podman.socket` kommt; ohne die Variable sucht es
+  `/var/run/docker.sock` ins Leere. Die Zeile gehört nach `~/.bashrc` und steht
+  bewusst nicht im Repo (gleiche Begründung wie bei der mise-Aktivierung):
+  ```sh
+  export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
+  ```
+  In Hyprlands `env =` wäre sie schlecht aufgehoben: dort wird `$XDG_RUNTIME_DIR`
+  nicht expandiert, man müsste die UID hartkodieren.
+- `dot_config/lazydocker/config.yml` (aus dem Repo) setzt
+  `commandTemplates.dockerCompose` auf **`podman-compose`** — sonst ruft
+  lazydocker `docker-compose` auf, das es hier nicht gibt. Ausserdem ein
+  Zeitfenster für Logs (`since: 60m`), weil lazydocker sonst bei langlebigen
+  Containern die komplette Historie einliest und beim Öffnen hängt.
+  Schlüsselnamen gegenprüfen mit `lazydocker --config` (gibt die Default-Config
+  aus).
+
 **minikube** ist kein dnf-Paket — offizielle Empfehlung ist Binary-Download,
 macht bootstrap.sh idempotent (`command -v minikube` als Guard). Podman-Treiber
 gilt laut minikube-Doku noch als **experimental**.

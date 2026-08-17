@@ -46,6 +46,26 @@ else
     echo "    bereits installiert, übersprungen"
 fi
 
+echo "==> lazydocker (kein Fedora-Paket — geprüft, 404 —, also Release-Binary wie minikube)"
+LAZYDOCKER_VER="0.25.2"        # gepinnt, nicht 'latest': sonst wandert die Version
+                                # bei jedem bootstrap-Lauf unbemerkt weiter
+if ! command -v lazydocker >/dev/null 2>&1; then
+    TMP_LD="$(mktemp -d)"
+    LD_TGZ="lazydocker_${LAZYDOCKER_VER}_Linux_x86_64.tar.gz"
+    LD_URL="https://github.com/jesseduffield/lazydocker/releases/download/v${LAZYDOCKER_VER}"
+    curl -Lo "$TMP_LD/$LD_TGZ" "$LD_URL/$LD_TGZ"
+    curl -Lo "$TMP_LD/checksums.txt" "$LD_URL/checksums.txt"
+    # Anders als bei minikube liefert das Projekt Prüfsummen — dann auch nutzen.
+    # Schlägt das fehl, bricht der Bootstrap ab (set -e), statt eine kaputte
+    # oder untergeschobene Binary zu installieren.
+    ( cd "$TMP_LD" && grep " ${LD_TGZ}\$" checksums.txt | sha256sum -c - )
+    tar -xzf "$TMP_LD/$LD_TGZ" -C "$TMP_LD" lazydocker
+    sudo install "$TMP_LD/lazydocker" /usr/local/bin/lazydocker
+    rm -rf "$TMP_LD"
+else
+    echo "    bereits installiert, übersprungen"
+fi
+
 echo "==> SDKMAN (Java-Toolchain-Manager, kein dnf-Paket)"
 if [ ! -d "$HOME/.sdkman" ]; then
     curl -s "https://get.sdkman.io" | bash
@@ -123,6 +143,7 @@ printf 'sourceDir = "%s"\n' "$(pwd)/home" > "$HOME/.config/chezmoi/chezmoi.toml"
 echo "==> Fertig. Weiter mit: chezmoi apply && reboot"
 echo "    Login danach:      SDDM statt TTY-Autostart — Session 'Hyprland' wählen"
 echo "    Wallpaper danach:  Bilder nach ~/Pictures/wallpapers legen, dann SUPER+SHIFT+W"
+echo "    lazydocker danach: export DOCKER_HOST=\"unix://\$XDG_RUNTIME_DIR/podman/podman.sock\" in ~/.bashrc"
 echo "    Toolchain danach:  source ~/.sdkman/bin/sdkman-init.sh && cd ~ && sdk env install"
 echo "    Kubernetes danach: minikube config set rootless true && minikube start --driver=podman --container-runtime=containerd"
 echo "    Ruby/Node danach:  einmalig 'eval \"\$(mise activate bash)\"' in ~/.bashrc eintragen (nicht Teil des Repos), dann neu einloggen"
