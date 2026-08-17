@@ -19,7 +19,9 @@
         "format-on": "BT",
         "format-connected": "BT {device_alias}",
         "tooltip": false,
-        "on-click": "~/.local/bin/bt pick"
+        // Links: bekanntes Gerät verbinden/trennen. Rechts: neues koppeln.
+        "on-click": "~/.local/bin/bt pick",
+        "on-click-right": "~/.local/bin/bt pair"
     },
 
     // Klickbares Gegenstück zu SUPER+F1. Text statt Glyphe, wie der Rest der Bar

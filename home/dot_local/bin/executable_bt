@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# Bluetooth-Geräte verbinden/trennen — fuzzel-Auswahl wie 'audio-out pick'.
+# Bluetooth-Geräte verbinden/trennen/koppeln — fuzzel-Auswahl wie 'audio-out pick'.
 #
-# BEWUSST KEIN PAIRING: das macht man pro Gerät genau einmal, dafür lohnt keine
-# Oberfläche. Neues Gerät koppeln geht mit bluetoothctl:
-#     bluetoothctl
-#     > scan on            # warten, bis die MAC auftaucht
-#     > pair   AA:BB:CC:DD:EE:FF
-#     > trust  AA:BB:CC:DD:EE:FF     # sonst muss man jedes Mal neu bestätigen
-#     > scan off
-# Danach taucht es hier auf.
+# 'pair' war hier zuerst NICHT drin, mit der Begründung "koppelt man pro Gerät
+# einmal, dafür lohnt keine Oberfläche". Das war falsch gedacht: von Hand heißt
+# es, in einer Flut namenloser BLE-Privacy-Adressen die richtige MAC zu erraten
+# — im Büro oder im Hotel praktisch unbrauchbar. 'bt pair' erledigt Scan,
+# Filter, Agent und pair/trust/connect am Stück.
 #
 # Für BT-Audio ist kein Zusatzpaket nötig: Bluetooth ist in PipeWire
 # einkompiliert und pipewire-pulseaudio ersetzt pulseaudio-module-bluetooth.
@@ -18,17 +15,30 @@ command -v bluetoothctl >/dev/null 2>&1 || {
     echo "bt: bluetoothctl fehlt (dnf install bluez)" >&2; exit 1
 }
 
+# BR/EDR = klassisches Bluetooth. Kopfhörer koppeln darüber; ein reiner
+# LE-Scan liefert dagegen vor allem namenlose Privacy-Adressen von Handys und
+# Uhren in der Umgebung — genau das Rauschen, das die Suche unbrauchbar macht.
+BT_TRANSPORT="${BT_TRANSPORT:-bredr}"
+SCAN_SECS="${BT_SCAN_SECS:-20}"
+# Wie lange nach dem `pair` gewartet wird, bevor trust/connect nachkommen.
+PAIR_WAIT="${BT_PAIR_WAIT:-15}"
+
 usage() {
     cat <<EOF
-Usage: bt [pick|list|status|on|off]
+Usage: bt [pick|pair [SEK]|list|status|on|off]
 
   pick      Gekoppeltes Gerät auswählen — verbindet, oder trennt es, wenn es
             schon verbunden ist (Default ohne Argument)
+  pair SEK  Neues Gerät koppeln: scannt SEK Sekunden (Default $SCAN_SECS),
+            zeigt nur UNGEKOPPELTE Geräte nach Signalstärke sortiert, und
+            macht pair + trust + connect in einem Rutsch
   list      Gekoppelte Geräte, verbundene mit *
   status    Adapter- und Verbindungszustand
   on|off    Adapter ein-/ausschalten
 
-Koppeln läuft über bluetoothctl, s. Kommentar im Skript.
+Der Scan bei 'pair' läuft auf \$BT_TRANSPORT (Default "$BT_TRANSPORT").
+BR/EDR ist klassisches Bluetooth — Kopfhörer, Tastaturen, Mäuse mit Dongle.
+Für reine BLE-Peripherie: BT_TRANSPORT=auto bt pair
 EOF
 }
 
@@ -46,13 +56,13 @@ fail() {
 # `devices Paired` gibt es seit bluez 5.65; ältere Versionen kennen nur
 # `paired-devices`. Beide Wege, damit das Skript nicht an der Version hängt.
 paired_devices() {
-    { bluetoothctl devices Paired 2>/dev/null || true; } | grep '^Device ' \
-        || { bluetoothctl paired-devices 2>/dev/null || true; } | grep '^Device ' \
+    { bluetoothctl devices Paired </dev/null 2>/dev/null || true; } | grep '^Device ' \
+        || { bluetoothctl paired-devices </dev/null 2>/dev/null || true; } | grep '^Device ' \
         || true
 }
 
 connected() {
-    bluetoothctl info "$1" 2>/dev/null | grep -q 'Connected: yes'
+    bluetoothctl info "$1" </dev/null 2>/dev/null | grep -q 'Connected: yes'
 }
 
 # MAC <TAB> Name <TAB> Marker
@@ -79,6 +89,85 @@ case "${1:-pick}" in
         ;;
     on)  bluetoothctl power on ;;
     off) bluetoothctl power off ;;
+    pair)
+        secs="${2:-$SCAN_SECS}"
+        bluetoothctl power on >/dev/null 2>&1 || true
+
+        # Der Scan dauert secs Sekunden. Ohne Rückmeldung sieht man nach einem
+        # Klick in der Waybar so lange schlicht nichts.
+        echo "bt: suche $secs s auf $BT_TRANSPORT — Gerät JETZT in den Kopplungsmodus bringen" >&2
+        notify "Bluetooth" "Suche $secs s — Gerät jetzt in den Kopplungsmodus bringen"
+        # Filter explizit setzen: ein Rest-Filter aus einer früheren Sitzung
+        # überlebt sonst und man sucht auf dem falschen Transport weiter.
+        # Fehler hier sind unkritisch (Befehlsnamen wandern zwischen bluez-
+        # Versionen), deshalb wird die Ausgabe verworfen.
+        printf 'menu scan\ntransport %s\nback\nscan on\n' "$BT_TRANSPORT" \
+            | bluetoothctl --timeout "$secs" >/dev/null 2>&1 || true
+
+        # Nur was noch nicht gekoppelt ist — Bekanntes gehört in 'pick'.
+        known="$(paired_devices | awk '{print $2}')"
+        candidates="$(
+            { bluetoothctl devices </dev/null 2>/dev/null || true; } | grep '^Device ' \
+            | while read -r _ mac name; do
+                  [ -n "$known" ] && grep -qxF "$mac" <<<"$known" && continue
+                  info="$(bluetoothctl info "$mac" </dev/null 2>/dev/null || true)"
+                  rssi="$(awk -F': ' '/RSSI:/{print $2; exit}' <<<"$info")"
+                  real="$(awk -F': ' '/^[[:space:]]*Name:/{print $2; exit}' <<<"$info")"
+                  icon="$(awk -F': ' '/Icon:/{print $2; exit}' <<<"$info")"
+                  [ -n "$real" ] && name="$real"
+                  # Ohne RSSI ans Ende sortieren, nicht rauswerfen: ein Gerät
+                  # kann zwischen Scan und Auswertung kurz still sein.
+                  printf '%s\t%s\t%s\t%s\n' "${rssi:--999}" "$mac" "$name" "${icon:-?}"
+              done | sort -rn
+        )"
+        [ -n "$candidates" ] && [ "$(wc -l <<<"$candidates")" -gt 0 ] \
+            || fail "bt: nichts Neues gefunden — Gerät im Kopplungsmodus? (BT_TRANSPORT=auto probieren)"
+
+        sel="$(printf '%s\n' "$candidates" \
+            | while IFS=$'\t' read -r rssi mac name icon; do
+                  [ "$rssi" = "-999" ] && rssi="  ?"
+                  printf '%4s dBm  %-28s %-12s (%s)\n' "$rssi" "$name" "$icon" "$mac"
+              done \
+            | fuzzel --dmenu --prompt 'Koppeln: ' --width 72 || true)"
+        [ -n "$sel" ] || exit 0
+
+        mac="${sel##*(}"; mac="${mac%)}"
+        [[ "$mac" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]] || fail "bt: keine MAC in '$sel'"
+
+        # EINE bluetoothctl-Sitzung für alles: der Agent wird beim Beenden
+        # wieder abgemeldet, und ohne registrierten Agenten scheitert jedes
+        # Pairing, das eine Bestätigung braucht. Die sleeps halten stdin offen,
+        # damit die Sitzung nicht vor dem Ende des asynchronen pair zumacht.
+        out="$( {
+            printf 'agent on\ndefault-agent\npair %s\n' "$mac"
+            sleep "$PAIR_WAIT"
+            printf 'trust %s\nconnect %s\nquit\n' "$mac" "$mac"
+            sleep 5
+        } | bluetoothctl 2>&1 || true )"
+
+        if bluetoothctl info "$mac" 2>/dev/null | grep -q 'Paired: yes'; then
+            name="$(bluetoothctl info "$mac" | awk -F': ' '/^[[:space:]]*Name:/{print $2; exit}')"
+            notify "Bluetooth" "${name:-$mac} gekoppelt"
+            echo "gekoppelt: ${name:-$mac}"
+
+            # Audiogerät? Dann gleich als Ausgabe setzen. Best effort — schlägt
+            # das fehl, ist das Gerät trotzdem gekoppelt.
+            if command -v pw-dump >/dev/null 2>&1 && command -v wpctl >/dev/null 2>&1; then
+                sleep 2      # der bluez-Sink taucht in PipeWire nicht sofort auf
+                sink="$(pw-dump | jq -r --arg m "$(tr ':' '_' <<<"$mac")" '
+                    .[] | select(.type == "PipeWire:Interface:Node")
+                        | select(.info.props["media.class"] == "Audio/Sink")
+                        | select((.info.props["node.name"] // "") | test($m; "i"))
+                        | .id' | head -1)"
+                [ -n "$sink" ] && wpctl set-default "$sink" \
+                    && echo "als Audio-Ausgabe gesetzt" || true
+            fi
+        else
+            # Die interessante Zeile aus bluetoothctls Geplapper herausfischen.
+            reason="$(grep -iE 'Failed|Error|not available' <<<"$out" | head -1)"
+            fail "bt: Koppeln fehlgeschlagen${reason:+ — $reason}"
+        fi
+        ;;
     pick)
         # Ausgeschalteter Adapter würde sonst nur ein wortloses "connect failed"
         # produzieren — hier lieber selbst einschalten.

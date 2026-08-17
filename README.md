@@ -167,10 +167,35 @@ bt on / bt off  # Adapter
 - **Kein `blueman`.** Verbinden ist ein Zweizeiler im Picker, und ein
   GTK-Tray-Applet wäre eine zweite Ausnahme von "GUI nur als Flatpak" für einen
   Vorgang, den das Skript ohne neues Paket erledigt.
-- **Koppeln bleibt Handarbeit** über `bluetoothctl` — das macht man pro Gerät
-  genau einmal, dafür lohnt keine Oberfläche. Die Befehle stehen als Kommentar
-  im Skript. `trust` nicht vergessen, sonst muss jede Verbindung neu bestätigt
-  werden.
+- **Koppeln geht mit `bt pair`** (Rechtsklick aufs BT-Modul, `SUPER+SHIFT+B`).
+  Das war zuerst NICHT drin, mit der Begründung "koppelt man pro Gerät einmal,
+  dafür lohnt keine Oberfläche". Falsch gedacht: von Hand heißt es, in einer
+  Flut namenloser BLE-Privacy-Adressen die richtige MAC zu erraten — im Büro
+  oder im Hotel praktisch unbrauchbar. Was `bt pair` deshalb erledigt:
+  - **Scan auf BR/EDR statt LE.** Kopfhörer koppeln über klassisches
+    Bluetooth; ein LE-Scan liefert vor allem namenlose, rotierende
+    Privacy-Adressen von Handys und Uhren in der Umgebung. Der Filter wird
+    explizit gesetzt, weil ein Rest-Filter aus einer früheren `bluetoothctl`-
+    Sitzung sonst überlebt und man weiter auf dem falschen Transport sucht.
+    Für reine BLE-Peripherie: `BT_TRANSPORT=auto bt pair`.
+  - **Nur ungekoppelte Geräte**, nach Signalstärke sortiert — das eigene Gerät
+    liegt beim Koppeln neben dem Rechner und steht damit oben. Angezeigt werden
+    Name (aus `info` nachgeschlagen, nicht die MAC-Schreibweise aus `devices`),
+    RSSI, Geräteklasse (`audio-card`, `phone`, …) und MAC.
+  - **Agent registrieren.** Ohne `agent on` + `default-agent` scheitert jedes
+    Pairing, das eine Bestätigung braucht. Der Agent lebt nur solange die
+    `bluetoothctl`-Sitzung läuft, deshalb passiert alles — Agent, `pair`,
+    `trust`, `connect` — in EINER Sitzung, deren stdin per `sleep` offen
+    gehalten wird, bis das asynchrone Pairing durch ist.
+  - **`trust` automatisch**, sonst muss jede spätere Verbindung neu bestätigt
+    werden — und `bt pick` scheiterte scheinbar grundlos.
+  - Bei Audiogeräten wird der neue bluez-Sink hinterher direkt als
+    Standard-Ausgabe gesetzt (best effort, s. "Audio-Ausgabegerät wechseln").
+- Schlägt das Koppeln fehl, fischt das Skript die `Failed`/`Error`-Zeile aus
+  bluetoothctls Ausgabe und zeigt sie an, statt nur "hat nicht geklappt".
+  Häufigster Grund neben dem fehlenden Agenten: das Geräteobjekt liegt aus einem
+  früheren LE-Scan im Cache und bluez versucht über den falschen Transport zu
+  koppeln. Dann hilft `bluetoothctl remove <MAC>` und ein neuer Versuch.
 - Der Picker schaltet einen ausgeschalteten Adapter selbst ein — sonst gäbe es
   nur ein wortloses "connect failed".
 - Den Verbindungszustand fragt das Skript nach der Auswahl **neu** ab, statt den
