@@ -101,7 +101,8 @@ verlangt den — nackter `Hyprland`-Start lässt Session-Setup aus).
   üblichen Nerd-Font-Glyphen (kein Nerd Font installiert, siehe oben).
   Die `class<...>`-Regeln in `window-rewrite` sind Vermutungen basierend auf
   den üblichen WM_CLASS-Werten — vor dem ersten Vertrauen mit
-  `hyprctl clients` gegenprüfen und ggf. anpassen. Auf "book" (2 Monitore,
+  `hyprctl clients` gegenprüfen und ggf. anpassen. Ausnahme: `ONLYOFFICE` ist
+  auf dem cube live abgelesen und stimmt. Auf "book" (2 Monitore,
   `all-outputs:true`) zeigen aktuell BEIDE Bars dieselben 6 Buttons — falls
   unerwünscht, `persistent-workspaces` in `waybar/config.jsonc` auf
   Output-Namen aufteilen (siehe Waybar-Doku für `hyprland/workspaces`).
@@ -603,6 +604,24 @@ ein PDF-Anhang aus Thunderbird landete im Office statt in Firefox. `mimeapps.lis
 setzt deshalb die Office-Formate explizit auf OnlyOffice und holt PDF (Firefox)
 sowie plain/markdown (Emacs) explizit zurück.
 
+Der Rückholer braucht dabei ZWEI Gruppen, und das ist der unintuitive Teil:
+Fedoras `firefox.desktop` deklariert in `MimeType=` kein `application/pdf`
+(nur html/xml/xhtml/mml + die http(s)-Scheme-Handler), `emacs.desktop` kein
+`text/markdown` — beide können die Formate, sagen es nur nicht. Für glib reicht
+`[Default Applications]` trotzdem, dessen Lookup
+(`g_app_info_get_default_for_type_impl`) prüft nur die Existenz der
+`.desktop`-Datei. Strengere Implementierungen filtern nach deklariertem Support
+und fallen dann auf OnlyOffice zurück; `[Added Associations]` trägt die fehlende
+Zuordnung genau dafür nach.
+
+Diagnose, wenn ein Default nicht greift — die beiden Fragen unterscheiden sich:
+
+```sh
+gio mime application/pdf          # was Portal/Thunderbird tatsächlich benutzen (glib)
+xdg-mime query default application/pdf   # xdg-utils, eigener Parser, kann abweichen
+grep -n pdf ~/.config/mimeapps.list      # ist die Datei überhaupt appliziert?
+```
+
 Noch **nicht auf Hardware verifiziert** (Stand: Ersteintrag), beim ersten Start
 mitprüfen:
 
@@ -614,16 +633,22 @@ xdg-mime query default application/pdf        # muss firefox.desktop bleiben
 fc-list | grep -ci -e carlito -e caladea -e liberation
 ```
 
-- Die **Fensterklasse** ist unbekannt, bis `hyprctl clients` sie zeigt: die
-  `.desktop`-Datei setzt `StartupWMClass=ONLYOFFICE`, das gilt aber nur für
-  XWayland. Läuft es nativ, setzt Qt die `app_id` selbst. Erst mit dem echten
-  Wert lohnt ein Eintrag in Waybars `window-rewrite` (s. Theming).
-- Zeigt `hyprctl clients` `xwayland: 1`, läuft die App über XWayland — auf einem
-  HiDPI-Panel (book) sieht das unscharf aus. Die Flatpak hat beide Sockets
-  (`--socket=wayland` UND `--socket=x11`), die Wahl trifft das mitgelieferte Qt.
-  Gegenmittel wäre dann ein `flatpak override --user --env=QT_QPA_PLATFORM=wayland
-  org.onlyoffice.desktopeditors` — **erst testen**, bundled Qt ohne
-  qtwayland-Plugin startet damit gar nicht.
+- **OnlyOffice läuft über XWayland** (`hyprctl clients` → `xwayland: 1`), und das
+  ist der Normalzustand, kein Fehler: die App hat keinen Wayland-Support. Bei
+  Upstream sind "Switch to native Wayland on Linux", "crashes on Wayland
+  sessions due to XCB/X11 dependency" und "flatpak: Can't run on Wayland" offen.
+  Dass die Flatpak `--socket=wayland` mitbringt, heißt nur, dass der Socket da
+  wäre. **NICHT** `QT_QPA_PLATFORM=wayland` per `flatpak override` erzwingen —
+  das bringt sie zum Absturz, statt sie nativ zu machen.
+  Optisch kostet es hier nichts: beide Hosts stehen in `monitors.conf.tmpl` auf
+  Scale `1`, und bei Scale 1 rendert XWayland pixelgenau. Erst wenn ein Monitor
+  fraktional skaliert wird, wird die App unscharf — dann wäre
+  `xwayland { force_zero_scaling = true }` plus `GDK_SCALE`/`QT_SCALE_FACTOR`
+  der Weg, nicht der Platform-Switch.
+- Die **Fensterklasse** kommt damit aus dem X11-`WM_CLASS` (die `.desktop`-Datei
+  deklariert `StartupWMClass=ONLYOFFICE`). Vor einem Eintrag in Waybars
+  `window-rewrite` (s. Theming) den echten Wert aus `hyprctl clients` nehmen —
+  dieselbe Regel wie bei allen anderen Klassen dort.
 
 ## Betriebsmodus
 

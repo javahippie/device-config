@@ -13,7 +13,12 @@ sudo dnf copr enable -y jdxcode/mise
 
 echo "==> dnf-Pakete aus packages.txt"
 mapfile -t PKGS < <(sed 's/#.*//' packages.txt | awk 'NF{print $1}')
-sudo dnf install -y "${PKGS[@]}"
+# --refresh ist nicht optional: ohne das nimmt dnf5 den Metadaten-Cache, und der
+# ist auf einer frisch installierten Maschine Wochen alt. Die darin verzeichneten
+# RPM-Pfade sind dann längst durch neuere Builds ersetzt — der Mirror antwortet
+# mit 404 (NICHT "No match for argument", das wäre ein falscher Paketname).
+# Genau so sind die drei Font-Pakete beim ersten Lauf gescheitert.
+sudo dnf install --refresh -y "${PKGS[@]}"
 
 echo "==> Flathub aktivieren (voll, nicht Fedoras gefilterte Auswahl)"
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo

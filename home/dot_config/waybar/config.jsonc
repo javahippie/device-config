@@ -52,7 +52,12 @@
             "class<[Ss]lack>": "💬",
             "class<[Ee]lement>": "🔷",
             "class<[Ss]ignal>": "🔒",
-            "class<[Cc]ider>": "🎵"
+            "class<[Cc]ider>": "🎵",
+            // Einzige VERIFIZIERTE Klasse in dieser Liste (hyprctl clients):
+            // ONLYOFFICE, in Großbuchstaben. Der Wert kommt aus WM_CLASS, weil
+            // die App über XWayland läuft (s. README, Office-Abschnitt) — er
+            // ändert sich also auch nicht mehr durch ein Wayland-Update.
+            "class<ONLYOFFICE>": "📄"
         }
     },
     "hyprland/window": {

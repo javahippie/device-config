@@ -50,3 +50,17 @@ application/vnd.oasis.opendocument.presentation=org.onlyoffice.desktopeditors.de
 application/pdf=firefox.desktop
 text/plain=emacs.desktop
 text/markdown=emacs.desktop
+
+# Firefox' .desktop (Fedora f44) listet in MimeType= NUR html/xml/xhtml/mml und
+# die http(s)-Scheme-Handler — application/pdf steht da NICHT drin, obwohl der
+# eingebaute PDF-Viewer existiert. emacs.desktop hat text/plain, aber kein
+# text/markdown. OnlyOffice deklariert beide und ist damit der einzige Handler,
+# der sich für die Typen überhaupt meldet.
+# Laut glib-Quelltext (g_app_info_get_default_for_type_impl) genügt der Eintrag
+# oben trotzdem — dort wird nur geprüft, OB die .desktop-Datei existiert, nicht
+# ob sie den Typ deklariert. Implementierungen, die strenger filtern, brauchen
+# diese Gruppe hier: sie ist genau dafür da, eine fehlende Zuordnung
+# NACHZUTRAGEN. Werte sind Listen, das Semikolon am Ende gehört dazu.
+[Added Associations]
+application/pdf=firefox.desktop;
+text/markdown=emacs.desktop;
