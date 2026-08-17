@@ -452,6 +452,21 @@ braucht ein Drittanbieter-Repo), systemd-Integration nativ statt nachgerüstet.
   ```
   Helm redet über dieselbe Kubeconfig wie `kubectl`, braucht für minikube also
   keine Extra-Konfiguration.
+- **`podman.service.d/override.conf` (aus dem Repo) setzt `--time=0`.**
+  `podman system service` beendet sich sonst nach 5 Sekunden Inaktivität
+  (Doku-Default) und wird bei Bedarf neu socket-aktiviert. Für Handbetrieb ist
+  das gewollt, für **Testcontainers** nicht: das hält lange Verbindungen offen
+  (Event-Stream, Wait-Strategien), und wenn der Dienst darunter verschwindet,
+  reisst die Verbindung mitten in der Anfrage ab. Der Test scheitert dann mit
+  `Container startup failed` und darunter `Datenübergabe unterbrochen (broken
+  pipe)` — was nach einem Container-Problem aussieht, aber der Socket ist.
+  Nach `chezmoi apply` nötig: `systemctl --user daemon-reload` und
+  `systemctl --user restart podman.socket`.
+- Weitere Testcontainers-Stolpersteine auf rootless Podman, falls der Timeout
+  nicht die Ursache war: `TESTCONTAINERS_RYUK_DISABLED=true` (Ryuk bekommt den
+  Socket rootless nicht eingehängt) und `TESTCONTAINERS_HOST_OVERRIDE=localhost`
+  (Testcontainers leitet sonst die falsche Adresse zum Container her).
+  Bewusst NICHT im Repo, solange sie nicht nachweislich gebraucht werden.
 - `podman.socket` wird von bootstrap.sh aktiviert (`systemctl --user enable
   --now`) — Docker-API-kompatibler Socket unter
   `$XDG_RUNTIME_DIR/podman/podman.sock` für Tools, die einen echten
