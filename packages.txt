@@ -77,6 +77,7 @@ emacs                        # Theme: Catppuccin Mocha, vendored in dot_config/e
 htop
 btop
 jq
+gh
 git                         # auch Handschritt vor dem Clone — hier für Vollständigkeit
 chezmoi
 flatpak                     # NICHT im Minimal Install enthalten
