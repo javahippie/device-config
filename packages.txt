@@ -124,16 +124,3 @@ mise                           # Ruby/Node/... Versionsmanager, aus COPR jdxcode
                                 # (offiziell empfohlener Fedora-41+-Weg, s. mise-Doku).
                                 # Shell-Aktivierung ist manuell, s. README — nicht Teil
                                 # dieses Repos (~/.bashrc wird hier nicht verwaltet).
-
-# --- Claude-Code-Sandbox (s. README) ---
-bubblewrap                     # unprivilegierte Namespace-Sandbox. Claude Code kapselt
-                                # damit seine Bash-Kommandos (auf macOS wäre es Seatbelt);
-                                # ohne das Paket ist die Sandbox schlicht nicht verfügbar.
-                                # Fedora erlaubt unprivilegierte User-Namespaces per
-                                # Default — die Ubuntu-Krücke
-                                # 'kernel.apparmor_restrict_unprivileged_userns=0'
-                                # entfällt hier.
-socat                          # Socket-Relay. Der Sandbox wird der Netz-Namespace
-                                # entzogen; der erlaubte Traffic wird über einen
-                                # Unix-Socket zum Proxy gebrückt, und genau das macht
-                                # socat. Fehlt es, ist in der Sandbox jedes Netz tot.
