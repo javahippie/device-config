@@ -650,6 +650,74 @@ fc-list | grep -ci -e carlito -e caladea -e liberation
   `window-rewrite` (s. Theming) den echten Wert aus `hyprctl clients` nehmen —
   dieselbe Regel wie bei allen anderen Klassen dort.
 
+## Claude Code: Sandbox (bubblewrap)
+
+Claude Code kapselt seine Bash-Kommandos auf Linux mit **bubblewrap** und zwingt
+den Netzverkehr durch einen lokalen Proxy — dafür stehen `bubblewrap` und
+`socat` in packages.txt. Die Policy liegt als `claude/managed-settings.json` im
+Repo, bootstrap.sh installiert sie nach `/etc/claude-code/managed-settings.json`.
+
+**Warum managed statt `~/.claude/settings.json`:** in die Datei schreibt Claude
+Code selbst (Theme, zuletzt genutzter Modus) — unter chezmoi wäre das ein
+Drift-Generator, und `chezmoi re-add` würde Laufzeitzustand ins (public!) Repo
+ziehen. Zweitens schlagen managed settings die Projekt-Settings: eine
+`.claude/settings.json` in einem fremden Checkout kann die Sandbox nicht
+aufweichen.
+
+Die Policy schaltet die Sandbox **nur ein** und lässt sonst die Defaults stehen:
+
+- `enabled: true` — Sandbox an.
+- `autoAllowBashIfSandboxed: true` — keine Rückfrage für Kommandos, die
+  innerhalb der Sandbox bleiben. Die Grenze zieht die Sandbox, nicht der Dialog.
+  (Ist laut Claude Code ohnehin der Default; steht explizit da, damit ein
+  geänderter Default hier nichts umkippt.)
+- `allowUnsandboxedCommands: true` — Kommandos, die *nicht* in die Sandbox
+  passen, sind nicht verboten, sondern fragen nach. Nötig, weil `git push` hier
+  über SSH läuft (`git@github.com:...`) und die Sandbox nur proxy-fähiges
+  HTTP(S) rauslässt; mit `false` könnte Claude in diesem Repo nie pushen.
+
+Bewusst **nicht** gesetzt: Lese-/Schreib-Regeln auf Dateiebene
+(`sandbox.filesystem.*`) und Domain-Allowlisten. Erst mal offen fahren, dann
+sehen, was in der Praxis stört — nachziehen, wenn klar ist, was es kosten soll.
+
+**Was die Defaults schon tun** (auf einer Linux-Kiste mit bubblewrap 0.11.1 mit
+genau dieser Policy nachgemessen, auf der Zielhardware trotzdem gegenprüfen):
+
+- Schreiben außerhalb des Workspace (`/etc`, `/tmp`) → `Read-only file system`.
+  Schreibbar sind Arbeitsverzeichnis, `$TMPDIR` und `/tmp/claude`.
+- Netz aus der Sandbox heraus ist zu, solange keine Domain freigegeben ist:
+  `curl https://example.com` → Exit 7. Interaktiv fragt Claude nach einer
+  Freigabe; im `-p`-Modus scheitert es kommentarlos.
+- Lesen ist dagegen offen: `cat ~/.ssh/<datei>` liefert im Test Exit 0 samt
+  Inhalt — die einzige Read-Deny per Default ist `~/.claude/ide`. Genau da würde
+  eine `filesystem.denyRead`-Liste ansetzen (`~/.ssh`,
+  `~/.claude/.credentials.json`, `~/.aws`), sobald der Bedarf feststeht.
+
+**Grenzen — bewusst so:**
+
+- Die Sandbox umfasst **nur Bash**. File-Tools, Hooks und MCP-Server laufen
+  ungekapselt. Wer das schließen will, startet Claude unter `srt`
+  (`@anthropic-ai/sandbox-runtime`) — hier absichtlich nicht verdrahtet.
+- bubblewrap teilt den Host-Kernel. Gegen "Agent liest Dateien und schickt sie
+  weg" hilft es; gegen einen Kernel-Exploit ist eine microVM nötig
+  (`podman --runtime krun`), das wäre eine eigene Stufe.
+- `podman.socket` läuft auf dieser Maschine. Wer ihn erreicht, startet einen
+  Container mit `-v /:/host` und ist an bubblewrap vorbei — er steht deshalb
+  nicht in `network.allowUnixSockets`, und das sollte auch so bleiben.
+- **Claude Code selbst installiert dieses Repo nicht.** Offizieller Weg ist
+  `curl -fsSL https://claude.ai/install.sh | bash` (Binary nach
+  `~/.local/bin/claude`, aktualisiert sich selbst). Deshalb steht es nicht in
+  bootstrap.sh: eine Version ließe sich nicht sinnvoll pinnen, das Muster von
+  minikube/lazydocker passt nicht.
+
+Nach `./bootstrap.sh`: in einer Claude-Session `/sandbox` aufrufen — der zeigt
+den aktiven Zustand. Gegenprobe von Hand:
+
+```sh
+cat /etc/claude-code/managed-settings.json    # liegt die Policy?
+rpm -q bubblewrap socat                       # sind die Pakete da?
+```
+
 ## Betriebsmodus
 
 - Ad-hoc `dnf install` ist erlaubt; was bleibt, wandert SOFORT in packages.txt.

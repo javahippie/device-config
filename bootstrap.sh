@@ -34,6 +34,14 @@ sudo cp udev/40-streamdeck.rules /etc/udev/rules.d/40-streamdeck.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
+echo "==> Claude-Code-Sandbox-Policy nach /etc/claude-code"
+# Bewusst die *managed* Settings und nicht ~/.claude/settings.json: in die schreibt
+# Claude Code selbst (Theme, zuletzt genutzter Modus), die wäre unter chezmoi ein
+# Drift-Generator. Und managed schlägt Projekt-Settings — eine .claude/settings.json
+# in einem fremden Checkout kann die Sandbox damit nicht aufweichen.
+sudo install -d -m 0755 /etc/claude-code
+sudo install -m 0644 claude/managed-settings.json /etc/claude-code/managed-settings.json
+
 echo "==> Podman-Socket (rootless, Docker-API-kompatibel für Tools, die docker.sock erwarten)"
 systemctl --user enable --now podman.socket
 
@@ -151,4 +159,5 @@ echo "    Wallpaper danach:  Bilder nach ~/Pictures/wallpapers legen, dann SUPER
 echo "    lazydocker danach: export DOCKER_HOST=\"unix://\$XDG_RUNTIME_DIR/podman/podman.sock\" in ~/.bashrc"
 echo "    Toolchain danach:  source ~/.sdkman/bin/sdkman-init.sh && cd ~ && sdk env install"
 echo "    Kubernetes danach: minikube config set rootless true && minikube start --driver=podman --container-runtime=containerd"
+echo "    Claude danach:     curl -fsSL https://claude.ai/install.sh | bash (nicht Teil des Repos, self-updating); Sandbox in der Session mit /sandbox prüfen"
 echo "    Ruby/Node danach:  einmalig 'eval \"\$(mise activate bash)\"' in ~/.bashrc eintragen (nicht Teil des Repos), dann neu einloggen"
