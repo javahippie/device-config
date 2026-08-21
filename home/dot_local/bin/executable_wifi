@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# WLAN verbinden/trennen — fuzzel-Auswahl, gleiche Bedienlogik wie 'bt pick'.
+#
+# Warum ein Skript und nicht nm-applet: die Waybar ist textbasiert und ohne
+# Nerd-Font (s. Kopf von waybar/config.jsonc), ein Tray-Icon fiele da heraus.
+# 'wifi edit' oeffnet nm-connection-editor fuer alles, was hier bewusst fehlt
+# (Statische IP, 802.1X, VPN).
+set -euo pipefail
+
+command -v nmcli >/dev/null 2>&1 || {
+    echo "wifi: nmcli fehlt (dnf install NetworkManager)" >&2; exit 1
+}
+
+usage() {
+    cat <<EOF
+Usage: wifi [pick|list|status|on|off|forget|edit]
+
+  pick     Netz auswaehlen und verbinden (Default ohne Argument).
+           Gespeicherte Netze verbinden ohne Rueckfrage, neue fragen das
+           Passwort per fuzzel ab.
+  list     Sichtbare Netze, staerkstes zuerst
+  status   Aktuelle Verbindung und Geraetezustand
+  on|off   WLAN-Radio ein-/ausschalten
+  forget   Gespeichertes Netz loeschen
+  edit     nm-connection-editor (statische IP, 802.1X, VPN)
+EOF
+}
+
+notify() { command -v notify-send >/dev/null 2>&1 && notify-send "$@" || true; }
+
+fail() {
+    echo "$1" >&2
+    [ -t 2 ] || { command -v fuzzel >/dev/null 2>&1 \
+        && printf '%s\n' "$1" | fuzzel --dmenu --prompt 'wifi: ' >/dev/null 2>&1 || true; }
+    exit 1
+}
+
+# nmcli maskiert in --terse-Ausgabe ':' und '\' mit Backslash. Ein SSID darf
+# beides enthalten, deshalb steht SSID im Feldsatz GANZ HINTEN und wird mit
+# 'cut -f4-' als Rest gelesen — sonst zerlegt ein Doppelpunkt im Netznamen die
+# Zeile und man verbindet sich mit einem abgeschnittenen Namen ins Leere.
+unescape() { sed 's/\\:/:/g; s/\\\\/\\/g'; }
+
+wifi_dev() {
+    nmcli -t -f DEVICE,TYPE device status | awk -F: '$2 == "wifi" { print $1; exit }'
+}
+
+radio_on() {
+    [ "$(nmcli radio wifi)" = "enabled" ] || {
+        echo "wifi: Radio war aus, schalte ein" >&2
+        nmcli radio wifi on
+        sleep 2
+    }
+}
+
+saved_ssids() {
+    nmcli -t -f NAME,TYPE connection show \
+        | awk -F: '$NF == "802-11-wireless" { NF--; print }' OFS=: | unescape
+}
+
+case "${1:-pick}" in
+    list)
+        radio_on
+        nmcli -t -f IN-USE,SIGNAL,SECURITY,SSID device wifi list \
+            | while IFS= read -r line; do
+                  inuse="${line%%:*}"; rest="${line#*:}"
+                  sig="${rest%%:*}";   rest="${rest#*:}"
+                  sec="${rest%%:*}"
+                  ssid="$(cut -d: -f4- <<<"$line" | unescape)"
+                  [ -n "$ssid" ] || continue
+                  printf '%s %3s%%  %-20s %s\n' "${inuse:-  }" "$sig" "${sec:-offen}" "$ssid"
+              done
+        ;;
+    status)
+        dev="$(wifi_dev)"
+        echo "Radio:  $(nmcli radio wifi)"
+        [ -n "$dev" ] && nmcli -t -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS \
+            device show "$dev" 2>/dev/null | sed 's/^/  /' || echo "  kein WLAN-Geraet"
+        ;;
+    on)  nmcli radio wifi on ;;
+    off) nmcli radio wifi off ;;
+    edit)
+        command -v nm-connection-editor >/dev/null 2>&1 \
+            || fail "wifi: nm-connection-editor fehlt (dnf install nm-connection-editor)"
+        exec nm-connection-editor
+        ;;
+    forget)
+        sel="$(saved_ssids | fuzzel --dmenu --prompt 'Vergessen: ' --width 50 || true)"
+        [ -n "$sel" ] || exit 0
+        nmcli connection delete id "$sel" >/dev/null && notify "WLAN" "$sel vergessen"
+        ;;
+    pick)
+        radio_on
+        [ -n "$(wifi_dev)" ] || fail "wifi: kein WLAN-Geraet. Fehlt NetworkManager-wifi oder die Firmware? Pruefen: nmcli device status"
+
+        # Rescan schlaegt fehl, wenn der letzte Scan zu kurz her ist — das ist
+        # kein Fehler, die Liste ist dann eben ein paar Sekunden alt.
+        nmcli device wifi rescan >/dev/null 2>&1 || true
+
+        known="$(saved_ssids)"
+        entries="$(
+            nmcli -t -f IN-USE,SIGNAL,SECURITY,SSID device wifi list \
+            | while IFS= read -r line; do
+                  inuse="${line%%:*}"; rest="${line#*:}"
+                  sig="${rest%%:*}";   rest="${rest#*:}"
+                  sec="${rest%%:*}"
+                  ssid="$(cut -d: -f4- <<<"$line" | unescape)"
+                  [ -n "$ssid" ] || continue        # versteckte Netze: kein SSID im Scan
+                  mark=' '; [ "$inuse" = "*" ] && mark='*'
+                  star=' '; grep -qxF "$ssid" <<<"$known" && star='+'
+                  printf '%s%s %3s%%  %-14s %s\n' "$mark" "$star" "$sig" "${sec:-offen}" "$ssid"
+              done | sort -k2 -r
+        )"
+        [ -n "$entries" ] || fail "wifi: keine Netze gefunden. Radio an? Firmware geladen? nmcli device status"
+
+        sel="$(printf '%s\n' "$entries" | fuzzel --dmenu --prompt 'WLAN: ' --width 56 || true)"
+        [ -n "$sel" ] || exit 0                    # Abbruch ist kein Fehler
+
+        # Feldbreiten oben sind fix, der SSID ist alles ab Spalte 27.
+        ssid="${sel:26}"
+        [ -n "$ssid" ] || fail "wifi: kein SSID in '$sel'"
+        connected="${sel:0:1}"
+
+        if [ "$connected" = "*" ]; then
+            nmcli connection down id "$ssid" >/dev/null && notify "WLAN" "$ssid getrennt"
+            exit 0
+        fi
+
+        # Bekanntes Netz: Passwort liegt im Keyring, nicht neu fragen.
+        if grep -qxF "$ssid" <<<"$known"; then
+            nmcli connection up id "$ssid" >/dev/null \
+                && { notify "WLAN" "$ssid verbunden"; exit 0; } \
+                || fail "wifi: Verbindung zu $ssid fehlgeschlagen — Passwort geaendert? 'wifi forget', dann neu"
+        fi
+
+        # Neues Netz. Offene Netze ohne Passwortabfrage.
+        if grep -qE '^..\s+[0-9]+%\s+offen' <<<"$sel"; then
+            nmcli device wifi connect "$ssid" >/dev/null \
+                && notify "WLAN" "$ssid verbunden" \
+                || fail "wifi: Verbindung zu $ssid fehlgeschlagen"
+            exit 0
+        fi
+
+        # --password maskiert die Eingabe. nmcli --ask waere die Alternative,
+        # braucht aber ein TTY — aus der Waybar heraus gibt es keins.
+        pw="$(printf '' | fuzzel --dmenu --password --prompt "Passwort $ssid: " --width 40 || true)"
+        [ -n "$pw" ] || exit 0
+        if nmcli device wifi connect "$ssid" password "$pw" >/dev/null 2>&1; then
+            notify "WLAN" "$ssid verbunden"
+        else
+            fail "wifi: Verbindung zu $ssid fehlgeschlagen — falsches Passwort?"
+        fi
+        ;;
+    *)
+        usage; exit 1 ;;
+esac

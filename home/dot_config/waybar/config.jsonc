@@ -86,10 +86,16 @@
         "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
         "on-click-right": "~/.local/bin/audio-out pick"
     },
+    // Klick oeffnet den Netz-Picker (dot_local/bin/wifi), analog zum
+    // bluetooth-Modul darueber. Rechts: nm-connection-editor fuer statische IP,
+    // 802.1X und VPN — alles, was der Picker bewusst nicht kann.
     "network": {
         "format-wifi": "{essid} {signalStrength}%",
         "format-ethernet": "eth {ipaddr}",
-        "format-disconnected": "offline"
+        "format-disconnected": "offline",
+        "tooltip": false,
+        "on-click": "~/.local/bin/wifi pick",
+        "on-click-right": "~/.local/bin/wifi edit"
     },
     "battery": {
         "format": "Bat {capacity}%",

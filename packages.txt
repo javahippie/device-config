@@ -15,6 +15,27 @@ xsettingsd                  # XSettings-Manager. Hyprland hat keinen, dadurch be
                             # rendert Text ohne Antialiasing, GTK2-Reste ebenso.
                             # Config: home/dot_config/xsettingsd/, Start in base.conf.
 
+# --- Netzwerk: Konnektivitaet (WLAN) ---
+# @core liefert NUR NetworkManager. Alles Weitere ist ein eigenes Paket, und
+# ohne die drei bleibt WLAN auf einem Notebook komplett tot — aufgefallen beim
+# ersten Aufsetzen des Books, wo nach dem Bootstrap kein WLAN ging.
+NetworkManager-wifi          # ohne das kennt NM keine WLAN-Geraete: nmcli device
+                             # wifi list bleibt leer, ohne Fehlermeldung
+wpa_supplicant               # WPA2/WPA3-Authentifizierung
+iwlwifi-mvm-firmware         # Intel AX200 im Book (PCI 8086:2723). Fedora hat
+                             # linux-firmware in Vendor-Subpakete aufgeteilt,
+                             # iwlwifi ist NICHT enthalten — ohne das bindet der
+                             # Treiber die Karte gar nicht erst (driver=KEINER in
+                             # /sys/bus/pci/devices/*/driver). Fuer andere Karten
+                             # stattdessen -mld- (neueste BE) oder -dvm- (sehr alt).
+pciutils                     # lspci. Fehlte ausgerechnet, als diese Karte zu
+                             # identifizieren war — ging dann nur ueber sysfs.
+nm-connection-editor         # GUI fuer statische IP, 802.1X, VPN — das, was der
+                             # fuzzel-Picker in dot_local/bin/wifi bewusst nicht
+                             # kann. Kein nm-applet: die Waybar ist textbasiert
+                             # ohne Nerd-Font, ein Tray-Icon passt da nicht.
+
+
 # --- Login-Screen (SDDM) ---
 sddm
 sddm-wayland-generic        # Explizit gelistet, damit die Wahl feststeht: sddm hat ein
