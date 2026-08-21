@@ -10,6 +10,10 @@ xdg-desktop-portal-hyprland # Screencast/Screenshot — ebenfalls COPR
 # --- Session-Plumbing ---
 mate-polkit                 # Polkit-Agent (hyprpolkitagent existiert in F44 nicht)
 xdg-desktop-portal-gtk      # Datei-Dialoge, Settings — ohne den brechen Flatpak-Apps
+xsettingsd                  # XSettings-Manager. Hyprland hat keinen, dadurch bekommen
+                            # XWayland-Clients keine Xft-Einstellungen: Java/Swing
+                            # rendert Text ohne Antialiasing, GTK2-Reste ebenso.
+                            # Config: home/dot_config/xsettingsd/, Start in base.conf.
 
 # --- Login-Screen (SDDM) ---
 sddm
