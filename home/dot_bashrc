@@ -1,0 +1,126 @@
+# .bashrc — interaktive Bash. Aufgerufen aus .bash_profile.
+#
+# Reihenfolge in dieser Datei ist NICHT beliebig, s. Kommentare unten bei
+# SDKMAN/mise/Prompt.
+
+# Fedora-Systemdefaults (Aliase für ls/grep mit Farbe, PS1-Grundgerüst,
+# /etc/profile.d/*). Muss zuerst kommen, damit wir danach überschreiben können.
+if [ -f /etc/bashrc ]; then
+    . /etc/bashrc
+fi
+
+# ~/.local/bin für pip/pipx/eigene Skripte (dort liegt u.a. der wallpaper-Switcher).
+if ! [[ "$PATH" =~ "$HOME/.local/bin:$HOME/bin:" ]]; then
+    PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+fi
+export PATH
+
+# Drop-in-Verzeichnis, das Fedora vorsieht — hier landet, was maschinenspezifisch
+# ist und deshalb NICHT ins device-config-Repo gehört (Tokens, Kundenpfade).
+if [ -d ~/.bashrc.d ]; then
+    for rc in ~/.bashrc.d/*; do
+        [ -f "$rc" ] && . "$rc"
+    done
+fi
+unset rc
+
+# --------------------------------------------------------------------------
+# Ab hier nur noch Interaktives. Der Guard ist wichtig: scp, rsync und
+# `ssh host cmd` starten eine nicht-interaktive Bash, und jede Ausgabe auf
+# stdout zerschießt deren Protokoll. Alles oberhalb (PATH!) muss dagegen auch
+# nicht-interaktiv gelten, deshalb steht der Guard hier und nicht am Dateianfang.
+# --------------------------------------------------------------------------
+case $- in
+    *i*) ;;
+      *) return ;;
+esac
+
+# --- History ---------------------------------------------------------------
+HISTSIZE=100000                 # im Speicher
+HISTFILESIZE=200000             # auf Platte
+HISTCONTROL=ignoreboth:erasedups
+HISTTIMEFORMAT='%F %T  '        # Zeitstempel — ohne den ist `history` bei der
+                                # Fehlersuche halb wertlos
+HISTIGNORE='ls:ll:cd:pwd:exit:clear:history'
+shopt -s histappend             # anhängen statt überschreiben; sonst gewinnt
+                                # die zuletzt geschlossene Shell und der Rest
+                                # der Session-History ist weg
+
+# --- Shell-Verhalten -------------------------------------------------------
+shopt -s checkwinsize           # LINES/COLUMNS nach Resize aktualisieren
+shopt -s cdspell dirspell       # Tippfehler in Pfaden korrigieren
+shopt -s globstar               # ** rekursiv
+shopt -s no_empty_cmd_completion
+
+# --- Aliase ----------------------------------------------------------------
+alias ll='ls -lah --group-directories-first'
+alias la='ls -A'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias grep='grep --color=auto'
+alias diff='diff --color=auto'
+alias ip='ip -color=auto'
+alias df='df -h'
+alias free='free -h'
+
+# --- Prompt ----------------------------------------------------------------
+# Git-Status im Prompt. git-prompt.sh liefert __git_ps1 und kommt aus git-core,
+# ist also ohne Zusatzpaket da. bash-completion sourct es NICHT automatisch —
+# nur die Completion, nicht den Prompt.
+if [ -f /usr/share/git-core/contrib/completion/git-prompt.sh ]; then
+    . /usr/share/git-core/contrib/completion/git-prompt.sh
+    GIT_PS1_SHOWDIRTYSTATE=1        # * unstaged, + staged
+    GIT_PS1_SHOWSTASHSTATE=1        # $ wenn Stash vorhanden
+    GIT_PS1_SHOWUNTRACKEDFILES=1    # % wenn untracked
+    GIT_PS1_SHOWUPSTREAM="auto"     # < behind, > ahead, <> divergiert
+    GIT_PS1_SHOWCONFLICTSTATE="yes"
+    GIT_PS1_DESCRIBE_STYLE="branch" # bei detached HEAD den nächsten Branch nennen
+fi
+
+# Catppuccin Mocha, passend zu foot/waybar/NetBeans. 24-Bit-Escapes; foot kann
+# das, ein fremdes TERM über SSH womöglich nicht — daher der COLORTERM-Test.
+# Jede Farbsequenz MUSS in \[ \] stehen. Sonst zählt Bash die Escape-Zeichen
+# als sichtbare Breite mit, und Zeilenumbruch und Ctrl-R-Suche verrutschen.
+if [ "${COLORTERM:-}" = "truecolor" ] || [ "${COLORTERM:-}" = "24bit" ]; then
+    __c_path='\[\e[38;2;137;180;250m\]'   # blue
+    __c_git='\[\e[38;2;166;227;161m\]'    # green
+    __c_host='\[\e[38;2;203;166;247m\]'   # mauve
+    __c_err='\[\e[38;2;243;139;168m\]'    # red
+    __c_ok='\[\e[38;2;127;132;156m\]'     # overlay1
+    __c_off='\[\e[0m\]'
+else
+    __c_path='\[\e[34m\]'; __c_git='\[\e[32m\]'; __c_host='\[\e[35m\]'
+    __c_err='\[\e[31m\]';  __c_ok='\[\e[90m\]'; __c_off='\[\e[0m\]'
+fi
+
+# Zweizeilig: Pfade in diesem Setup sind lang (~/sources/operaton/operaton),
+# einzeilig bleibt kaum Platz zum Tippen.
+__prompt() {
+    local ex=$?
+    local git=""
+    declare -F __git_ps1 >/dev/null && git="$(__git_ps1 ' %s')"
+    local mark="\$"
+    [ "$ex" -ne 0 ] && mark="${ex}"
+    PS1="\n${__c_host}\u@\h${__c_off} ${__c_path}\w${__c_off}${__c_git}${git}${__c_off}\n"
+    # Emoji statt ❯. Achtung: Bash zaehlt das Emoji als EIN Zeichen, das
+    # Terminal rendert es aber zwei Spalten breit — die Zeilenlaenge, die
+    # Readline annimmt, ist damit um eine Spalte zu klein. Sichtbar wird das
+    # erst bei sehr langen Eingaben, die umbrechen. Das Leerzeichen dahinter
+    # federt es optisch ab, korrigiert die Rechnung aber nicht.
+    if [ "$ex" -ne 0 ]; then
+        PS1+="${__c_err}${mark}${__c_off} 👉  "
+    else
+        PS1+="👉  "
+    fi
+}
+
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+export SDKMAN_DIR="$HOME/.sdkman"
+[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+eval "$(mise activate bash)"
+
+# NACH mise: `mise activate` stellt sich selbst an den Anfang von
+# PROMPT_COMMAND. Würden wir vorher registrieren, liefe mise vor __prompt und
+# $? wäre mises Exitcode statt dem des letzten Befehls — die Fehleranzeige im
+# Prompt zeigte dann immer 0.
+PROMPT_COMMAND="__prompt${PROMPT_COMMAND:+; $PROMPT_COMMAND}"

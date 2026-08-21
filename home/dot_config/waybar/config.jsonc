@@ -45,19 +45,32 @@
         "window-rewrite-default": "•",
         // Klassen sind Vermutungen — vor dem ersten Vertrauen mit
         // `hyprctl clients` gegenprüfen (Konvention aus rules.conf).
+        // Alle Klassen mit `hyprctl clients -j` gegengeprueft (2026-08-21).
+        //
+        // WICHTIG: waybar matcht den Ausdruck gegen die GANZE Klasse, nicht als
+        // Teilstring. Die frueheren Regeln wie class<[Ff]irefox> konnten deshalb
+        // nie greifen — die Klasse heisst org.mozilla.firefox. Funktioniert
+        // hatten nur foot, cider und ONLYOFFICE, weil dort Muster und Klasse
+        // zufaellig identisch waren. Neue Eintraege daher entweder exakt
+        // schreiben oder mit .* umschliessen.
         "window-rewrite": {
-            "class<foot>": "🖥",
-            "class<[Ff]irefox>": "🦊",
-            "class<[Tt]hunderbird>": "✉️",
-            "class<[Ss]lack>": "💬",
-            "class<[Ee]lement>": "🔷",
-            "class<[Ss]ignal>": "🔒",
-            "class<[Cc]ider>": "🎵",
-            // Einzige VERIFIZIERTE Klasse in dieser Liste (hyprctl clients):
-            // ONLYOFFICE, in Großbuchstaben. Der Wert kommt aus WM_CLASS, weil
-            // die App über XWayland läuft (s. README, Office-Abschnitt) — er
-            // ändert sich also auch nicht mehr durch ein Wayland-Update.
-            "class<ONLYOFFICE>": "📄"
+            "class<foot>": "\ud83d\udda5",
+            "class<org\\.mozilla\\.firefox>": "\ud83e\udd8a",
+            // thunderbird_esr heute; .* deckt auch den Wechsel auf den
+            // Nicht-ESR-Zweig ab.
+            "class<org\\.mozilla\\.thunderbird.*>": "\u2709\ufe0f",
+            "class<com\\.slack\\.Slack>": "\ud83d\udcac",
+            // Element meldet sich als im.riot.Riot — Altlast aus der Riot-Zeit.
+            "class<im\\.riot\\.Riot>": "\ud83d\udd37",
+            "class<org\\.keepassxc\\.KeePassXC>": "\ud83d\udd11",
+            // Die Klasse enthaelt die VERSION ("Apache NetBeans IDE 31"), das .*
+            // ist also nicht Kosmetik: ohne es faellt das Icon beim naechsten
+            // NetBeans-Major wieder aus.
+            "class<Apache NetBeans IDE.*>": "\u2615",
+            "class<cider>": "\ud83c\udfb5",
+            "class<ONLYOFFICE>": "\ud83d\udcc4",
+            // NICHT verifiziert — Signal lief beim Gegenpruefen nicht.
+            "class<.*[Ss]ignal.*>": "\ud83d\udd12"
         }
     },
     "hyprland/window": {
