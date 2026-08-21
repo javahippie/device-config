@@ -87,6 +87,11 @@ zip                         # von SDKMAN benötigt
 unzip
 
 # --- Fonts (waybar-Icons brauchen fontawesome) ---
+fira-code-fonts                # Ligaturen-Font fuer Terminal/Editor. ACHTUNG: der Font
+                               # allein macht keine Ligaturen — das Programm muss sie
+                               # rendern. foot tut das NICHT (Design-Entscheidung des
+                               # Projekts), NetBeans/Swing ebenso wenig. Wirksam ist es
+                               # in Emacs (ligature.el) und GTK/Pango-Programmen.
 jetbrains-mono-fonts
 google-noto-sans-fonts
 google-noto-emoji-fonts
