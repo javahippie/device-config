@@ -71,6 +71,48 @@ else
     echo "    bereits installiert, übersprungen"
 fi
 
+echo "==> Apache NetBeans (kein Fedora-Paket, kein nutzbares COPR — RPM bewusst statt Flatpak)"
+# Bezugswege, alle geprüft:
+#   Fedora-Repos      — nichts vorhanden.
+#   COPR              — nur faux/netbeans, ein Testprojekt mit chroots=0, also
+#                       ohne jeden Build. Unbrauchbar.
+#   Flathub           — org.apache.netbeans EXISTIERT dort in Version 31.
+#                       Bewusst NICHT genommen: die Sandbox schneidet die IDE von
+#                       ~/.sdkman/candidates/java, ~/.m2 und ~/sources ab. Das
+#                       ließe sich mit `flatpak override` aufbohren, aber dann
+#                       hat man eine Sandbox, die überall Löcher hat — der Zweck
+#                       ist damit weg und der Wartungsaufwand bleibt.
+#   Apache direkt     — nur ein plattformunabhängiges .zip ohne JDK.
+#
+# Also das RPM von Codelerity, die die Linux-Pakete für das NetBeans-Projekt
+# bauen. Es bringt ein eigenes JDK unter /usr/lib/apache-netbeans/jdk mit und
+# landet, anders als minikube/lazydocker, ordentlich in der RPM-Datenbank —
+# `dnf remove` und `drift-check.sh` sehen es also.
+#
+# Preis dieser Entscheidung: es gibt KEIN dnf-Repo dahinter, also auch kein
+# `dnf upgrade` für NetBeans. Die Version unten muss bei jedem Release von Hand
+# gebumpt werden, sonst bleibt sie stehen.
+#
+# Das RPM ist UNSIGNIERT (`rpm -qi` zeigt "Signature: (none)"). Die SHA256 ist
+# damit die einzige Integritätsprüfung und nicht optional; sie stammt von
+# https://www.codelerity.com/netbeans/ und gehört bei jedem Bump mit aktualisiert.
+#
+# 632 MB Download — der Bootstrap läuft dadurch spürbar länger.
+NETBEANS_VER="31"
+NETBEANS_TAG="v31-build1"      # gepinnt, nicht 'latest' — s. lazydocker oben
+NETBEANS_SHA="e6e52873f76a449840484ba6c984b46a6a0bdf5dda42a3a453db9890a7eec6ec"
+if ! rpm -q apache-netbeans >/dev/null 2>&1; then
+    TMP_NB="$(mktemp -d)"
+    NB_RPM="apache-netbeans-${NETBEANS_VER}-0.x86_64.rpm"
+    curl -Lo "$TMP_NB/$NB_RPM" \
+        "https://github.com/codelerity/netbeans-packages/releases/download/${NETBEANS_TAG}/${NB_RPM}"
+    echo "${NETBEANS_SHA}  ${TMP_NB}/${NB_RPM}" | sha256sum -c -
+    sudo dnf install -y "$TMP_NB/$NB_RPM"
+    rm -rf "$TMP_NB"
+else
+    echo "    bereits installiert, übersprungen"
+fi
+
 echo "==> SDKMAN (Java-Toolchain-Manager, kein dnf-Paket)"
 if [ ! -d "$HOME/.sdkman" ]; then
     curl -s "https://get.sdkman.io" | bash
