@@ -1,0 +1,25 @@
+# Holt den Verzeichnisbaum des Mounts neu vom Server.
+#
+# WebDAV kennt keine Change-Notification: rclone kann nicht pollen
+# (--poll-interval 0), es erfährt von fremden Änderungen also nur, wenn es ein
+# Verzeichnis erneut liest. Ohne diese Unit passiert das erst, wenn der
+# Verzeichnis-Cache abläuft UND jemand in den Ordner schaut. Hier ist es
+# umgekehrt: der Timer schaut, und zwar von allein.
+#
+# vfs/refresh liest den Baum in den VFS-Cache — es lädt KEINE Dateiinhalte,
+# nur Listings (rekursiv gemessen: ~3 s für den ganzen Baum).
+[Unit]
+Description=Verzeichnis-Cache des lambdaschmiede-Mounts auffrischen
+Documentation=https://rclone.org/rc/#vfs-refresh
+# Ohne laufenden Mount gibt es keinen Socket und nichts aufzufrischen. Der
+# Timer wird zwar vom Mount hochgezogen, aber ein manuelles `start` dieser Unit
+# soll nicht mit Fehler im Journal enden — Requisite= stoppt still.
+Requisite=rclone-lambdaschmiede.service
+After=rclone-lambdaschmiede.service
+
+[Service]
+Type=oneshot
+# Kein Passwort, kein TCP-Port: der rc-Server hängt an einem Unix-Socket in
+# %t (/run/user/<uid>), das Verzeichnis gehört dem Benutzer und ist 0700.
+# --rc-no-auth bezieht sich auf den Server, hier reicht der Socket als Grenze.
+ExecStart=/usr/bin/rclone rc --unix-socket %t/rclone-lambdaschmiede.sock vfs/refresh recursive=true

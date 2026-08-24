@@ -1,0 +1,19 @@
+# Flatpak-Override, chezmoi-verwaltet. Greift für --user-Installationen, und so
+# installiert bootstrap.sh die Flatpaks.
+#
+# OnlyOffice bringt ab Werk KEINEN cups-Socket mit (geprüft mit
+# `flatpak info --show-permissions org.onlyoffice.desktopeditors`:
+# sockets=pulseaudio;wayland;x11). Ohne den existiert /run/cups/cups.sock in der
+# Sandbox nicht, und der Druckdialog zeigt schlicht keinen einzigen Drucker an —
+# kein Fehler, keine Meldung, nur eine leere Liste.
+#
+# `filesystems=host` (hat OnlyOffice) hilft dagegen NICHT: /run ist davon nicht
+# erfasst, das ist genau der Sinn der Trennung.
+#
+# Der Portal-Weg greift hier auch nicht: den Print-Portal von
+# xdg-desktop-portal-gtk benutzt GTK automatisch, OnlyOffice ist Qt und redet
+# direkt mit CUPS.
+#
+# Thunderbird braucht das NICHT — dessen Flathub-Manifest hat cups schon drin.
+[Context]
+sockets=cups;

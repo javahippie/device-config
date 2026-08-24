@@ -11,7 +11,31 @@
 
     "modules-left": ["hyprland/workspaces", "hyprland/window"],
     "modules-center": ["clock"],
-    "modules-right": ["custom/keybinds", "pulseaudio", "bluetooth", "network", "battery", "tray"],
+    "modules-right": ["idle_inhibitor", "custom/keybinds", "pulseaudio", "bluetooth", "network", "battery", "tray"],
+
+    // Haelt den Rechner wach, solange laengere Hintergrund-Jobs laufen.
+    // Klick schaltet um: "Idle" = normale Kette aus hypridle.conf (5 min Lock,
+    // 5:30 Display aus, 15 min Suspend), "Wach" = nichts davon.
+    //
+    // Technik: Waybar haelt dafuer einen zwp_idle_inhibitor_v1 auf seiner
+    // eigenen Layer-Surface. Hyprland stoppt daraufhin die
+    // ext-idle-notify-v1-Timer — und genau aus denen speist hypridle seine
+    // Listener. Es wird also nicht hypridle gestoppt, sondern ihm die Uhr
+    // angehalten; ein `pidof hypridle` sieht weiter alles normal.
+    //
+    // Der Zustand liegt bewusst nirgends auf Platte (start-activated bleibt
+    // ungesetzt): nach Waybar-Neustart oder Relogin ist der Schutz wieder aus.
+    // Ein vergessener Inhibit, der einen Reboot ueberlebt, faellt sonst erst
+    // auf, wenn der Akku leer ist.
+    "idle_inhibitor": {
+        "format": "{icon}",
+        "format-icons": {
+            "activated": "Wach",
+            "deactivated": "Idle"
+        },
+        "tooltip-format-activated": "Kein Lock, kein Suspend — Klick schaltet zurueck",
+        "tooltip-format-deactivated": "Lock nach 5 min, Suspend nach 15 min"
+    },
 
     // Klick öffnet den Geräte-Picker (dot_local/bin/bt). Text statt Glyphe wie überall.
     "bluetooth": {

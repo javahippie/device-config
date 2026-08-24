@@ -1,0 +1,44 @@
+# mailbox.org Drive als FUSE-Mount unter ~/Dokumente/lambdaschmiede.
+#
+# User-Unit, nicht fstab: der Mount gehört einem Benutzer, nicht der Maschine.
+# davfs2 wäre der klassische Weg, braucht aber einen fstab-Eintrag und ein
+# setuid-Bit auf /sbin/mount.davfs — root-Rechte für etwas, das rclone per FUSE
+# ohne jede Privilegierung kann.
+[Unit]
+Description=mailbox.org Drive (lambdaschmiede) als FUSE-Mount
+Documentation=https://rclone.org/commands/rclone_mount/
+# Zieht den Auffrisch-Timer mit hoch, sobald der Mount läuft. Der Timer selbst
+# ist deshalb NICHT enabled (kein [Install]) — er soll es ohne Mount gar nicht
+# geben, und `PartOf` auf seiner Seite nimmt ihn beim Stoppen wieder mit.
+Wants=rclone-lambdaschmiede-refresh.timer
+
+[Service]
+Type=notify
+EnvironmentFile=%h/.config/rclone/mailbox.env
+ExecStartPre=/usr/bin/mkdir -p %h/Dokumente/lambdaschmiede
+# Ein hart abgeschossener rclone lässt den Socket liegen; der Listener bindet
+# dann nicht mehr ("address already in use"). Das `-` erlaubt, dass die Datei
+# gar nicht da ist.
+ExecStartPre=-/usr/bin/rm -f %t/rclone-lambdaschmiede.sock
+# ${VAR} in geschweiften Klammern wird von systemd NICHT am Leerzeichen
+# aufgetrennt — nötig, weil der Userstore-Pfad den Anzeigenamen enthält und der
+# ein Leerzeichen hat.
+ExecStart=/usr/bin/rclone mount "mailbox:${MAILBOX_PATH}" %h/Dokumente/lambdaschmiede \
+    --vfs-cache-mode full \
+    --vfs-cache-max-age 168h \
+    --vfs-cache-max-size 5G \
+    --dir-cache-time 1h \
+    --poll-interval 0 \
+    --attr-timeout 1s \
+    --exclude ".drive/**" \
+    --umask 022 \
+    --rc \
+    --rc-addr unix://%t/rclone-lambdaschmiede.sock \
+    --rc-no-auth \
+    --log-level INFO
+ExecStop=/bin/fusermount3 -uz %h/Dokumente/lambdaschmiede
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

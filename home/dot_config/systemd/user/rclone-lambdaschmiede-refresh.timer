@@ -1,0 +1,18 @@
+# Taktgeber für den Auffrisch-Dienst — das ist hier der Ersatz für das Pollen,
+# das WebDAV nicht anbietet.
+[Unit]
+Description=Timer: lambdaschmiede-Mount alle 2 Minuten auffrischen
+# Stoppt mit dem Mount. Gestartet wird der Timer von der Mount-Unit selbst
+# (Wants= dort), deshalb hat er bewusst KEIN [Install]: ein `enable` würde ihn
+# beim Login auch dann starten, wenn der Mount gar nicht läuft.
+PartOf=rclone-lambdaschmiede.service
+
+[Timer]
+# Erster Lauf 30 s nach dem Mount — nicht sofort, der Mount hat beim Start
+# ohnehin gerade gelesen.
+OnActiveSec=30s
+# Ab dann alle 2 Minuten NACH dem letzten Lauf (nicht nach Timer-Start), der
+# Lauf selbst dauert ~3 s. AccuracySec, weil systemd sonst bis zu 1 Minute
+# bündelt und aus 2 Minuten unbemerkt 3 werden.
+OnUnitActiveSec=2min
+AccuracySec=5s

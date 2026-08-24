@@ -22,3 +22,10 @@ org.onlyoffice.desktopeditors  # Office-Suite. BEWUSST nicht LibreOffice, Grund 
                         # Preis: ODF ist Zweitbürger, kein Base/Draw/Math-Ersatz.
                         # Gehört zusammen mit: den Metrik-Fonts in packages.txt und
                         # den Default-Handlern in dot_config/mimeapps.list.
+org.gnome.SimpleScan    # Scan-Frontend. Bringt seinen EIGENEN SANE-Stack mit
+                        # (SANE_CONFIG_DIR=/app/etc/sane.d in den Flatpak-Metadaten) —
+                        # die Host-Backends aus packages.txt sieht es NICHT, die sind
+                        # nur fürs CLI/Diagnose da. Den Netzwerkscanner findet es
+                        # trotzdem: shared=network plus 'org.freedesktop.Avahi=talk'
+                        # in der System-Bus-Policy, also eigene DNS-SD-Suche.
+                        # Kein skanlite/skanpage: das zieht den KDE-Unterbau nach.

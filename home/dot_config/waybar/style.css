@@ -47,6 +47,7 @@ window#waybar {
 #network,
 #battery,
 #custom-keybinds,
+#idle_inhibitor,
 #tray {
     padding: 0 10px;
     color: @text;
@@ -59,6 +60,17 @@ window#waybar {
 
 #custom-keybinds:hover {
     color: @mauve;
+}
+
+/* Der Idle-Schalter ist im Normalfall Hintergrundrauschen (gedämpft wie ein
+   ausgeschaltetes BT) und nur im gehaltenen Zustand auffällig — Gelb, weil
+   "Wach" kein Fehler ist, aber etwas, das man aktiv wieder abstellen muss. */
+#idle_inhibitor.deactivated {
+    color: @overlay1;
+}
+
+#idle_inhibitor.activated {
+    color: @yellow;
 }
 
 /* Aus (oder kein Adapter) ist kein Fehler — nur gedämpft, nicht rot. */

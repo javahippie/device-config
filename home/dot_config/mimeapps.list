@@ -20,12 +20,24 @@
 # Die .desktop-Namen stammen aus dem Flathub-Manifest (org.onlyoffice.*, die
 # Flatpak benennt die Upstream-Datei beim Bauen um) bzw. dem Fedora-Spec
 # (emacs.desktop; emacsclient.desktop löscht Fedora im %install).
+#
+# inode/directory hatte auf diesem System GAR KEINEN Handler — `xdg-mime query
+# default inode/directory` antwortete leer, `gio mime inode/directory` mit
+# "Keine Vorgabeanwendungen". Auf einem Minimal Install ohne DE ist das der
+# Normalzustand: es war schlicht nie ein Dateimanager da. Sichtbar wird es an
+# Knoepfen, die dann einfach nichts tun — "Ordner oeffnen" im Firefox-Download-
+# Panel, "Enthaltenden Ordner anzeigen" in Thunderbird. Kein Dialog, kein Fehler.
+# Der Eintrag unten haengt Double Commander dort ein (s. packages.txt).
 [Default Applications]
 text/html=firefox.desktop
 x-scheme-handler/http=firefox.desktop
 x-scheme-handler/https=firefox.desktop
 x-scheme-handler/about=firefox.desktop
 x-scheme-handler/unknown=firefox.desktop
+
+# Dateimanager. Suffix -qt6 gehoert dazu: die .desktop-Datei des GTK2-Pakets
+# heisst doublecmd-gtk.desktop, eine schlichte doublecmd.desktop gibt es nicht.
+inode/directory=doublecmd-qt6.desktop
 
 # Word / Writer
 application/msword=org.onlyoffice.desktopeditors.desktop
@@ -64,3 +76,4 @@ text/markdown=emacs.desktop
 [Added Associations]
 application/pdf=firefox.desktop;
 text/markdown=emacs.desktop;
+inode/directory=doublecmd-qt6.desktop;

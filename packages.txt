@@ -101,6 +101,8 @@ firefox                      # NICHT als Flatpak (s. flatpaks.txt) — KeePassXC
 emacs                        # Theme: Catppuccin Mocha, vendored in dot_config/emacs/themes/
 htop
 btop
+curl
+wget
 jq
 gh
 git                         # auch Handschritt vor dem Clone — hier für Vollständigkeit
@@ -110,6 +112,51 @@ tar                         # NICHT im Minimal Install enthalten; SDKMAN braucht
 curl                        # von SDKMAN-Install benötigt
 zip                         # von SDKMAN benötigt
 unzip
+zstd                        # zstd/unzstd/zstdcat. Liegt hier bisher nur zufaellig herum:
+                            # gezogen hat es dracut (fuer die initramfs-Kompression), nicht
+                            # eine bewusste Entscheidung — faellt dracut mal weg oder baut
+                            # jemand mit anderem Profil, ist das Kommando lautlos fort.
+                            # Deshalb explizit, gleiche Begruendung wie bei tar und unzip.
+                            # ACHTUNG: libzstd (die Bibliothek, an der halb Fedora haengt)
+                            # ist ein ANDERES Paket und bringt kein Kommando mit.
+                            # tar spricht zstd ohne Zusatzpaket: `tar --zstd -cf x.tar.zst`,
+                            # und .tar.zst erkennt es beim Auspacken von allein.
+
+# --- Dateimanager (Zwei-Fenster, Total-Commander-Schule) ---
+doublecmd-qt6               # ACHTUNG Paketname: es MUSS die -qt6-Variante sein, und der
+                            # Aufruf heisst /usr/bin/doublecmd-qt6, NICHT doublecmd.
+                            # Fedora baut drei Widgetsets aus derselben Quelle:
+                            #   doublecmd-gtk  — GTK2. Belegt /usr/bin/doublecmd (also
+                            #                    genau den Namen, den man tippt) und linkt
+                            #                    ausschliesslich libX11: GTK2 hat NIE ein
+                            #                    Wayland-Backend bekommen, das laeuft
+                            #                    zwangsweise ueber XWayland.
+                            #   doublecmd-qt   — Qt5, ebenfalls ohne libwayland-client.
+                            #   doublecmd-qt6  — linkt libwayland-client.so.0 direkt
+                            #                    (`repoquery --requires` zeigt es), zusammen
+                            #                    mit qt6-qtwayland (steht oben schon drin)
+                            #                    also Wayland-nativer Client.
+                            # Das ist hier KEINE Geschmacksfrage, sondern die Bedingung fuer
+                            # Drag & Drop in Firefox: Firefox laeuft nativ auf Wayland
+                            # (`hyprctl clients` → xwayland: false), und ein Drop von einem
+                            # XWayland-Client dorthin muss durch Hyprlands XDND-Bruecke im
+                            # XWM. Die existiert, ist aber der bekannt fragile Weg — die
+                            # Qt6-Variante umgeht sie komplett. Details/Verifikation: README.
+                            # Kosten: 3 Pakete, 48 MB (doublecmd-common + qt6pas).
+                            # BEWUSST nicht krusader: gleiche Gattung, aber 76 Pakete, weil
+                            # der komplette KF6-Unterbau mitkommt — derselbe Einwand wie bei
+                            # skanlite in flatpaks.txt. Und bewusst kein Flatpak: es gibt
+                            # keins auf Flathub (geprueft), und eine Sandbox um das Programm,
+                            # dessen Zweck der Zugriff auf ALLE Dateien ist, waere ohnehin
+                            # ein Loch mit App drumherum.
+                            # THEMING braucht hier ebenfalls KEIN Paket: DC hat unter Linux
+                            # keinen eigenen Dark Mode (die Optionsseite ist Windows-only),
+                            # die dunkle Palette kommt ueber das Qt6-Platformtheme libqgtk3
+                            # aus qt6-qtbase-gui — das haengt ohnehin an doublecmd-qt6.
+                            # Also bewusst KEIN qt6ct und KEIN adwaita-qt6. Geschaltet wird
+                            # es mit QT_QPA_PLATFORMTHEME in hypr/base.conf plus
+                            # dot_config/gtk-3.0/settings.ini, Feinfarben in
+                            # dot_config/doublecmd/colors.json. Details: README.
 
 # --- Fonts (waybar-Icons brauchen fontawesome) ---
 fira-code-fonts                # Ligaturen-Font fuer Terminal/Editor. ACHTUNG: der Font
@@ -149,9 +196,153 @@ rsync                         # Maschine-zu-Maschine-Kopien; NICHT im Minimal In
                                # (gleiche Kategorie wie flatpak/tar/passt, s.o.).
                                # Muss auf BEIDEN Seiten liegen, sonst bricht der
                                # Transfer auf der Gegenseite ab.
+rclone                        # WebDAV-Client für mailbox.org Drive (s. README).
+                               # BEWUSST nicht davfs2: das braucht einen fstab-Eintrag
+                               # plus setuid-Bit auf /sbin/mount.davfs, also root für
+                               # etwas, das eine reine Benutzersache ist. rclone mountet
+                               # per FUSE aus einer systemd --user-Unit heraus, ganz ohne
+                               # root — und cached mit --vfs-cache-mode full so, dass
+                               # Office-Programme ihr Speicher-Muster (Temp-Datei +
+                               # rename) überleben. davfs2 kann das nicht sauber.
+                               # OXDrive gibt es für Linux nicht, nur Windows/macOS.
+fuse3                         # liefert /usr/bin/fusermount3 — den setuid-Helfer, mit dem ein
+                               # normaler Benutzer ueberhaupt mounten darf. ACHTUNG: das RPM
+                               # rclone verlangt fuse3 NICHT (`repoquery --requires` zeigt
+                               # keine Zeile), obwohl `rclone mount` ohne den Helfer scheitert
+                               # — im Binary steht woertlich "mount helper failed" und
+                               # "fusermount3: failed to access mountpoint". Hier liegt es
+                               # bisher nur zufaellig herum, weil flatpak, fuse-overlayfs und
+                               # xdg-desktop-portal es mitziehen. Genau die Falle wie bei
+                               # cups-filters oder nss-mdns: eine Abhaengigkeit, die man erst
+                               # bemerkt, wenn ein anderes Installationsprofil sie weglaesst.
+                               # Ausserdem ruft das ExecStop der Unit fusermount3 direkt auf.
+
+# --- Drucken & Scannen (Netzwerkgerät, treiberlos — s. README) ---
+cups                          # Print-Server + lp/lpstat/lpadmin. Zieht cups-filters HART
+                              # nach (Requires). Alles Weitere hier führt cups nur als
+                              # *Recommends* — und schwache Abhängigkeiten sind genau das:
+                              # schwach. Ein `--setopt=install_weak_deps=False` oder ein
+                              # anderes Installationsprofil lässt sie lautlos weg, und
+                              # dann fehlt z. B. die Discovery ohne jede Fehlermeldung.
+                              # Deshalb stehen sie einzeln da, wie sddm-wayland-generic.
+cups-filters                  # PDF -> PWG-Raster/URF. Seit CUPS 2.x sind die Filter NICHT
+                              # mehr im Server: ohne dieses Paket nimmt cups den Job an
+                              # und gibt ihn nie aus.
+cups-filters-driverless       # liefert /usr/bin/driverless — listet die IPP-Everywhere-
+                              # Geräte im Netz auf. Eigenes Subpaket, kommt NICHT mit
+                              # cups-filters mit (gleiche Falle wie pipewire-utils).
+                              # Gibt allerdings nur den DNS-SD-Dienstnamen aus; für die
+                              # Daten, die man wirklich braucht, s. cups-ipptool.
+cups-ipptool                  # ippfind + ipptool. DAS Diagnose-Werkzeug hier: ippfind
+                              # liefert echten Hostnamen, Port, Ressourcenpfad und die
+                              # unterstützten Formate, ipptool fragt den Drucker direkt.
+                              # Damit steht VOR dem lpadmin fest, ob es klappt — wichtig,
+                              # weil ein fehlgeschlagenes `lpadmin -m everywhere` die
+                              # bestehende Queue mitnimmt (s. README).
+avahi-tools                   # avahi-browse/avahi-resolve-host-name. Eigenes Paket, kommt
+                              # NICHT mit avahi mit — und avahi ist die Schicht, auf die
+                              # man ausweicht, wenn schon ippfind nichts findet.
+avahi                         # avahi-daemon. Lag bisher nur als Abhängigkeit herum, jetzt
+                              # als gewollter Dienst gelistet: CUPS und sane-airscan finden
+                              # das Gerät über ihn per D-Bus. Ohne laufenden Daemon bleibt
+                              # `lpinfo -v` einfach leer — keine Fehlermeldung.
+nss-mdns                      # .local-Auflösung für glibc. ACHTUNG: das Paket liefert NUR
+                              # .so-Dateien, kein Scriptlet, keine nsswitch-Änderung
+                              # (`repoquery --scripts nss-mdns` ist leer). Installiert und
+                              # trotzdem wirkungslos, bis bootstrap.sh es per
+                              # `authselect enable-feature with-mdns4` verdrahtet.
+                              # Der Einwand aus dem Key-Light-Abschnitt gilt weiter: für ein
+                              # Gerät an fester Position ist die DHCP-Reservierung robuster.
+sane-airscan                  # eSCL/WSD-Backend: Scannen ohne Herstellertreiber, dasselbe
+                              # Prinzip wie IPP Everywhere beim Drucken. Findet den Scanner
+                              # selbst über avahi.
+sane-backends                 # liefert scanimage. Diagnose-Werkzeug, gleiche Rolle wie
+                              # alsa-utils beim Audio: zeigt, ob das Gerät überhaupt
+                              # antwortet, bevor man dem Frontend die Schuld gibt.
+                              # Das GUI-Frontend ist ein Flatpak (s. flatpaks.txt) und
+                              # benutzt diese Backends NICHT — es bringt eigene mit.
+# Bewusst NICHT hier:
+#   hplip / gutenprint / foomatic-db — Treiberpakete. Ein IPP-Everywhere-Gerät meldet
+#     seine Fähigkeiten selbst, `lpadmin -m everywhere` baut die PPD daraus. Erst wenn
+#     ein Drucker das nicht kann, wird das Thema wieder aktuell.
+#   ipp-usb — nur für USB-Direktanschluss (macht ein USB-Gerät zu einem lokalen
+#     IPP-Endpunkt). Hier hängt der Drucker im Netz. Kommt als Recommends von cups
+#     ohnehin mit, schadet nicht, wird aber nicht gebraucht.
+#   cups-browsed — legt Queues für gefundene Geräte automatisch an. Klingt bequem,
+#     erzeugt aber Doppel-Queues neben der von Hand gebauten und ist upstream auf dem
+#     Rückzug. Ebenfalls Recommends von cups; der Dienst bleibt schlicht aus.
+#   system-config-printer — GUI-Verwaltung. Unnötig: CUPS bringt seine eigene unter
+#     http://localhost:631 mit, und der Rest geht mit lpadmin.
 
 # --- Dev-Toolchain (Nicht-JVM; JVM läuft über SDKMAN, s. dot_sdkmanrc) ---
 mise                           # Ruby/Node/... Versionsmanager, aus COPR jdxcode/mise
                                 # (offiziell empfohlener Fedora-41+-Weg, s. mise-Doku).
                                 # Shell-Aktivierung ist manuell, s. README — nicht Teil
                                 # dieses Repos (~/.bashrc wird hier nicht verwaltet).
+
+# --- R + TeX (bedient wird beides aus Emacs, s. README) ---
+R-core                        # der R-Interpreter selbst, 4.6.1.
+                              # BEWUSST nicht das Metapaket `R`: das verlangt R-devel,
+                              # das wiederum R-java-devel, und R-java verlangt
+                              # java-headless (`repoquery --requires` zeigt die Kette).
+                              # Damit haette Fedora ein JDK in /usr/lib/jvm gestellt —
+                              # neben den JDKs, die hier ueber SDKMAN verwaltet werden.
+                              # Genau die Doppelverwaltung, die dot_sdkmanrc vermeidet.
+                              # rJava braucht hier niemand; wenn doch, ist es ein
+                              # bewusster Nachschlag und keine Nebenwirkung.
+R-core-devel                  # Header + Build-Werkzeug fuer CRAN-Pakete. KEIN Luxus:
+                              # `install.packages()` compiliert C/C++/Fortran-Quellen,
+                              # Fedora liefert keine Binaerpakete dafuer. Zieht deshalb
+                              # gcc-c++, gcc-gfortran und make mit — die 1,5 GB von
+                              # R-core+R-core-devel sind fast vollstaendig das.
+emacs-auctex                  # LaTeX-Umgebung in Emacs, 14.1.2 — dieselbe Version wie in
+                              # GNU ELPA, also kein Grund, sie am Paketmanager vorbei zu
+                              # holen. Aktiviert sich SELBST ueber
+                              # /usr/share/emacs/site-lisp/site-start.d/auctex.el, in
+                              # init.el steht deshalb nur Konfiguration, kein Laden.
+                              # Zieht dvips, dvipng und ghostscript mit (fuer
+                              # preview-latex, die Formelvorschau im Puffer).
+texlive-scheme-small          # TeX Live in der zweitkleinsten Stufe. Gemessen (dnf
+                              # download --resolve, also der tatsaechliche Zuwachs):
+                              #   basic   215 Pakete,  451 MB
+                              #   small   662 Pakete, 1193 MB   <- das hier
+                              #   medium 1913 Pakete, 3503 MB
+                              #   full   5104 Pakete, 9148 MB
+                              # basic scheidet aus, und zwar nicht wegen Geschmack:
+                              # ihm fehlen babel-german, hyphen-german, koma-script,
+                              # biblatex und microtype (einzeln nachgeprueft). Ein
+                              # deutschsprachiges Dokument trennt damit falsch.
+                              # medium/full bringen daruber hinaus nichts, was hier
+                              # gebraucht wird — fehlt spaeter ein Paket, ist es ein
+                              # `dnf install texlive-<name>`, kein Schema-Wechsel.
+latexmk                       # ACHTUNG Paketname: `latexmk`, NICHT texlive-latexmk (das
+                              # gibt es in Fedora nicht, und in keinem der Schemata ist es
+                              # enthalten — geprueft). Braucht man, weil AUCTeX 14 den
+                              # Befehl "LaTeXMk" ab Werk in TeX-command-list stehen hat
+                              # (tex.el Zeile 253) und der sonst ins Leere laeuft.
+                              # latexmk loest selbst auf, wie oft LaTeX/BibTeX laufen muss.
+zathura                       # PDF-Betrachter fuer den LaTeX-Zyklus. Ohne ihn faellt
+                              # AUCTeX auf `xdg-open` zurueck, und das landet hier bei
+                              # OnlyOffice (`xdg-mime query default application/pdf`) —
+                              # ein Office-Programm ohne SyncTeX und ohne Neuladen bei
+                              # jedem Lauf. AUCTeX 14 kennt "Zathura" dagegen ab Werk
+                              # inklusive Vorwaerts- und Rueckwaertssuche (tex.el:1358).
+                              # GTK3, also Wayland-nativ — gleiche Ueberlegung wie bei
+                              # doublecmd-qt6. Gemessen: 23 Pakete, 315 MB installiert.
+zathura-pdf-mupdf             # das eigentliche Render-Backend. zathura allein zeigt GAR
+                              # NICHTS an: das Programm ist nur die Huelle, jedes Format
+                              # kommt aus einem Plugin. Bewusst mupdf und nicht
+                              # zathura-plugins-all (das zieht zusaetzlich Postscript- und
+                              # DjVu-Backends, die hier niemand braucht).
+pandoc-cli                    # ACHTUNG Paketname: das Kommando heisst `pandoc`, das Paket
+                              # aber `pandoc-cli` — `dnf install pandoc` findet nichts.
+                              # Gebraucht fuer R Markdown und Quarto: knitr erzeugt daraus
+                              # Markdown, in HTML/PDF verwandelt es erst pandoc.
+                              # Reines Sweave/knitr-nach-LaTeX kaeme ohne aus.
+# Bewusst NICHT hier:
+#   emacs-ess — gibt es in Fedora nicht mehr (`dnf search emacs-ess`: keine
+#     Uebereinstimmung). ESS kommt aus GNU ELPA, installiert von bootstrap.sh; das
+#     Archiv signiert seine Pakete, die Installation legt ess-<ver>.signed daneben.
+#   rstudio — kein Fedora-Paket, kein Flathub-Eintrag (beides geprueft). Posit liefert
+#     nur ein UNSIGNIERTES rhel9-RPM, 340 MB gepackt / 1,4 GB installiert, ein Electron-
+#     Bundle mit eigener Chromium-Kopie. Verworfen zugunsten von Emacs+ESS.
