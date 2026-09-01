@@ -1,6 +1,7 @@
 {{ if eq .chezmoi.hostname "cube" -}}
-# Cube: echte Monitor-Namen nach `hyprctl monitors` eintragen
-monitor = , preferred, auto, 1
+# Cube: Samsung C34H89x (HDMI-A-2). `preferred` liefert hier nur den
+# EDID-Modus 3440x1440@49.99Hz -- highrr waehlt stattdessen 99.98Hz.
+monitor = , highrr, auto, 1
 {{- else if eq .chezmoi.hostname "book" -}}
 # Book: Laptop offen links neben dem externen Monitor, WS1 aufs Panel
 monitor = eDP-1, preferred, 0x0, 1

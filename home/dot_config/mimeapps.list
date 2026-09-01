@@ -21,6 +21,11 @@
 # Flatpak benennt die Upstream-Datei beim Bauen um) bzw. dem Fedora-Spec
 # (emacs.desktop; emacsclient.desktop löscht Fedora im %install).
 #
+# emacs.desktop meint hier NICHT die Fedora-Datei: dot_local/share/applications/
+# emacs.desktop schattet sie und startet Emacs in foot statt in einem eigenen
+# Fenster. Die Desktop-ID bleibt dieselbe, deshalb steht unten unveraendert
+# emacs.desktop. Begruendung in der Datei selbst.
+#
 # inode/directory hatte auf diesem System GAR KEINEN Handler — `xdg-mime query
 # default inode/directory` antwortete leer, `gio mime inode/directory` mit
 # "Keine Vorgabeanwendungen". Auf einem Minimal Install ohne DE ist das der
@@ -28,6 +33,15 @@
 # Knoepfen, die dann einfach nichts tun — "Ordner oeffnen" im Firefox-Download-
 # Panel, "Enthaltenden Ordner anzeigen" in Thunderbird. Kein Dialog, kein Fehler.
 # Der Eintrag unten haengt Double Commander dort ein (s. packages.txt).
+#
+# Fuer Musik gilt dasselbe Muster wie fuer inode/directory: MP3 und FLAC hatten
+# auf diesem System GAR KEINEN Handler — `xdg-mime query default audio/mpeg` und
+# `... audio/flac` antworteten beide leer. Ein Doppelklick im Double Commander
+# oder `xdg-open track.flac` tat schlicht nichts, ohne Dialog und ohne Fehler.
+# Der Musik-Block unten haengt dot_local/share/applications/mpv-audio.desktop
+# dort ein; das ist bewusst eine eigene Desktop-ID und nicht das mpv.desktop des
+# Pakets (Begruendung in der Datei selbst).
+#
 [Default Applications]
 text/html=firefox.desktop
 x-scheme-handler/http=firefox.desktop
@@ -38,6 +52,20 @@ x-scheme-handler/unknown=firefox.desktop
 # Dateimanager. Suffix -qt6 gehoert dazu: die .desktop-Datei des GTK2-Pakets
 # heisst doublecmd-gtk.desktop, eine schlichte doublecmd.desktop gibt es nicht.
 inode/directory=doublecmd-qt6.desktop
+
+# Musik (s. Kopf dieser Datei). mpv-audio.desktop startet mpv in foot, nicht im
+# eigenen Fenster. Gestreamt wird weiter in Cider — das hier ist der lokale Weg.
+# Die Nicht-MP3/FLAC-Typen sind Trittbrettfahrer: mpv spielt sie ohnehin, und
+# eine zweite Runde "kein Handler" fuer eine .m4a aus einem Mailanhang ist
+# vermeidbar. Kanonische Typen, Aliase (audio/mp3, audio/x-flac, audio/x-wav)
+# loest shared-mime-info selbst auf.
+audio/mpeg=mpv-audio.desktop
+audio/flac=mpv-audio.desktop
+audio/mp4=mpv-audio.desktop
+audio/ogg=mpv-audio.desktop
+audio/x-vorbis+ogg=mpv-audio.desktop
+audio/x-opus+ogg=mpv-audio.desktop
+audio/vnd.wave=mpv-audio.desktop
 
 # Word / Writer
 application/msword=org.onlyoffice.desktopeditors.desktop
@@ -77,3 +105,10 @@ text/markdown=emacs.desktop
 application/pdf=firefox.desktop;
 text/markdown=emacs.desktop;
 inode/directory=doublecmd-qt6.desktop;
+audio/mpeg=mpv-audio.desktop;
+audio/flac=mpv-audio.desktop;
+audio/mp4=mpv-audio.desktop;
+audio/ogg=mpv-audio.desktop;
+audio/x-vorbis+ogg=mpv-audio.desktop;
+audio/x-opus+ogg=mpv-audio.desktop;
+audio/vnd.wave=mpv-audio.desktop;

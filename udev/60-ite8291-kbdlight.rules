@@ -1,0 +1,22 @@
+# RGB-Tastaturbeleuchtung im "book" (TUXEDO Stellaris/Polaris AMD Gen4,
+# Uniwill-Barebone GMxRGxx). Der Controller ist ein ITE 8291 Rev 0.03 und
+# haengt als USB-Geraet 048d:6004 am Bus — NICHT am Plattformtreiber.
+#
+# Warum ueberhaupt eine Regel: der Fedora-Kernel bringt fuer den Chip nichts
+# mit. `uniwill_laptop` (Mainline, kennt GMxRGxx) macht Hotkeys und Luefter,
+# aber keine Beleuchtung; das dafuer zustaendige ite_8291 ist out-of-tree und
+# gaebe es nur als DKMS-Paket aus TUXEDOs eigenem Repo. Deshalb Steuerung aus
+# dem Userspace ueber libusb (dot_local/bin/kbdlight), und dafuer braucht der
+# eingeloggte Seat-User Zugriff auf den Geraeteknoten.
+#
+# TAG+="uaccess" wie in 40-streamdeck.rules: gibt dem User an der aktiven
+# Session Zugriff ueber systemd-logind, kein plugdev-Gruppenkram noetig.
+# Nummer < 73, sonst laeuft die Regel nach 73-seat-late.rules und uaccess
+# wird nicht mehr ausgewertet.
+#
+# ATTR statt ATTRS: so greift die Regel nur auf dem usb_device-Knoten
+# (/dev/bus/usb/...), den libusb oeffnet, und nicht zusaetzlich auf jedem
+# Interface. Installiert von bootstrap.sh nach /etc/udev/rules.d/.
+# Auf Rechnern ohne diesen Chip laeuft sie ins Leere — sie ist hostunabhaengig.
+
+SUBSYSTEM=="usb", ATTR{idVendor}=="048d", ATTR{idProduct}=="6004", MODE="0660", TAG+="uaccess"

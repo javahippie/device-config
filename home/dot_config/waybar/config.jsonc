@@ -92,6 +92,10 @@
             // NetBeans-Major wieder aus.
             "class<Apache NetBeans IDE.*>": "\u2615",
             "class<cider>": "\ud83c\udfb5",
+            // Lokaler Player: foot mit eigener app-id (s. mpv-audio.desktop),
+            // schwebt per rules.conf. Andere Note als Cider, damit man im
+            // Workspace-Switcher sieht, WAS gerade spielt.
+            "class<mpv-audio>": "\ud83d\udcbf",
             "class<ONLYOFFICE>": "\ud83d\udcc4",
             // NICHT verifiziert — Signal lief beim Gegenpruefen nicht.
             "class<.*[Ss]ignal.*>": "\ud83d\udd12"

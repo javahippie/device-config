@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# RGB-Tastaturbeleuchtung im "book" (TUXEDO Stellaris/Polaris AMD Gen4).
+#
+# Der Controller ist ein ITE 8291 Rev 0.03 und haengt als USB-Geraet
+# 048d:6004 am Bus, nicht am Plattformtreiber. Der Fedora-Kernel bringt dafuer
+# nichts mit: `uniwill_laptop` (Mainline, kennt das Board GMxRGxx) macht
+# Hotkeys und Luefter, aber keine Beleuchtung, und /sys/class/leds bleibt leer.
+# Das zustaendige ite_8291 gibt es nur out-of-tree als DKMS-Paket aus TUXEDOs
+# eigenem Repo — bewusst nicht genommen, weil es bei jedem Kernel-Update neu
+# gebaut werden muss und irgendwann beim Booten fehlt.
+#
+# Stattdessen Userspace ueber libusb: `ite8291r3-ctl` (GPL-2.0, PyPI, von
+# bootstrap.sh auf ==0.4 gepinnt via pipx installiert). Zugriff auf den
+# Geraeteknoten kommt aus udev/60-ite8291-kbdlight.rules (TAG+="uaccess"),
+# deshalb braucht hier nichts root.
+#
+# Dieses Skript ist nur der Wrapper drumherum: Catppuccin-Palette, Auf/Ab in
+# Schritten, Toggle mit gemerkter Helligkeit — Dinge, die das Tool selbst
+# nicht kennt.
+set -euo pipefail
+
+CTL="ite8291r3-ctl"
+MAX=50                  # Helligkeitsbereich des Controllers ist 0..50
+STEP=5
+DEFAULT_COLOR="mauve"   # passt zum SDDM-Theme (catppuccin-mocha-mauve)
+DEFAULT_BRIGHT=25
+
+# Die Farbwerte werden NICHT hier dupliziert, sondern aus der Hyprland-Palette
+# gelesen. mocha.conf sagt ueber sich selbst "Einzige Quelle der Palette" — das
+# soll auch fuer die Tastatur gelten, sonst laufen Bildschirm und Beleuchtung
+# beim naechsten Theme-Dreh auseinander.
+PALETTE="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/mocha.conf"
+
+# Zustand: die zuletzt benutzte Helligkeit und Farbe. Der Controller kann zwar
+# seine Helligkeit sagen, aber nicht seine Farbe — und fuer `toggle` braucht es
+# einen Wert, auf den zurueckgeschaltet wird.
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}"
+STATE="$STATE_DIR/kbdlight"
+
+die() { echo "kbdlight: $1" >&2; exit 1; }
+
+usage() {
+    cat <<EOF
+Usage: kbdlight [on|off|toggle|up|down|color <name>|pick|status|list]
+
+  on           Beleuchtung an, letzte Farbe und Helligkeit
+  off          aus (Helligkeit 0 — der Controller kennt kein echtes Aus)
+  toggle       umschalten, merkt sich die Helligkeit
+  up | down    Helligkeit in Schritten von $STEP (0..$MAX)
+  color NAME   Catppuccin-Mocha-Farbe setzen, z. B. mauve, teal, peach
+  pick         Farbe per fuzzel auswaehlen
+  status       aktuelle Helligkeit und gemerkte Farbe
+  list         verfuegbare Farbnamen aus mocha.conf
+EOF
+}
+
+need_ctl() {
+    command -v "$CTL" >/dev/null 2>&1 \
+        || die "$CTL fehlt (pipx install ite8291r3-ctl==0.4)"
+    # Auf Rechnern ohne diesen Chip — etwa dem cube — soll sofort etwas
+    # Verstaendliches kommen statt eines Python-Tracebacks.
+    "$CTL" query --devices >/dev/null 2>&1 \
+        || die "kein ITE-8291-Controller gefunden (kein TUXEDO-Book?)"
+}
+
+# $1 = Farbname -> "r,g,b"
+color_rgb() {
+    local name="$1" hex
+    [ -r "$PALETTE" ] || die "Palette nicht lesbar: $PALETTE"
+    # Zeilenformat in mocha.conf:  $mauve = rgb(cba6f7)
+    hex=$(sed -nE "s/^\\\$${name}[[:space:]]*=[[:space:]]*rgb\(([0-9a-fA-F]{6})\).*/\1/p" \
+          "$PALETTE" | head -1)
+    [ -n "$hex" ] || die "Farbe '$name' steht nicht in $PALETTE (kbdlight list)"
+    printf '%d,%d,%d' "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
+}
+
+list_colors() {
+    [ -r "$PALETTE" ] || die "Palette nicht lesbar: $PALETTE"
+    # Nur echte rgb()-Eintraege, nicht die $xAlpha-Varianten am Dateiende.
+    sed -nE 's/^\$([a-zA-Z0-9]+)[[:space:]]*=[[:space:]]*rgb\([0-9a-fA-F]{6}\).*/\1/p' "$PALETTE"
+}
+
+state_get() {   # $1 = Schluessel, $2 = Default
+    [ -r "$STATE" ] || { printf '%s' "$2"; return; }
+    local v; v=$(sed -nE "s/^$1=(.*)$/\1/p" "$STATE" | head -1)
+    printf '%s' "${v:-$2}"
+}
+
+state_set() {   # $1 = Schluessel, $2 = Wert
+    mkdir -p "$STATE_DIR"
+    local tmp; tmp=$(mktemp "$STATE.XXXXXX")
+    { [ -r "$STATE" ] && grep -vE "^$1=" "$STATE" || true; } > "$tmp"
+    printf '%s=%s\n' "$1" "$2" >> "$tmp"
+    mv "$tmp" "$STATE"
+}
+
+brightness_now() { "$CTL" query --brightness 2>/dev/null | tr -cd '0-9'; }
+
+apply() {       # $1 = Helligkeit, $2 = Farbname
+    local b="$1" name="$2"
+    "$CTL" monocolor --rgb "$(color_rgb "$name")" --brightness "$b"
+    state_set color "$name"
+    [ "$b" -gt 0 ] && state_set bright "$b"
+    return 0
+}
+
+cmd="${1:-toggle}"
+if [ "$cmd" = "-h" ] || [ "$cmd" = "--help" ]; then usage; exit 0; fi
+
+need_ctl
+color=$(state_get color "$DEFAULT_COLOR")
+saved=$(state_get bright "$DEFAULT_BRIGHT")
+
+case "$cmd" in
+    on)     apply "$saved" "$color" ;;
+    off)    state_set bright "$(brightness_now)"; "$CTL" off ;;
+    toggle)
+        now=$(brightness_now)
+        if [ "${now:-0}" -gt 0 ]; then
+            state_set bright "$now"; "$CTL" off
+        else
+            apply "$saved" "$color"
+        fi ;;
+    up|down)
+        now=$(brightness_now); now=${now:-0}
+        if [ "$cmd" = up ]; then new=$(( now + STEP )); else new=$(( now - STEP )); fi
+        [ "$new" -gt "$MAX" ] && new=$MAX
+        [ "$new" -lt 0 ] && new=0
+        apply "$new" "$color"
+        echo "Helligkeit $new/$MAX" ;;
+    color)
+        [ $# -ge 2 ] || die "welche Farbe? (kbdlight list)"
+        apply "$saved" "$2" ;;
+    pick)
+        command -v fuzzel >/dev/null 2>&1 || die "fuzzel fehlt"
+        sel=$(list_colors | fuzzel --dmenu --prompt 'Tastaturfarbe: ') || exit 0
+        # Als if, weil dies das letzte Kommando des Skripts ist: bei leerer
+        # Auswahl waere der Exit-Status sonst 1 statt 0.
+        if [ -n "$sel" ]; then apply "$saved" "$sel"; fi ;;
+    status)
+        echo "Helligkeit: $(brightness_now)/$MAX"
+        echo "Farbe:      $color ($(color_rgb "$color"))" ;;
+    list)   list_colors ;;
+    *)      usage; exit 1 ;;
+esac

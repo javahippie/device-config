@@ -298,11 +298,213 @@ pw-link -l | grep -B1 capture.rnnoise        # zeigt, an welchem echten Mikrofon
   nach Priorität. Ein anderes erzwingen: `target.object` in `capture.props`
   auf den `node.name` des gewünschten Geräts setzen (`pw-dump` zeigt ihn).
 
+## Musik (lokale MP3/FLAC)
+
+Streaming bleibt Cider (Flatpak, Apple Music). Lokale Dateien laufen daneben in
+**mpv** — CLI, im foot-Fenster, kein Daemon und keine Bibliothek:
+
+```sh
+music ~/Musik/album/track.flac    # eine Datei
+music ~/Musik/album               # Ordner als Playlist
+music ~/Musik/album/*.flac        # Auswahl
+```
+
+`dot_local/bin/music` ist ein dünner Wrapper um mpv, dessen einziger Zweck die
+**Einzel-Instanz** ist (s. u.). `mpv datei.flac` von Hand geht weiterhin, macht
+dann aber einen eigenen Player auf.
+
+Steuerung ist mpvs eingebaute: Leertaste Pause, `<`/`>` Titel, `9`/`0`
+Lautstärke, `q` Ende. Doppelklick im Double Commander bzw. `xdg-open track.mp3`
+landen über `mimeapps.list` am selben Ort — dort aber als **schwebendes
+Mini-Fenster** statt als halber Bildschirm (s. u.).
+
+**Warum kein TUI-Player.** `cmus` und `musikcube` — die naheliegenden
+Kandidaten — gibt es in Fedora 44 nicht mehr (`dnf search cmus`: keine
+Übereinstimmung). Bliebe `mpd` + `ncmpcpp`: ein Daemon, ein Client, eine
+`mpd.conf` und ein `~/.ncmpcpp/config` für die Frage "spiel diesen Ordner ab".
+Für eine gepflegte Sammlung mit Playlists wäre das die richtige Antwort; hier
+ist die Sammlung ein Ordner, und mpv ist ein Kommando ohne Zustand.
+
+**Decoder kommen aus ffmpeg.** mpv linkt gegen `libavcodec`/`libavformat`
+(`dnf repoquery --requires mpv`) — MP3 und FLAC sind damit erledigt, es gibt
+kein `libmad`, kein `flac`-Paket und keine Codec-Nachinstallation.
+
+### Cover-Art ist eine Videospur
+
+Das ist der Fallstrick: Cover-Art in MP3/FLAC ist für mpv **Video** (Default
+`--audio-display=embedded-first`). Unbehandelt macht mpv dafür ein Fenster auf,
+und Hyprland kachelt es in die aktive Workspace ein — dasselbe
+Fenstermodell-Problem wie bei LibreOffice (s. Office-Kapitel).
+
+Zwei Stellen, mit Absicht getrennt:
+
+- `dot_config/mpv/mpv.conf` setzt **`audio-display=no`**, global für jeden
+  mpv-Aufruf. Das ist *nicht* dasselbe wie `--no-video`: echte Videodateien
+  laufen weiter normal, es wird nur das Standbild aus Audio-Tags nicht mehr als
+  Video behandelt. Deshalb darf es global stehen — und deshalb ist
+  `mpv track.flac` von Hand genauso fensterfrei wie der Doppelklick.
+- Der Handler setzt zusätzlich hart `--no-video`. Redundant, aber gewollt: ein
+  Audio-Handler soll nicht davon abhängen, dass eine Config-Datei danebenliegt.
+
+### Zwei .desktop-Dateien, mit Absicht
+
+| Datei | Woher | Wofür |
+|---|---|---|
+| `mpv.desktop` | Paket (`/usr/share/applications`) | Video. Steht in fuzzel. |
+| `mpv-audio.desktop` | `dot_local/share/applications` (Template) | Audio-Handler aus `mimeapps.list`, ruft `dot_local/bin/music`. `NoDisplay=true`, taucht in fuzzel **nicht** auf. |
+
+Eigene Desktop-ID statt Schatten (anders als bei `emacs.desktop` daneben):
+überschreibt man `mpv.desktop`, verliert man mit demselben Griff das Abspielen
+von Videos. `Exec=foot -e mpv …` statt `Terminal=true`, gleiche Begründung wie
+beim Emacs — ohne DE gibt es keinen "Standard-Terminal-Emulator", den ein
+Aufrufer finden könnte.
+
+MP3 und FLAC hatten vorher **gar keinen** Handler (`xdg-mime query default
+audio/mpeg` antwortete leer) — derselbe Zustand wie seinerzeit
+`inode/directory`: Doppelklick tat nichts, ohne Dialog und ohne Fehler.
+
+### Eine Instanz statt fünf
+
+Ohne Zutun startet jede geöffnete Datei ihren eigenen mpv — zwei Doppelklicks,
+zwei Stücke gleichzeitig. `dot_local/bin/music` schickt die Datei deshalb an
+den **schon laufenden** Player, statt einen zweiten aufzumachen: erste Datei als
+`loadfile … replace`, alle weiteren als `append`, die Playlist bleibt also ganz.
+
+**Über mpvs IPC-Socket, nicht über MPRIS.** Naheliegend wäre
+`playerctl -p mpv open …` gewesen — mpv-mpris implementiert
+`org.mpris.MediaPlayer2.Player` und damit `OpenUri`. Aber `TrackList` ist laut
+seiner README ausdrücklich **nicht** implementiert, und MPRIS kennt keinen
+Mehrfach-Open: ein im Double Commander markiertes Album wäre auf die erste
+Datei zusammengeschrumpft. Der Socket kann beides.
+
+Zwei Details, die den Unterschied zwischen "geht" und "geht meistens" machen:
+
+- **Die Socket-Datei ist kein Beweis, dass ein Player läuft.** Gemessen: nach
+  `quit` bleibt sie liegen, mpv räumt sie nicht weg. Das Skript nimmt deshalb
+  den *Verbindungsversuch* als Test — klappt er nicht, ist es eine Leiche, sie
+  wird gelöscht und ein frischer Player gestartet (durchgespielt: Fenster
+  vorher 1, nachher 2).
+- **Pfade werden absolut gemacht.** mpv löst ein relatives `loadfile` gegen das
+  Arbeitsverzeichnis *des laufenden* mpv auf — also gegen das Verzeichnis, in
+  dem der Player irgendwann gestartet wurde, nicht gegen das aktuelle. Aus dem
+  `.desktop` kommen über `%F` ohnehin absolute Pfade, von Hand aber nicht.
+
+Das JSON baut `jq` (steht schon in packages.txt), gesendet wird mit **`socat`**
+— beides in *einer* Verbindung, sonst kostet jede Datei eines Albums die
+Wartezeit erneut. Fokus holt das Skript bewusst nicht: ein Doppelklick im
+Dateimanager soll nicht die Workspace wechseln. Wer es anders will, hängt
+`hyprctl dispatch focuswindow class:mpv-audio` an — die Zeile steht auskommentiert
+im Skript.
+
+Der Handler ist deshalb jetzt ein **chezmoi-Template**
+(`mpv-audio.desktop.tmpl`): `Exec=` sieht keine Shell, ein `~` wird nicht
+expandiert, und ob `~/.local/bin` im PATH des Aufrufers steht, ist nicht
+garantiert — bei Double Commander gemessen ja, aber genau diese Annahme war bei
+den Hyprland-Bindings schon einmal falsch. `{{ .chezmoi.homeDir }}` schreibt den
+echten Pfad hinein.
+
+### Das Player-Fenster
+
+Erster Anlauf war ein `foot -e mpv …` ohne weitere Zutaten. Ergebnis: ein
+**gekacheltes** Terminal über den halben Bildschirm (`hyprctl clients`:
+`class=foot … size=[1702,1388]`), gefüllt mit `AO: [pipewire] 48000Hz stereo`.
+Für eine Laufzeitanzeige zu viel Bildschirm und zu viel Text. Drei Griffe:
+
+- **`foot --app-id=mpv-audio`.** Ohne eigene app-id heißt die Klasse schlicht
+  `foot`, und jede Fensterregel dafür träfe auch jedes Arbeitsterminal. Die
+  Regel in `rules.conf` lässt das Fenster schweben, 700×260, zentriert —
+  gleiche Überlegung wie beim Rechner, `$mod+V` holt es in die Kachelung.
+- **`--msg-level=all=warn,statusline=status`.** Die Startzeilen kommen aus
+  mpvs Modul `cplayer`, die Laufzeit aus `statusline` (`mpv --msg-module` zeigt
+  die Namen). Nur `cplayer` runterdrehen geht nicht, ohne die Statuszeile
+  mitzunehmen — daher `all=` plus Ausnahme. Fehler bleiben sichtbar, `warn`
+  schließt `error` und `fatal` ein. **Kein `--quiet`**: das nimmt die
+  Statuszeile komplett mit, nachgemessen.
+- **`--term-osd-bar`** für den Fortschrittsbalken. Im kleinen Fenster ist das
+  die halbe Information.
+
+**Nebenbei gemessen: `move` kann in der 0.56-Grammatik nur absolute Pixel.**
+Erst sollte das Fenster unten rechts sitzen. Live gegen das laufende Hyprland
+geprüft (`hyprctl keyword windowrule` + `hyprctl clients`, Monitor 3440×1440):
+
+| Regel | Ergebnis |
+|---|---|
+| `move 2700 1140` | `at=[2700,1140]` — wie gewollt |
+| `move 100%-740 100%-300` | `at=[1370,605]` — zentriert, also ignoriert |
+| `move 78% 80%` | `at=[1370,605]` |
+| `move onscreen 100%-740 100%-300` | `at=[1370,605]` |
+| `move cursor -50% -50%` | `at=[1370,605]` |
+
+Kein Fehler, kein Eintrag in `hyprctl configerrors` — die Regel fällt still auf
+die Standardplatzierung zurück. Absolute Pixel wären auf dem cube richtig und
+auf dem book (andere Auflösung) daneben. Deshalb `center on`: das rechnet
+Hyprland selbst, und es gilt auf beiden Hosts.
+
+Den Titel liefert mpv selbst: es setzt den *Terminaltitel* auf das laufende
+Stück, das steht damit in der Fensterleiste und im `hyprland/window`-Modul.
+Ein `--term-playing-msg` wäre der falsche Weg — das hängt an `cplayer` und
+fällt mit weg.
+
+Waybar bekommt für die app-id ein eigenes Workspace-Icon (💿, Cider hat 🎵) —
+so sieht man im Switcher, *was* gerade spielt.
+
+**Kehrseite der Stille:** schlägt eine Datei fehl, steht die Fehlermeldung nur
+so lange, wie mpv läuft — also einen Wimpernschlag, dann schließt foot. Zum
+Nachsehen die Datei einmal von Hand im Terminal aufrufen.
+
+### Medientasten (`playerctl`, für mpv UND Cider)
+
+`playerctl` spricht MPRIS, nicht ein bestimmtes Programm. Cider bringt MPRIS
+mit, mpv erst durch **`mpv-mpris`** — das Paket legt genau
+`/etc/mpv/scripts/mpris.so` ab, mpvs systemweites Skriptverzeichnis, und wird
+von jeder mpv-Instanz von allein geladen. Es gibt daran nichts zu
+konfigurieren, auch keine `mpv.conf`.
+
+Die Bindings in `binds.conf` benutzen `playerctl -p mpv,%any`:
+
+- Ohne `-p` nimmt playerctl laut man-Page "den ersten verfügbaren Player" —
+  bei laufendem Cider *und* laufendem mpv ist das nichts, worauf man sich
+  verlassen will.
+- `mpv,%any` heißt: lokaler Player zuerst, sonst irgendeiner. Wer gerade etwas
+  lokal abspielt, meint mit der Taste das. Laufende Namen: `playerctl -l`.
+- Das Komma überlebt Hyprlands Config-Parser — nachgemessen mit
+  `hyprctl keyword bind` + `hyprctl binds`: gesplittet wird nur bis zum
+  Dispatcher, der Rest bleibt ein Argument. Keine Anführungszeichen, kein
+  Wrapper-Skript nötig.
+- `bindl` statt `bind`, wie bei der Tastaturbeleuchtung: geht auch bei
+  gesperrtem Bildschirm.
+
+**Noch nicht auf dieser Hardware nachgemessen**, ob die Tasten wirklich
+`XF86AudioPlay` & Co. schicken — anders als bei Kamera- und Rechner-Taste der
+MX Keys. `wev` zeigt es. Tut sich nichts, ist es die Taste und nicht playerctl;
+das trennt man mit `playerctl -p mpv,%any play-pause` direkt im Terminal.
+
+Nebenbefund beim Einbauen: `dot_local/bin/keybinds` matchte nur `bind` und
+`bindm`. `bindl`/`bindel` fielen durch — die Tastaturbeleuchtung stand also
+schon länger in `binds.conf` und fehlte trotzdem im `SUPER+F1`-Popup, lautlos.
+Muster ist jetzt `bind[a-z]*`.
+
+### Prüfen nach `chezmoi apply`
+
+```sh
+xdg-mime query default audio/flac     # -> mpv-audio.desktop
+xdg-open ~/Musik/irgendwas.flac       # -> foot mit mpv, KEIN zweites Fenster
+playerctl -l                          # bei laufendem mpv: mpv (evtl. mpv.instanceN)
+hyprctl clients | grep -A2 mpv-audio  # class=mpv-audio, floating=true
+music a.flac; music b.flac            # zweiter Aufruf ersetzt, kein zweites Fenster
+```
+
+Meldet der zweite Schritt nichts, einmal
+`update-desktop-database ~/.local/share/applications` — glib begnügt sich für
+`[Default Applications]` zwar damit, dass die Datei existiert, strengere
+Implementierungen lesen den Cache.
+
 ## Idle-Verhalten und der `Wach`-Schalter
 
-`hypridle.conf` fährt eine dreistufige Kette: **5 min** sperren
-(`loginctl lock-session` → hyprlock), **5:30 min** Display aus,
-**15 min** Suspend.
+`hypridle.conf` fährt eine **zweistufige** Kette: **5 min** sperren
+(`loginctl lock-session` → hyprlock), **15 min** Suspend. Eine Display-Aus-Stufe
+bei 5:30 min gab es früher, sie ist raus — siehe "Display-Aus killt Thunderbird"
+weiter unten.
 
 Das ist für den Alltag richtig und für lange Hintergrund-Jobs falsch — ein
 Build, ein Export, ein `podman build`, ein großer Sync nach mailbox.org Drive.
@@ -344,6 +546,130 @@ vermeidet.
 **Kein Keybind.** Der Schalter hat bewusst nur den Klick. Ein
 Zwei-Zustands-Schalter ohne sichtbare Anzeige ist blind bedienbar, und
 verlassen kann man sich darauf nur, wenn man die Anzeige sowieso ansieht.
+
+### Display-Aus killt Thunderbird (deshalb keine DPMS-Stufe)
+
+**Symptom.** Nach jedem Idle-Zyklus ließ ein laufender Thunderbird keine
+Kontextmenüs mehr aufgehen. Kein Fehler, kein Absturz — das Menü kam einfach
+nicht. Nur ein Neustart der App half. Firefox auf derselben Maschine war
+unauffällig.
+
+**Nicht die Ursache**, obwohl beides naheliegt: hyprlock ist es nicht (das
+Symptom hängt nicht am Lock), und ein echter Suspend ist es auch nicht —
+`journalctl -u systemd-suspend.service` zeigte über den ganzen Tag keinen
+einzigen. Die 15-min-Stufe feuert im Alltag praktisch nie, es war immer nur
+das Display-Aus bei 5:30 min.
+
+**Was tatsächlich passiert.** `dpms off` schaltet den Monitor nicht bloß
+dunkel. Das Gerät lässt im Standby die HPD-Leitung fallen, der Kernel meldet
+den Connector daraufhin als *abgezogen*. Im Hyprland-Log
+(`$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/hyprland.log`) steht die
+Kette dreimal Wort für Wort gleich:
+
+```
+drm: Disabling output HDMI-A-2
+drm: Connector HDMI-A-2 enabledState changed true -> false
+drm: Got a hotplug event for /dev/dri/card1
+drm: Connector 383 connection state: 2
+drm: Connector HDMI-A-2 disconnected
+drm: HDMI-A-2 is not connected, clearing stale crtc 369
+Swapchain: Reconfigured a swapchain to [Vector2D: x: 1920, y: 1080]
+```
+
+Die letzte Zeile ist der Beleg, dass es kein reines Dunkelschalten war: die
+Swapchain fällt von 3440x1440 auf den 1920x1080-Fallback zurück. Hyprland
+zerstört den `wl_output` und legt ihn beim Aufwachen neu an.
+
+**Warum nur Thunderbird.** Gecko cached die GTK-Workarea über so ein
+Output-Destroy/Recreate hinweg falsch und legt Popups danach mit kaputter
+Geometrie an — sie existieren, sind aber nicht sichtbar. Das ist
+[Mozilla-Bug 1564076](https://bugzilla.mozilla.org/show_bug.cgi?id=1564076),
+später zusammengeführt über
+[2036975](https://bugzilla.mozilla.org/show_bug.cgi?id=2036975) nach
+[2026258](https://bugzilla.mozilla.org/show_bug.cgi?id=2026258). Der Fix
+("Fall back to wl_output monitor size if we're missing Gtk workarea to calc
+fractional scale") ist in **Gecko 151/152** gelandet. Firefox läuft hier als
+natives Paket auf **153** und hat ihn; Thunderbird ist das Flatpak
+`org.mozilla.thunderbird_esr` auf **140 ESR**, also Gecko 140, und hat ihn
+nicht. Daher genau eine betroffene App bei identischem Compositor,
+identischem Monitor, identischem Idle-Zyklus.
+
+**Entscheidung: die DPMS-Stufe fällt weg.** Sie greift die Ursache an und
+hilft jeder Gecko-ESR-App, nicht nur Thunderbird.
+
+Preis: der Bildschirm bleibt zwischen Lock und Suspend an, also bis zu 10 min,
+und zeigt dabei den fast schwarzen hyprlock-Screen.
+
+Bewusst *nicht* auf "kurz vor den Suspend schieben": der Disconnect folgt dem
+`dpms off` binnen Sekunden, die Dauer des Aus-Zustands ist also irrelevant —
+es zählt nur, ob es überhaupt passiert.
+
+**Verworfene Alternativen**, beide funktionsfähig, beide mit einem Preis, den
+diese Kiste nicht zahlen muss:
+
+- **Thunderbird auf XWayland**
+  (`flatpak override --user --nosocket=wayland org.mozilla.thunderbird_esr`).
+  X11-Popups sind override-redirect und von dem Bug nicht betroffen. Preis:
+  Drag & Drop *aus* Thunderbird heraus liefe dann über Hyprlands XDND-Brücke
+  im XWM — genau der Weg, der in packages.txt bei Double Commander schon als
+  fragil ausgeschieden ist.
+- **Wechsel auf den Release-Kanal** (`org.mozilla.thunderbird`, Flathub, aktuell
+  154.0 — die *kleingeschriebene* App-ID, nicht das EOL `org.mozilla.Thunderbird`
+  aus dem Kommentar in flatpaks.txt). Hat den Fix. Preis: monatliche
+  Major-Versionen statt ESR-Ruhe, plus Profilumzug von
+  `~/.var/app/org.mozilla.thunderbird_esr/` — und das ist eine Einbahnstraße,
+  ein von 154 geöffnetes Profil geht nicht zurück auf 140.
+
+**Wenn das Display-Aus zurück soll**, ist der Hebel nicht der hypridle-Listener,
+sondern der Connector: `video=HDMI-A-2:e` auf der Kernel-Cmdline zwingt ihn
+dauerhaft auf "verbunden", der HPD-Verlust im Standby wird dann ignoriert und
+der `wl_output` bleibt stehen. Hier nicht eingebaut, weil ungetestet und weil
+10 min heller Lockscreen der billigere Preis ist.
+
+**Diagnose, wenn es wiederkommt:**
+
+```sh
+grep -c "Connector .* disconnected" "$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/hyprland.log"
+journalctl -u systemd-suspend.service --since today   # feuert der Suspend ueberhaupt?
+flatpak list --app --columns=application,version | grep -i thunderbird   # Gecko >= 152?
+```
+
+## Monitor gehört an die iGPU, nicht an die dedizierte Karte
+
+**Regel.** Das HDMI-Kabel steckt an der Onboard-Grafik des Mainboards
+(`11:00.0`, Raphael), nicht an der Radeon RX 6400 (`03:00.0`). Das ist keine
+Geschmacksfrage, sondern die Voraussetzung dafür, dass der Rechner aus dem Idle
+zurückkommt.
+
+**Symptom mit Kabel an der dGPU.** Läuft die Kiste in den Idle, kommt der
+Bildschirm nicht wieder: schwarz, keine Reaktion auf Tastatur oder Maus. Der
+Rechner selbst lebt dabei — SSH von außen funktioniert einwandfrei, Dienste
+laufen weiter. Es stirbt ausschließlich der Display-Stack der dGPU, und ohne
+zweiten Rechner im Netz sieht das aus wie ein toter Kasten.
+
+**Was im Journal steht** (22.08.2026 20:08, 24.08.2026 09:03:35 und 14:09:24 —
+drei Vorfälle, alle mit Kabel an der dGPU):
+
+```
+amdgpu 0000:03:00.0: SMU: No response msg_reg: 36 resp_reg: 0
+amdgpu 0000:03:00.0: RunDcBtc failed!
+amdgpu 0000:03:00.0: resume of IP block <smu> failed -62
+amdgpu 0000:03:00.0: amdgpu_device_ip_resume failed (-62).
+```
+
+Die SMU der Navi 24 antwortet beim Aufwachen nicht mehr. Danach läuft der
+`sdma0`-Ring in die Timeout-Schleife, die im nächsten Abschnitt beschrieben ist
+— im Boot vom 24.08. sind das 16588 amdgpu-Zeilen für `03:00.0`.
+
+**Mit Kabel an der iGPU** ist das weg. Verifiziert am 25.08.2026 mit einem
+echten S3-Zyklus: nach dem Resume steht die dGPU wieder auf `suspended`/D3hot,
+der Monitor an `card1-HDMI-A-2` ist da, das Netz verbunden, das Journal sauber.
+Die dGPU macht dabei weiterhin `MODE1 reset` — das ist der normale Weg zurück
+aus D3 und kein Fehler.
+
+**Preis.** Die RX 6400 treibt dann kein Display mehr. Für Rendering, VAAPI oder
+Compute steht sie weiter zur Verfügung, sie hängt nur nicht mehr im
+Modesetting-Pfad.
 
 ## Suspend hängt sich auf (gelöst: kein s2idle-Fallback)
 
@@ -429,23 +755,93 @@ SuspendState=mem
 nur, was `/sys/power/mem_sleep` ohnehin schon auf `[deep]` stehen hat, und
 ändert an systemds Fallback-Liste genau nichts.
 
-**Offen: der Auslöser in Schritt 1.** Das anliegende Wakeup-Event kommt
-vermutlich von einem der beiden Funk-Empfänger, die als Wakeup-Quelle
-freigeschaltet sind:
+**Gelöst: der Auslöser in Schritt 1** (25.08.2026). Die Vermutung "zuckende
+Funkmaus" war falsch — der Abbruch war nicht sporadisch, sondern **zu 100 %
+reproduzierbar**: vier Suspend-Versuche, vier Abbrüche nach je zwei Sekunden,
+auch bei komplett unberührter Tastatur.
+
+Die Spur führt über zwei Zähler, die pro Versuch um genau 1 steigen:
 
 ```console
-$ for f in /sys/bus/usb/devices/*/power/wakeup; do
-      [ "$(cat $f)" = enabled ] && echo "${f%/power/wakeup}: $(cat ${f%/power/wakeup}/product)"
-  done
-/sys/bus/usb/devices/1-5.4: USB Receiver
-/sys/bus/usb/devices/3-2: Hama EWM-500
+$ cat /sys/power/pm_wakeup_irq
+7
+$ grep -E '^ *(7|28):' /proc/interrupts | awk '{print $1, $NF}'
+7: pinctrl_amd          # AMD-GPIO-Controller
+28: ACPI:Event          # amd_gpio Pin 3
+$ cat /sys/firmware/acpi/interrupts/gpe02
+       3  EN     enabled      unmasked
 ```
 
-Eine zuckende Funkmaus reicht, um den Suspend genau im falschen Moment zu
-kippen. Abschalten ließe sich das per udev-Regel (`ATTR{power/wakeup}="disabled"`),
-der Preis wäre: aufwecken geht dann nur noch über den Power-Button. Solange der
-Fallback weg ist, ist der abgebrochene Suspend folgenlos — deshalb bleibt es
-vorerst so.
+GPIO-Pin 3 ist auf diesem Board der `PCIE_WAKE#`-Eingang. Dahinter steckt das
+PME des Root-Ports `00:02.1` (`GPP7`), und an dem hängt der komplette
+Chipsatz-Zweig — unter anderem der USB-Controller `0f:00.0`:
+
+```
+00:02.1 ─ 05:00.0 ─ 06:00.0 ┬─ … ─ 0d:00.0  Realtek RTL8126 5GbE
+                            └─ … ─ 0f:00.0  AMD 800-Series Chipset USB
+```
+
+**Bewiesen per Bisect.** Weckquellen einzeln stillgelegt, dazwischen je ein
+`rtcwake -m mem -s 20` (weckt sich selbst, kein Power-Button nötig). Die
+Unterscheidung läuft über die Dauer — unter 15 s heißt abgebrochen:
+
+```console
+$ sudo rtcwake -m mem -s 20            # unverändert
+   abgebrochen (2s)
+$ echo disabled | sudo tee /sys/bus/usb/devices/1-5.4/power/wakeup
+$ sudo rtcwake -m mem -s 20            # ohne Weckrecht für den Unifying-Empfänger
+   SUSPEND OK (25s geschlafen)
+```
+
+Es ist also der **Logitech-Unifying-Empfänger** (`046d:c548`), und zwar nicht,
+weil er zuckt, sondern weil er an `0f:00.0` hängt und dort dauerhaft PME# zieht.
+Die Hama-Maus mit identisch freigeschaltetem Weckrecht blockiert nichts — sie
+saß von Anfang an an `11:00.3`, einem CPU-seitigen Controller.
+
+**Der Fix ist physisch, nicht konfigurativ.** Der Empfänger gehört in eine
+Buchse an `11:00.3`, `11:00.4` oder `12:00.0`. An welcher Buchse das hängt,
+verrät nur das Umstecken selbst:
+
+```console
+$ readlink -f /sys/bus/usb/devices/3-2 | grep -oE '0000:[0-9a-f:.]+' | tail -1
+0000:11:00.3
+```
+
+Verifiziert am 25.08.2026: 20 s echter S3, danach dGPU wieder
+`suspended`/D3hot, Monitor und Netz sauber zurück, keine Fehler im Journal.
+Ein Wechsel auf eine andere Buchse **desselben** Controllers reicht nicht — mit
+dem Empfänger auf `1-6` statt `1-5.4` bricht es genauso ab.
+
+**Aufwecken geht nur über den Power-Button.** Die Tastatur weckt nicht, auch
+nicht mit dem Empfänger am CPU-Controller — ausprobiert, und der Empfänger
+meldet nach dem Resume `wakeup_count=0`, hat also nichts gemeldet. `pm_wakeup_irq`
+zeigt zwar IRQ 33 (PME des Root-Ports `00:08.1`), das ist aber nur der erste
+IRQ *nach* dem Resume und keine Aussage über die Quelle: beim Hochfahren der
+Geräte feuern die PMEs an den Root-Ports ohnehin. Nicht darauf hereinfallen.
+
+**Alternative: udev-Regel** (`ATTR{power/wakeup}="disabled"` für
+`046d:c548`). Der ursprüngliche Einwand gegen sie war, sie koste das Wecken per
+Tastatur — das stimmt nicht, denn das funktioniert hier ohnehin nicht (s. o.).
+Sie kostet also nichts und wäre sogar robuster als die Buchse: eine Regel
+greift auch dann noch, wenn der Empfänger nach einem Umbau wieder in einer
+Chipsatz-Buchse landet. Die Buchsenlösung hat dafür den Vorteil, ohne
+zusätzliche Datei auszukommen. Beides ist vertretbar; aktuell steckt nur die
+Buchse.
+
+**Nicht genommen: `acpi_mask_gpe=0x02`.** Der maskierte GPE nimmt nur die
+*Meldung* über den GPIO-Pfad weg; das PME liegt weiter an, und der Kernel nennt
+dann eben die zweite Quelle:
+
+```console
+$ echo mask | sudo tee /sys/firmware/acpi/interrupts/gpe02
+$ systemctl suspend                    # bricht weiterhin ab
+$ cat /sys/power/pm_wakeup_irq
+32                                     # PCIe PME 0000:00:02.1 statt 7
+```
+
+**Merksatz fürs nächste Mal.** `Wakeup pending. Abort CPU freeze` ist keine
+Aussage über das Gerät, das zuckt, sondern über den PCIe-Zweig, an dem es
+steckt. Erst `pm_wakeup_irq` lesen, dann den Zweig auflösen — nicht raten.
 
 ## Keybind-Übersicht
 
@@ -594,6 +990,79 @@ beide Startwege ins Gehege kommen.
     Timeout zu laufen — wichtig auf `book`, wo es kein Key Light gibt. Alle
     `curl`-Aufrufe sind auf `--connect-timeout 2 --max-time 5` gedeckelt, damit
     hinter dem Keybind nichts hängen bleibt.
+
+## Tastaturbeleuchtung (nur `book`)
+
+Das `book` ist ein **TUXEDO Stellaris/Polaris AMD Gen4** (Uniwill-Barebone
+`GMxRGxx`) mit RGB-Tastatur. Out of the box leuchtet davon nichts, und
+`/sys/class/leds/` enthält nur NIC-LEDs und Capslock:
+
+```console
+$ ls /sys/class/leds/
+enp3s0-0::lan  input3::capslock  input3::numlock  input3::scrolllock  phy0-led
+```
+
+**Warum.** Der Mainline-Treiber `uniwill_laptop` ist geladen und kennt das Board
+— `GMxRGxx` steht in seiner DMI-Alias-Liste, und er registriert die Hotkeys.
+Die Beleuchtung macht er aber nicht: die hängt an einem eigenen USB-Controller,
+
+```console
+$ grep -l 048d /sys/bus/usb/devices/*/idVendor
+/sys/bus/usb/devices/5-1.1/idVendor      # 048d:6004 "ITE Device(8291)", rev 0.03
+```
+
+und für den gibt es im Fedora-Kernel kein Modul. Zuständig wäre `ite_8291`, das
+es nur out-of-tree im DKMS-Paket `tuxedo-drivers` aus TUXEDOs eigenem RPM-Repo
+gibt.
+
+**Nicht genommen: das DKMS-Paket.** Es funktioniert und registriert eine echte
+`led`-Klasse, muss aber bei jedem Kernel-Update neu gebaut werden. Auf Fedora
+mit seiner Update-Frequenz ist das genau die Sorte beweglicher Teil, die
+irgendwann nach einem Reboot fehlt — und dann sucht man den Fehler bei der
+Beleuchtung statt beim Modulbau.
+
+**Genommen: Userspace über libusb.** `ite8291r3-ctl` (GPL-2.0, PyPI) spricht den
+Controller direkt an. Kein Kernelmodul, überlebt Kernel-Updates ersatzlos.
+Nötig ist nur Zugriff auf den Geräteknoten, und das macht
+`udev/60-ite8291-kbdlight.rules` mit demselben `TAG+="uaccess"` wie die
+Stream-Deck-Regel:
+
+```console
+$ getfacl -p /dev/bus/usb/005/003 | grep '^user:'
+user::rw-
+user:zoellert:rw-
+```
+
+Installiert wird per `pipx` und **auf `==0.4` gepinnt** (wie das SDDM-Theme),
+und nur, wenn der Controller wirklich steckt — auf dem cube wäre es Fracht.
+Das Tool selbst liegt bewusst *nicht* im Repo: es steht unter GPL-2.0, dieses
+Repo hat gar keine LICENSE-Datei, und eine GPL-Datei hineinzukopieren würde
+diese Frage unter der Hand beantworten.
+
+**Der Wrapper.** `dot_local/bin/kbdlight` ist eigener Code und macht das, was
+das Tool nicht kann: Toggle mit gemerkter Helligkeit, Auf/Ab in Schritten, und
+Farben über **Namen** statt RGB-Tripel. Die Farbwerte werden dabei nicht
+dupliziert, sondern zur Laufzeit aus `hypr/mocha.conf` gelesen — die Datei
+bezeichnet sich selbst als "einzige Quelle der Palette", und das soll auch für
+die Tastatur gelten. Ein Theme-Wechsel zieht die Beleuchtung damit automatisch
+mit.
+
+```console
+$ kbdlight color mauve      # Catppuccin Mocha Mauve = cba6f7 = 203,166,247
+$ kbdlight status
+Helligkeit: 25/50
+Farbe:      mauve (203,166,247)
+```
+
+**Die Fn-Tasten funktionieren direkt.** Das Input-Device `Uniwill WMI hotkeys`
+meldet laut Capability-Bitmap `KBDILLUMTOGGLE`, `KBDILLUMUP` und
+`KBDILLUMDOWN` — es braucht also kein Custom-Modul, nur drei Bindings in
+`binds.conf`. Sie sind als `bindl` gesetzt und gehen damit auch bei gesperrtem
+Bildschirm; Licht anmachen ist nichts, wofür man erst das Passwort tippen will.
+
+**Auf dem cube** sagt `kbdlight` sofort, dass kein Controller da ist, statt
+kommentarlos nichts zu tun oder einen Python-Traceback zu zeigen — dasselbe
+Prinzip wie bei `keylight` ohne konfigurierten Host.
 
 ## Portale & Standardbrowser
 

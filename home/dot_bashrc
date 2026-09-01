@@ -63,6 +63,14 @@ alias ip='ip -color=auto'
 alias df='df -h'
 alias free='free -h'
 
+# Emacs in der TUI statt in einem eigenen Fenster. Farben und Font kommen damit
+# aus foot (Catppuccin Mocha + Fira Code, s. dot_config/foot/foot.ini) — Emacs
+# selbst bringt in der TUI keinen eigenen Font mit.
+# Als Alias und nicht als Wrapper in dot_local/bin: ein Skript namens `emacs` im
+# PATH wuerde auch das `emacs --batch` in bootstrap.sh abfangen. Aliase gelten
+# nur in interaktiven Shells, der Batch-Aufruf laeuft unveraendert weiter.
+alias emacs='emacs -nw'
+
 # --- Prompt ----------------------------------------------------------------
 # Git-Status im Prompt. git-prompt.sh liefert __git_ps1 und kommt aus git-core,
 # ist also ohne Zusatzpaket da. bash-completion sourct es NICHT automatisch —

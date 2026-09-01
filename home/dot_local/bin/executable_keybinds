@@ -29,9 +29,14 @@ format_binds() {
             next
         }
 
-        /^[ \t]*bindm?[ \t]*=/ {
+        # bind[a-z]* statt bindm?: Hyprland kennt neben bind/bindm auch bindl
+        # (auch bei Lock), binde (Wiederholung) und Kombinationen wie bindel.
+        # Mit dem alten Muster fielen genau die durch — die Beleuchtungs- und
+        # Medientasten standen in binds.conf und fehlten trotzdem im Popup,
+        # ohne dass irgendwo etwas schiefging.
+        /^[ \t]*bind[a-z]*[ \t]*=/ {
             line = $0
-            sub(/^[ \t]*bindm?[ \t]*=[ \t]*/, "", line)
+            sub(/^[ \t]*bind[a-z]*[ \t]*=[ \t]*/, "", line)
 
             n = split(line, f, ",")
             mods = trim(f[1])

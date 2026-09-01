@@ -1,0 +1,45 @@
+# Audio-Handler fuer mimeapps.list: oeffnet MP3/FLAC/... im lokalen Player.
+#
+# Ruft NICHT mpv direkt auf, sondern dot_local/bin/music. Der Grund ist die
+# Einzel-Instanz: mpv direkt gestartet macht pro Datei einen eigenen Player auf,
+# zwei Stuecke laufen dann gleichzeitig. Das Skript schickt die Datei statt-
+# dessen per IPC an den schon laufenden Player. Alle mpv-Optionen stehen dort,
+# damit sie nicht an zwei Stellen gepflegt werden muessen.
+#
+# EIGENE Desktop-ID, kein Schatten von mpv.desktop (anders als bei
+# emacs.desktop daneben): das Paket-Original ist der Video-Player und soll das
+# bleiben — ueberschreibt man es, verliert man mit demselben Griff das Abspielen
+# von Videos. Preis der eigenen ID: mpv steht in fuzzel weiterhin einmal als
+# "mpv Media Player" (das Original), diese Datei haelt NoDisplay=true dagegen
+# und taucht dort nicht auf. Sie ist ein Handler, kein Programm zum Starten.
+#
+# chezmoi-TEMPLATE, und das ist der Punkt der ganzen Datei: Exec= sieht KEINE
+# Shell. Ein '~' wird nicht expandiert, $HOME nicht ersetzt, und ob
+# ~/.local/bin im PATH dessen steht, der den Handler aufruft, ist nicht
+# garantiert (gemessen: bei Double Commander ja — aber genau diese Annahme hat
+# sich bei den Hyprland-Bindings schon einmal als falsch erwiesen, s. README
+# "Login-Screen"). Das Template schreibt den echten Pfad hinein.
+#
+# `foot -e` steckt im Skript, nicht hier: Terminal=true liesse den AUFRUFER
+# einen Terminal-Emulator suchen — ueber eine DE-Einstellung oder ein
+# x-terminal-emulator-Alternatives-Symlink. Auf diesem Setup ohne DE gibt es
+# weder das eine noch das andere, der Start schluege still fehl.
+#
+# %F (Grossbuchstabe, mehrere lokale Pfade) statt %f: markiert man im Double
+# Commander ein ganzes Album und drueckt Enter, wird daraus EINE Playlist statt
+# ein Fenster pro Titel.
+#
+# Kein audio/x-flac, audio/mp3 usw. in MimeType=: das sind laut
+# /usr/share/mime/aliases Aliase auf audio/flac bzw. audio/mpeg, die Aufloesung
+# macht shared-mime-info. Hier stehen nur die kanonischen Typen.
+[Desktop Entry]
+Type=Application
+Name=mpv (Audio)
+GenericName=Audio-Player
+Comment=MP3/FLAC im Terminal abspielen
+Exec={{ .chezmoi.homeDir }}/.local/bin/music %F
+Icon=mpv
+Terminal=false
+NoDisplay=true
+Categories=AudioVideo;Audio;Player;
+MimeType=audio/mpeg;audio/flac;audio/mp4;audio/ogg;audio/x-vorbis+ogg;audio/x-opus+ogg;audio/vnd.wave;

@@ -53,6 +53,12 @@ sddm-wayland-generic        # Explizit gelistet, damit die Wahl feststeht: sddm 
 waybar
 mako
 fuzzel                      # Launcher; Alternative: rofi-wayland
+pipx                        # nur für ite8291r3-ctl (RGB-Tastaturbeleuchtung im
+                            # book). Bewusst pipx statt 'pip install --user':
+                            # eigenes venv, kein Konflikt mit dnf-verwalteten
+                            # site-packages. Fedora empfiehlt genau das.
+usbutils                    # lsusb — Bootstrap prüft damit, ob der ITE-Controller
+                            # überhaupt steckt; war auf dem book nicht installiert
 wl-clipboard
 cliphist
 swaybg                      # Wallpaper. NICHT hyprpaper: das ist wie hyprland selbst
@@ -92,6 +98,44 @@ pipewire-utils              # pw-dump für dot_local/bin/audio-out. Eigenes Subp
                             # `wpctl status`, deren Format versionsabhängig ist.
                             # ACHTUNG: pactl steckt hier NICHT drin, das käme aus
                             # pulseaudio-utils — wird aber nirgends gebraucht.
+
+# --- Musik: lokale Dateien (Streaming bleibt Cider, s. flatpaks.txt) ---
+mpv                         # CLI-Player für MP3/FLAC. Läuft im foot, ohne Bibliothek und
+                            # ohne Daemon — die Frage hier heisst "spiel diese Datei bzw.
+                            # diesen Ordner ab", nicht "verwalte meine Sammlung".
+                            # Kein cmus und kein musikcube (die naheliegenden TUI-Player):
+                            # beide gibt es in F44 nicht mehr, `dnf search cmus` antwortet
+                            # mit "Keine Übereinstimmung gefunden". mpd+ncmpcpp gäbe es,
+                            # wäre aber Daemon + Client + zwei weitere Configs für dasselbe.
+                            # Decoder kommen vollständig aus ffmpeg — mpv linkt gegen
+                            # libavcodec/libavformat (`dnf repoquery --requires mpv`), MP3
+                            # und FLAC sind damit drin. Es braucht kein libmad, kein
+                            # flac-Paket und keine Codec-Nachinstallation.
+                            # ACHTUNG: bringt /usr/share/applications/mpv.desktop mit, mpv
+                            # steht damit auch in fuzzel. Das ist der VIDEO-Player; fürs
+                            # Audio gilt dot_local/share/applications/mpv-audio.desktop.
+mpv-mpris                   # MPRIS-Brücke für mpv. Ohne sie sähen playerctl und damit die
+                            # Medientasten aus binds.conf nur Cider und niemals den lokalen
+                            # Player. Es gibt daran NICHTS zu konfigurieren: das Paket legt
+                            # genau /etc/mpv/scripts/mpris.so ab, und das ist mpvs
+                            # systemweites Skriptverzeichnis — jede mpv-Instanz lädt es von
+                            # allein, auch die aus einem .desktop gestartete.
+socat                       # Spricht mpvs IPC-Socket an — damit ersetzt eine neu
+                            # geoeffnete Datei den laufenden Player, statt einen zweiten
+                            # aufzumachen (dot_local/bin/music). Kein Ersatz durch MPRIS
+                            # moeglich: mpv-mpris implementiert das Player-Interface, aber
+                            # NICHT TrackList (steht so in seiner README) — ein markiertes
+                            # Album waere damit auf die erste Datei zusammengeschrumpft.
+                            # Liegt wie playerctl bisher nur als Abhaengigkeit herum
+                            # (`dnf history userinstalled` kennt es nicht), deshalb explizit.
+                            # Das JSON dafuer baut jq, das steht schon oben.
+playerctl                   # Steuert jeden MPRIS-Player, also mpv und Cider über dieselben
+                            # Tasten (s. binds.conf, Abschnitt "Medien").
+                            # Liegt bisher nur zufällig auf der Platte: waybar braucht
+                            # libplayerctl.so.2, die steckt im Subpaket playerctl-libs — und
+                            # dessen Spec verlangt das Hauptpaket wieder zurück. Fällt diese
+                            # Verschränkung bei einem Rebuild weg, ist das Kommando lautlos
+                            # fort. Gleiche Begründung wie bei tar, unzip und zstd.
 
 # --- Terminal & Basics ---
 foot                        # Wayland-nativ, schlank; Alternative: kitty, alacritty
@@ -158,12 +202,55 @@ doublecmd-qt6               # ACHTUNG Paketname: es MUSS die -qt6-Variante sein,
                             # dot_config/gtk-3.0/settings.ini, Feinfarben in
                             # dot_config/doublecmd/colors.json. Details: README.
 
+# --- Rechner ---
+gnome-calculator            # Pendant zum Windows-Rechner, bis hin zu den Modi: Basis,
+                            # Erweitert, Finanzen, Programmierung (Hex/Bin/Oktal) plus
+                            # Einheiten- und Waehrungsumrechnung, dazu ein Verlauf.
+                            # GTK4, also Wayland-nativ — gleiche Ueberlegung wie bei
+                            # doublecmd-qt6. Und die Einstellungen sind seit libadwaita
+                            # ein In-Window-Dialog: es entsteht KEIN zweites Toplevel,
+                            # das Hyprland mitkacheln wuerde. Genau der Einwand, an dem
+                            # LibreOffice in flatpaks.txt scheitert.
+                            # Gemessen (dnf download --resolve --url, x86_64 ohne die
+                            # i686-Multilib-Zeilen, die --resolve mitschleppt):
+                            # 4 neue Pakete, ~18 MB — libadwaita, gtksourceview5, libgee.
+                            # gtk4 selbst ist schon da, aber NUR weil zathura es
+                            # mitgezogen hat (repoquery --whatrequires libgtk-4.so.1
+                            # nennt genau gtk4 und zathura). Faellt zathura irgendwann
+                            # weg, kostet der Rechner entsprechend mehr — dieselbe
+                            # Zufallslage wie bei zstd und fuse3.
+                            # dnf und nicht Flatpak: das ist die Kategorie zathura /
+                            # nm-connection-editor / keepassxc — kleines Werkzeug, das
+                            # zum Desktop selbst gehoert, nicht die Kategorie
+                            # Slack/OnlyOffice. (Auf Flathub gaebe es org.gnome.Calculator,
+                            # und org.gnome.Platform 50 liegt wegen SimpleScan ohnehin
+                            # schon da — es waere also nicht teurer, nur langsamer beim
+                            # Start, und an einer Hardwaretaste faellt genau das auf.)
+                            # Verworfen, jeweils mit derselben Messung:
+                            #   kcalc         — 17 KF6-Pakete. Derselbe Einwand wie bei
+                            #                   krusader und skanlite.
+                            #   qalculate-gtk — 9 Pakete, zieht gnuplot und qt6-qt5compat
+                            #                   nach. Rechnerisch maechtiger (Einheiten,
+                            #                   Symbolik), bedient sich aber ueber eine
+                            #                   Eingabezeile statt ueber ein Tastenfeld —
+                            #                   also gerade NICHT das gesuchte Pendant.
+                            #   speedcrunch   — dasselbe Bedienmodell, nur schlanker.
+                            #   galculator    — mit 1 Paket das billigste (GTK3 ist da),
+                            #                   aber upstream seit Version 2.1.4 still.
+                            # Taste XF86Calculator und Float-Regel: s. hypr/binds.conf
+                            # und hypr/rules.conf.
+
 # --- Fonts (waybar-Icons brauchen fontawesome) ---
-fira-code-fonts                # Ligaturen-Font fuer Terminal/Editor. ACHTUNG: der Font
-                               # allein macht keine Ligaturen — das Programm muss sie
-                               # rendern. foot tut das NICHT (Design-Entscheidung des
-                               # Projekts), NetBeans/Swing ebenso wenig. Wirksam ist es
-                               # in Emacs (ligature.el) und GTK/Pango-Programmen.
+fira-code-fonts                # Terminal-Font (foot, s. dot_config/foot/foot.ini) und damit
+                               # auch der Font von Emacs, seit das in der TUI laeuft.
+                               # ACHTUNG: der Font allein macht keine Ligaturen — das
+                               # Programm muss sie rendern. foot tut das NICHT
+                               # (Design-Entscheidung des Projekts, CHANGELOG.md: es
+                               # shaped Grapheme statt Textlaeufe), NetBeans/Swing
+                               # ebenso wenig. In Emacs waere ligature.el wirksam, aber
+                               # NUR im GUI-Frame — in der TUI zeichnet foot, nicht
+                               # Emacs. Ligaturen gibt es hier also faktisch nur in
+                               # GTK/Pango-Programmen.
 jetbrains-mono-fonts
 google-noto-sans-fonts
 google-noto-emoji-fonts
@@ -343,6 +430,15 @@ pandoc-cli                    # ACHTUNG Paketname: das Kommando heisst `pandoc`,
 #   emacs-ess — gibt es in Fedora nicht mehr (`dnf search emacs-ess`: keine
 #     Uebereinstimmung). ESS kommt aus GNU ELPA, installiert von bootstrap.sh; das
 #     Archiv signiert seine Pakete, die Installation legt ess-<ver>.signed daneben.
+#   emacs-markdown-mode — gibt es in Fedora gar nicht (`dnf search emacs-markdown`:
+#     keine Uebereinstimmung). Kommt aus NonGNU ELPA, ebenfalls signiert und
+#     ebenfalls von bootstrap.sh installiert. Vorschau laeuft ueber pandoc (s. o.).
+#   emacs-treemacs — ebenfalls kein Fedora-Paket. Kommt als EINZIGES Emacs-Paket
+#     hier aus MELPA, weil GNU/NonGNU ELPA es nicht fuehren, und ist damit die
+#     bewusste Ausnahme von der Signatur-Regel: MELPA signiert nicht. Unsigniert
+#     sind treemacs, s, ht, pfuture und cfrs; die restlichen vier Abhaengigkeiten
+#     (dash, ace-window, hydra, posframe/avy/lv) zieht package-archive-priorities
+#     signiert aus GNU ELPA. Begruendung in bootstrap.sh und init.el.
 #   rstudio — kein Fedora-Paket, kein Flathub-Eintrag (beides geprueft). Posit liefert
 #     nur ein UNSIGNIERTES rhel9-RPM, 340 MB gepackt / 1,4 GB installiert, ein Electron-
 #     Bundle mit eigener Chromium-Kopie. Verworfen zugunsten von Emacs+ESS.

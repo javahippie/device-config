@@ -1,0 +1,30 @@
+# Schattet /usr/share/applications/emacs.desktop. XDG_DATA_HOME steht in
+# XDG_DATA_DIRS vor /usr/share, bei gleicher Desktop-ID gewinnt also diese
+# Datei — mimeapps.list zeigt weiter auf "emacs.desktop" und braucht deshalb
+# keine Aenderung, und in fuzzel taucht Emacs genau EINMAL auf statt zweimal.
+#
+# Zweck: Emacs oeffnet im Terminal statt in einem eigenen Fenster. Farben und
+# Font kommen damit aus foot (Catppuccin Mocha + Fira Code, s. dot_config/foot).
+#
+# `foot -e` statt Terminal=true: Terminal=true laesst den AUFRUFER einen
+# Terminal-Emulator suchen — ueber eine DE-Einstellung oder ein
+# x-terminal-emulator-Alternatives-Symlink. Auf diesem Setup ohne DE gibt es
+# weder das eine noch das andere; der Start schluege still fehl, nach dem
+# gleichen Muster wie das fehlende inode/directory in mimeapps.list. Der
+# explizite Aufruf hat diese Abhaengigkeit nicht.
+#
+# Gegenueber der Fedora-Datei geaendert sind NUR Exec= und text/markdown in
+# MimeType= (letzteres deckt die [Added Associations] aus mimeapps.list gleich
+# mit ab). Bei Emacs-Major-Updates gegenpruefen, ob Fedora dort etwas anderes
+# anfasst: `cat /usr/share/applications/emacs.desktop`.
+[Desktop Entry]
+Name=Emacs
+GenericName=Text Editor
+Comment=Edit text
+MimeType=text/english;text/plain;text/markdown;text/x-makefile;text/x-c++hdr;text/x-c++src;text/x-chdr;text/x-csrc;text/x-java;text/x-moc;text/x-pascal;text/x-tcl;text/x-tex;application/x-shellscript;text/x-c;text/x-c++;
+Exec=foot -e emacs -nw %F
+Icon=emacs
+Type=Application
+Terminal=false
+Categories=Development;TextEditor;
+StartupNotify=true

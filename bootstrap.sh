@@ -29,10 +29,24 @@ if [ -f flatpaks.txt ]; then
     [ "${#FLATS[@]}" -gt 0 ] && flatpak install --user -y --noninteractive flathub "${FLATS[@]}"
 fi
 
-echo "==> udev-Regel: Stream Deck ohne root nutzbar (OpenDeck-Flatpak braucht das trotzdem)"
+echo "==> udev-Regeln: Stream Deck und ITE-8291-Tastaturbeleuchtung ohne root nutzbar"
+# Beide Regeln sind hostunabhängig: fehlt die Hardware, laufen sie ins Leere.
 sudo cp udev/40-streamdeck.rules /etc/udev/rules.d/40-streamdeck.rules
+sudo cp udev/60-ite8291-kbdlight.rules /etc/udev/rules.d/60-ite8291-kbdlight.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger
+
+# RGB-Tastaturbeleuchtung im "book". Nur wenn der Controller wirklich steckt —
+# auf dem cube wäre das Tool sinnlose Fracht. Version gepinnt wie beim
+# SDDM-Theme: ein späterer Bootstrap soll nicht unter der Hand eine andere
+# Version ziehen und das Verhalten ändern.
+# Kein DKMS-Modul (ite_8291 aus TUXEDOs Repo) — s. README, Abschnitt
+# "Tastaturbeleuchtung".
+if lsusb 2>/dev/null | grep -qi '048d:6004' \
+   || grep -qs 048d /sys/bus/usb/devices/*/idVendor; then
+    echo "==> ITE-8291-Controller erkannt: Steuertool installieren"
+    pipx install 'ite8291r3-ctl==0.4' || echo "    (bereits installiert)"
+fi
 
 echo "==> Podman-Socket (rootless, Docker-API-kompatibel für Tools, die docker.sock erwarten)"
 systemctl --user enable --now podman.socket
@@ -178,12 +192,27 @@ else
     echo "    bereits installiert, übersprungen"
 fi
 
-echo "==> ESS (Emacs Speaks Statistics) — R in Emacs, kein Fedora-Paket"
-# `dnf search emacs-ess` findet nichts mehr, das Paket ist aus Fedora raus.
-# Bezugsweg ist GNU ELPA — das Archiv, das Emacs 30 ab Werk kennt; MELPA wird
-# hier bewusst NICHT eingeschaltet. GNU ELPA signiert seine Pakete, die
-# Installation legt neben ess-<ver>/ eine ess-<ver>.signed ab; das ersetzt die
-# gepinnte SHA-256, die bei minikube & Co. nötig ist.
+echo "==> Emacs-Pakete aus ELPA — ESS, markdown-mode und Treemacs"
+# Keines der drei ist in Fedora (`dnf search emacs-ess` / `emacs-markdown` /
+# `emacs-treemacs`: jeweils keine Übereinstimmung).
+#
+# ess und markdown-mode kommen aus GNU bzw. NonGNU ELPA — den zwei Archiven, die
+# Emacs 30 ab Werk kennt. Beide signieren, die Installation legt neben
+# <paket>-<ver>/ eine <paket>-<ver>.signed ab; das ersetzt die gepinnte SHA-256,
+# die bei minikube & Co. nötig ist.
+#
+# treemacs gibt es NUR auf MELPA, und MELPA signiert nicht. Das ist die bewusste
+# Ausnahme von der Regel oben und der einzige Grund, warum MELPA hier überhaupt
+# auftaucht. Unsigniert bleiben dadurch treemacs selbst und vier seiner acht
+# Abhängigkeiten (s, ht, pfuture, cfrs).
+#
+# package-archive-priorities ist das, was die Ausnahme eine Ausnahme bleiben
+# lässt: MELPA versioniert nach Datum (20260812.1430) und schlägt damit JEDE
+# GNU-ELPA-Version. Ohne die Zeile würden ess und markdown-mode hier still auf
+# unsignierte MELPA-Kopien wechseln, und von treemacs' Abhängigkeiten käme keine
+# einzige mehr aus GNU ELPA. Mit ihr zieht MELPA nur für das, was es sonst
+# nirgends gibt. Dieselbe Liste steht in dot_config/emacs/init.el — hier
+# notgedrungen doppelt, denn dieses Skript läuft vor dem ersten `chezmoi apply`.
 #
 # package-user-dir wird ausdrücklich gesetzt, und das ist kein Schmuck:
 # bootstrap.sh läuft VOR dem ersten `chezmoi apply`, ~/.config/emacs existiert
@@ -191,17 +220,21 @@ echo "==> ESS (Emacs Speaks Statistics) — R in Emacs, kein Fedora-Paket"
 # ist, und fiele sonst auf ~/.emacs.d zurück (nachgemessen). ESS läge dann an
 # einer Stelle, an der der spätere Emacs es nie sucht.
 EMACS_ELPA="$HOME/.config/emacs/elpa"
-if ! compgen -G "$EMACS_ELPA/ess-*" >/dev/null; then
+for pkg in ess markdown-mode treemacs; do
+    if compgen -G "$EMACS_ELPA/$pkg-[0-9]*" >/dev/null; then
+        echo "    $pkg bereits installiert, übersprungen"
+        continue
+    fi
     mkdir -p "$EMACS_ELPA"
     emacs --batch --eval "(progn
         (setq package-user-dir \"$EMACS_ELPA\")
         (require 'package)
+        (add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)
+        (setq package-archive-priorities '((\"gnu\" . 10) (\"nongnu\" . 5) (\"melpa\" . 0)))
         (package-initialize)
         (package-refresh-contents)
-        (package-install 'ess))"
-else
-    echo "    bereits installiert, übersprungen"
-fi
+        (package-install '$pkg))"
+done
 
 echo "==> Suspend: nur S3, kein s2idle-Fallback"
 # systemd probiert per Default `SuspendState=mem standby freeze` der Reihe nach

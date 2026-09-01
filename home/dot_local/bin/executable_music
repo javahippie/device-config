@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Lokaler Musik-Player: mpv in einem kleinen foot-Fenster — und zwar EINEM.
+#
+# Ohne dieses Skript startet jede geoeffnete Datei ihren eigenen mpv, und zwei
+# Stuecke laufen gleichzeitig. Der Handler
+# dot_local/share/applications/mpv-audio.desktop.tmpl ruft deshalb nicht mehr
+# mpv direkt auf, sondern hier herein; von Hand geht dasselbe:
+#
+#   music ~/Musik/album/*.flac      # startet oder ersetzt
+#
+# Technik ist mpvs eigener IPC-Socket (--input-ipc-server), nicht MPRIS: das
+# Player-Interface von mpv-mpris kann zwar OpenUri, aber TrackList NICHT (steht
+# so in /usr/share/doc/mpv-mpris/README.md) — ein markiertes Album waere damit
+# auf die erste Datei zusammengeschrumpft. Ueber den Socket geht die erste
+# Datei als 'replace' und der Rest als 'append', die Playlist bleibt also ganz.
+#
+# Es wird NICHT der Fokus geholt. Wer das anders will, haengt hinter die
+# Sende-Schleife: hyprctl dispatch focuswindow class:mpv-audio
+# Bewusst nicht Default: ein Doppelklick im Dateimanager soll nicht die
+# Workspace wechseln.
+set -euo pipefail
+
+SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/mpv-audio.sock"
+
+if [ "$#" -eq 0 ]; then
+    echo "music: keine Datei angegeben" >&2
+    echo "Aufruf: music DATEI|VERZEICHNIS|URL ..." >&2
+    exit 2
+fi
+
+# Pfade absolut machen. mpv loest ein relatives 'loadfile' gegen das
+# Arbeitsverzeichnis DES LAUFENDEN mpv auf — und das ist das Verzeichnis, in
+# dem der Player irgendwann mal gestartet wurde, nicht unseres. Aus dem
+# .desktop kommen ohnehin absolute Pfade (%F), von Hand aber nicht.
+# Was es nicht als Datei gibt, geht unveraendert durch (URLs).
+files=()
+for f in "$@"; do
+    if [ -e "$f" ]; then files+=("$(realpath -- "$f")"); else files+=("$f"); fi
+done
+
+# Ein JSON-Kommando pro Zeile, so will es mpvs IPC. jq baut das, damit
+# Anfuehrungszeichen und Leerzeichen im Dateinamen nicht zum Problem werden —
+# von Hand zusammengeklebtes JSON waere hier genau die Sorte Fehler, die erst
+# beim einen Album mit Apostroph im Titel auffaellt.
+commands() {
+    jq -cn --args '{command: $ARGS.positional}' loadfile "${files[0]}" replace
+    for f in "${files[@]:1}"; do
+        jq -cn --args '{command: $ARGS.positional}' loadfile "$f" append
+    done
+}
+
+# Laeuft schon ein Player? Die blosse Existenz der Socket-DATEI beweist das
+# nicht: nach einem harten Abschuss bleibt sie liegen. Der Verbindungsversuch
+# ist der Test — klappt er, ist der Player da und hat die Playlist schon.
+# Alles in EINER Verbindung, sonst kostet jede Datei eines Albums die
+# socat-Wartezeit erneut.
+if commands | socat -t0.2 - "UNIX-CONNECT:$SOCK" >/dev/null 2>&1; then
+    exit 0
+fi
+
+# Kein Player (oder eine Socket-Leiche). mpv legt den Socket selbst an, kann
+# aber nicht ueber eine bestehende Datei binden.
+rm -f "$SOCK"
+
+# --no-video, --msg-level und --term-osd-bar: s. README, Abschnitt
+# "Das Player-Fenster". Die app-id haengt an der Fensterregel in rules.conf.
+exec foot --app-id=mpv-audio -e mpv \
+    --no-video \
+    --msg-level=all=warn,statusline=status \
+    --term-osd-bar \
+    --input-ipc-server="$SOCK" \
+    -- "${files[@]}"
