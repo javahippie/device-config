@@ -298,6 +298,115 @@ pw-link -l | grep -B1 capture.rnnoise        # zeigt, an welchem echten Mikrofon
   nach Priorität. Ein anderes erzwingen: `target.object` in `capture.props`
   auf den `node.name` des gewünschten Geräts setzen (`pw-dump` zeigt ihn).
 
+## Aufnahmemodus (nur `cube`)
+
+Waybar-Schalter zwischen "Interface für Meetings" und "Interface für die DAW".
+Modul `custom/recording`, Script `dot_local/bin/recording-mode`, sitzt in der
+Bar links neben `Vol`.
+
+| Anzeige | Bedeutung |
+| --- | --- |
+| `Rec off` (gedämpft) | Alltag: Scarlett im Surround-Profil, ein Stereo-Sink, RNNoise am Mikro, CPU im Sparmodus |
+| `Rec` (Mauve) | Aufnahme: Scarlett auf `pro-audio`, CPU auf `performance` + EPP `performance`, C-States > 100 µs aus |
+| `Rec ?!` (rot) | Halb geschaltet — praktisch immer eine fehlende oder nicht greifende sudoers-Regel |
+| `Rec —` (gedämpft) | Interface nicht angeschlossen |
+
+**Warum ein Schalter und keine Dauereinstellung.** `pro-audio` liefert bewusst
+keinen fertigen Stereo-Sink, sondern nackte Ports — Slack, Firefox & Co. finden
+darin kein Ausgabegerät, das sie ohne Handarbeit bespielen könnten. WirePlumber
+stuft das Profil deshalb mit Priorität 1 ein (das Surround-Profil hat 1301) und
+wählt es nie von selbst. Für Meetings ist es unbrauchbar, für die DAW ist alles
+andere Ballast: `hw:0` roh, alle 10 Ein- und 6 Ausgänge einzeln, keine
+ALSA-Plugin- und keine Channel-Remap-Schicht.
+
+**Wozu das Ganze.** Roundtrip-Latenz bei Gitarre über Amp-Sim. Vorher rund
+26 ms (480 Samples Quantum + 240 Samples Headroom, Interface im
+Surround-Profil), damit spielt es sich spürbar hinterher. Mit `pro-audio` und
+kleinem Puffer sind ~7 ms bei 48 kHz und ~4 ms bei 96 kHz erreichbar — zum
+Vergleich: ein Amp in einem Meter Entfernung "hat" schon 3 ms. Hardware-Direct-
+Monitoring im Scarlett hilft hier NICHT, weil man das bearbeitete Signal hören
+will, nicht das cleane.
+
+**Reihenfolge:** erst den Button auf `Rec`, dann die DAW starten. Umgekehrt
+zieht der Profilwechsel dem laufenden Programm das Gerät unter den Füßen weg.
+
+**Die Hostweiche steht an drei Stellen** und muss zusammen gepflegt werden:
+
+| Datei | gatet |
+| --- | --- |
+| `home/.chezmoiignore` | das Script selbst |
+| `home/dot_config/waybar/config.jsonc.tmpl` | den Button in der Bar |
+| `bootstrap.sh` | Root-Helfer + sudoers-Regel |
+
+`home/dot_config/waybar/style.css` ist bewusst NICHT gegatet: CSS-Regeln für ein
+nicht vorhandenes Modul sind wirkungslos, eine vierte Weiche wäre nur zusätzliches
+Risiko.
+
+**Der Root-Teil.** Governor, EPP und C-States liegen in `/sys` und brauchen
+root. Statt dem Benutzer `sudo` auf `tee` zu geben (das wäre effektiv
+passwortloses root) macht es ein eigener Helfer, `system/recording-mode-cpu`,
+freigegeben über `system/recording-mode.sudoers` für genau zwei Aufrufe —
+`… on` und `… off`, sonst nichts. Zwei Details, an denen es sonst still
+scheitert:
+
+- Die Helfer-Datei MUSS `root:root 0755` sein. Gehört sie dem Benutzer, kann
+  der ihren Inhalt austauschen und per NOPASSWD-Regel als root ausführen
+  lassen — die Regel wäre dann passwortloses root mit einem Zwischenschritt.
+  `bootstrap.sh` benutzt deshalb `install -o root -g root -m 0755`, nicht `cp`.
+- Der Zielname in `/etc/sudoers.d/` trägt KEINE Endung. sudo überspringt dort
+  alles, was einen Punkt im Namen hat: aus `recording-mode.sudoers` würde eine
+  Datei, die korrekt installiert ist, sauber parst und trotzdem nie gelesen
+  wird.
+
+`bootstrap.sh` prüft nach dem Installieren beides: `visudo -c` (parst die
+Datei?) und einen echten `sudo -n`-Testaufruf (greift die Regel?). Das zweite
+ist nicht redundant — genau diese Lücke hat beim ersten Einrichten Zeit
+gekostet.
+
+**C-States.** Im Aufnahmemodus fliegen alle Idle-States mit mehr als 100 µs
+Aufweckzeit raus, auf dem Ryzen 9 7900 ist das C3 mit 350 µs. Bei 128 Samples
+@ 48 kHz sind das rund 13 % des gesamten Zyklusbudgets, fällig genau dann, wenn
+der Kern aus dem Leerlauf geholt wird. C1 (1 µs) und C2 (18 µs) bleiben an, die
+kosten nichts und sparen echte Wärme. Gefiltert wird über die gemessene Latenz,
+nicht über den Namen — "C3" heißt nicht auf jeder CPU dasselbe, die Zahl in
+`latency` schon.
+
+**Zustand wird nirgends gespeichert.** Jeder Aufruf liest frisch aus PipeWire
+und `/sys`. Ein von Hand mit `wpctl` umgestelltes Profil oder ein abgezogenes
+Interface fällt der Anzeige damit sofort auf, statt gegen eine gemerkte
+Wahrheit zu laufen. Ein Klick auf `Rec ?!` führt zurück in den Alltagsmodus,
+nicht noch einmal in denselben Fehler — ein halb geschalteter Zustand ist immer
+ein kaputter Helfer, und den repariert kein Mausklick.
+
+**Realtime** — nicht Teil dieses Schalters, aber Voraussetzung dafür, dass er
+etwas bringt. Ohne Realtime knackt es bei kleinen Puffern, egal was Profil und
+Governor tun. Zwei Fallen, beide am 2026-09-01 geschlossen:
+
+- Fedora liefert `/etc/security/limits.d/` mit `@pipewire - rtprio 70` aus, die
+  Regel greift aber nur für Mitglieder der Gruppe `pipewire` — und in die trägt
+  Fedora niemanden ein. Ohne sie fällt PipeWire auf rtkit zurück und bekommt
+  Priorität 20 statt der konfigurierten 60. **`bootstrap.sh` erledigt das**
+  (hostunabhängig, direkt nach dem dnf-Lauf — vorher gibt es die Gruppe nicht).
+- Ein Flatpak kommt ohne `[System Bus Policy]` gar nicht an rtkit heran und
+  läuft komplett ohne Realtime — rtkit sitzt auf dem System-Bus, nicht auf dem
+  Session-Bus. Behoben mit
+  `flatpak override --user --system-talk-name=org.freedesktop.RealtimeKit1 <app-id>`
+  für die DAW (von Hand installiert, bewusst nicht Teil dieses Repos).
+
+Die Gruppe wirkt erst nach Ab- und Anmelden: PAM vergibt das Rlimit beim
+Session-Start, ein neues Terminal reicht nicht. Gegenprobe: `ulimit -r` muss
+`70` sagen und `ps -Lo cls,rtprio -p $(pgrep -x pipewire)` den Data-Loop auf
+`RR 60` statt `RR 20`.
+
+Der Flatpak-Override dagegen steht nirgends im Repo und geht bei einer
+Neuinstallation verloren — die DAW ist bewusst nicht Teil dieses Repos.
+
+**Danach noch offen:** `api.alsa.headroom` steht für das Scarlett auf 240
+Samples = 5 ms, die konstant auf jeden Puffer obendrauf kommen. Eine
+WirePlumber-Drop-in-Regel neben `99-rnnoise.conf` kann das auf 0–32 ziehen.
+Und 96 kHz halbiert die Millisekunden bei gleicher Blockgröße.
+
+
 ## Musik (lokale MP3/FLAC)
 
 Streaming bleibt Cider (Flatpak, Apple Music). Lokale Dateien laufen daneben in

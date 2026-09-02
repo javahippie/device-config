@@ -11,7 +11,7 @@
 
     "modules-left": ["hyprland/workspaces", "hyprland/window"],
     "modules-center": ["clock"],
-    "modules-right": ["idle_inhibitor", "custom/keybinds", "pulseaudio", "bluetooth", "network", "battery", "tray"],
+    "modules-right": ["idle_inhibitor", "custom/keybinds", {{ if eq .chezmoi.hostname "cube" }}"custom/recording", {{ end }}"pulseaudio", "bluetooth", "network", "battery", "tray"],
 
     // Haelt den Rechner wach, solange laengere Hintergrund-Jobs laufen.
     // Klick schaltet um: "Idle" = normale Kette aus hypridle.conf (5 min Lock,
@@ -55,7 +55,37 @@
         "tooltip": false,
         "on-click": "~/.local/bin/keybinds"
     },
-
+{{ if eq .chezmoi.hostname "cube" }}
+    // Aufnahmemodus (dot_local/bin/recording-mode): schiebt das Scarlett ins
+    // pro-audio-Profil und die CPU aus dem Sparmodus — und wieder zurueck.
+    // Text statt Glyphe wie der Rest der Bar.
+    //
+    // NUR AUF DEM CUBE. Das Modul haengt an einem fest angeschlossenen
+    // Focusrite und einer Desktop-CPU; auf dem book waere es ein Schalter ins
+    // Leere. Die Weiche steht an drei Stellen und muss zusammen gepflegt
+    // werden: hier, in .chezmoiignore (das Script selbst) und in bootstrap.sh
+    // (Root-Helfer + sudoers-Regel). Das CSS in style.css ist bewusst NICHT
+    // gegatet — Regeln fuer ein nicht vorhandenes Modul sind wirkungslos, und
+    // eine vierte Weiche waere mehr Risiko als der Gewinn.
+    //
+    // return-type json, damit ein Aufruf Text, Tooltip UND CSS-Klasse liefert.
+    // Der Zustand wird dabei jedes Mal frisch aus PipeWire und /sys gelesen und
+    // nirgends zwischengespeichert — ein von Hand mit wpctl umgestelltes Profil
+    // oder ein abgezogenes Interface faellt der Anzeige damit sofort auf,
+    // statt sie gegen eine gemerkte Wahrheit laufen zu lassen.
+    //
+    // "signal": 7 muss zu RECMODE_WAYBAR_SIGNAL im Script passen. Nach dem
+    // Umschalten schickt das Script pkill -RTMIN+7 waybar, damit die Bar sofort
+    // nachzieht; das interval ist nur der Rueckfall fuer Aenderungen, die nicht
+    // ueber den Button liefen.
+    "custom/recording": {
+        "exec": "~/.local/bin/recording-mode status",
+        "return-type": "json",
+        "interval": 10,
+        "signal": 7,
+        "on-click": "~/.local/bin/recording-mode toggle"
+    },
+{{ end }}
     "hyprland/workspaces": {
         // Immer 1-6 zeigen, auch leer (persistent:true dafür in rules.conf).
         // all-outputs:true heißt auf "book" (2 Monitore): beide Bars zeigen

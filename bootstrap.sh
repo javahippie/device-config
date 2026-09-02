@@ -20,6 +20,39 @@ mapfile -t PKGS < <(sed 's/#.*//' packages.txt | awk 'NF{print $1}')
 # Genau so sind die drei Font-Pakete beim ersten Lauf gescheitert.
 sudo dnf install --refresh -y "${PKGS[@]}"
 
+echo "==> Gruppe 'pipewire': Realtime-Prioritaeten fuer Audio"
+# Fedora liefert mit dem pipewire-Paket eine Datei in /etc/security/limits.d/
+# aus, die '@pipewire - rtprio 70' setzt. Die Regel greift aber NUR fuer
+# Mitglieder dieser Gruppe — und in die traegt Fedora niemanden ein. Ohne den
+# Schritt hier ist 'ulimit -r' schlicht 0, PipeWire faellt auf rtkit zurueck und
+# bekommt Prioritaet 20 statt der in pipewire.conf angefragten 60. Hoerbar wird
+# das als Knacken, sobald der Puffer klein wird.
+#
+# Hostunabhaengig, obwohl der Aufnahmemodus weiter unten cube-only ist:
+# RT-faehiges PipeWire will man auf jeder Maschine, es kostet nichts.
+#
+# Angenehmer Nebeneffekt: das Rlimit vererbt sich ueber die PAM-Session auch in
+# Flatpak-Sandboxes. Eine Anwendung dort braucht dann keine eigene
+# rtkit-Berechtigung mehr, um Realtime zu bekommen.
+#
+# Muss NACH dem dnf-Lauf stehen — die Gruppe legt erst das pipewire-Paket an.
+if ! getent group pipewire >/dev/null; then
+    echo "    !! Gruppe 'pipewire' existiert nicht (liefert normalerweise das"
+    echo "       pipewire-Paket mit) — uebersprungen."
+elif [[ ",$(getent group pipewire | cut -d: -f4)," == *",$(id -un),"* ]]; then
+    # Bewusst gegen /etc/group geprueft und nicht gegen 'id -nG': letzteres
+    # zeigt die Gruppen der LAUFENDEN Session und aendert sich durch usermod
+    # nicht. Ein zweiter Bootstrap in derselben Sitzung wuerde sonst jedes Mal
+    # "hinzugefuegt" melden, obwohl laengst nichts mehr passiert.
+    echo "    schon Mitglied"
+else
+    sudo usermod -aG pipewire "$(id -un)"
+    echo "    hinzugefuegt — wirkt ERST NACH AB- UND ANMELDEN. PAM vergibt das"
+    echo "    Rlimit beim Session-Start; ein neues Terminal reicht NICHT."
+    echo "    Gegenprobe danach: 'ulimit -r' muss 70 sagen, und"
+    echo "    'ps -Lo cls,rtprio -p \$(pgrep -x pipewire)' den Data-Loop auf RR 60."
+fi
+
 echo "==> Flathub aktivieren (voll, nicht Fedoras gefilterte Auswahl)"
 flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
@@ -35,6 +68,60 @@ sudo cp udev/40-streamdeck.rules /etc/udev/rules.d/40-streamdeck.rules
 sudo cp udev/60-ite8291-kbdlight.rules /etc/udev/rules.d/60-ite8291-kbdlight.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger
+
+# Aufnahmemodus: Root-Helfer + sudoers-Regel fuer dot_local/bin/recording-mode.
+#
+# NUR AUF DEM CUBE. Anders als die udev-Regeln daruerber laeuft das hier nicht
+# einfach ins Leere, wenn die Hardware fehlt: die sudoers-Regel wuerde auf dem
+# book ein Kommando ohne Passwort freigeben, das dort niemand braucht. Weniger
+# passwortloses root ist immer besser, also gaten statt drauflos installieren.
+#
+# Die Hostweiche gibt es an DREI Stellen, die zusammen gepflegt werden muessen:
+#   hier                                        Root-Helfer + sudoers
+#   home/.chezmoiignore                         das Script selbst
+#   home/dot_config/waybar/config.jsonc.tmpl    der Button in der Bar
+# Das CSS in style.css ist bewusst ungegatet — Regeln fuer ein nicht
+# vorhandenes Modul sind wirkungslos, eine vierte Weiche waere nur Risiko.
+if [ "$(hostname -s)" = cube ]; then
+    echo "==> Aufnahmemodus: CPU-Helfer und sudoers-Regel (nur cube)"
+
+    # install statt cp, mit explizitem Eigentuemer und Modus. Das ist hier
+    # keine Sorgfaltsgeste: der Helfer laeuft gleich per NOPASSWD als root.
+    # Gehoerte die Datei dem Benutzer, koennte der ihren Inhalt austauschen
+    # und als root ausfuehren lassen — die Regel waere dann passwortloses
+    # root mit einem Zwischenschritt. root:root 0755 schliesst das.
+    sudo install -o root -g root -m 0755 \
+        system/recording-mode-cpu /usr/local/bin/recording-mode-cpu
+
+    # 0440 ist Pflicht: sudo ignoriert Dateien in sudoers.d mit anderen Rechten
+    # kommentarlos. Und der Zielname traegt bewusst KEINE Endung — sudo
+    # ueberspringt dort alles, was einen Punkt im Namen hat. Aus einer Datei
+    # namens 'recording-mode.sudoers' wuerde also eine, die stillschweigend nie
+    # gelesen wird: installiert, korrekt, wirkungslos.
+    sudo install -o root -g root -m 0440 \
+        system/recording-mode.sudoers /etc/sudoers.d/recording-mode
+
+    # Erst pruefen, dann behalten. Eine kaputte Datei in sudoers.d legt sudo
+    # vollstaendig lahm — einschliesslich des sudo, mit dem man sie wieder
+    # herauswerfen wollte. Das waere ein Reboot ins Rettungssystem.
+    if ! sudo visudo -c -q; then
+        echo "    !! sudoers-Syntaxfehler — Regel wird wieder entfernt"
+        sudo rm -f /etc/sudoers.d/recording-mode
+        exit 1
+    fi
+
+    # Gegenprobe, dass die Regel auch WIRKT. 'visudo -c' sagt nur, dass die
+    # Datei parst — nicht, dass sie greift. Genau diese Luecke hat beim ersten
+    # Einrichten Zeit gekostet: Helfer lag da, Datei parste, und der Button
+    # blieb trotzdem im halb geschalteten Zustand haengen.
+    if sudo -n /usr/local/bin/recording-mode-cpu off >/dev/null 2>&1; then
+        echo "    Regel greift: 'recording-mode' kann die CPU ohne Passwort schalten"
+    else
+        echo "    !! Regel greift NICHT — 'sudo -n /usr/local/bin/recording-mode-cpu off' verlangt ein Passwort"
+        echo "       Pruefen: sudo ls -l /etc/sudoers.d/recording-mode (muss -r--r----- root root sein)"
+        echo "       und ob /etc/sudoers ein '@includedir /etc/sudoers.d' enthaelt."
+    fi
+fi
 
 # RGB-Tastaturbeleuchtung im "book". Nur wenn der Controller wirklich steckt —
 # auf dem cube wäre das Tool sinnlose Fracht. Version gepinnt wie beim

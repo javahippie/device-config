@@ -1,0 +1,19 @@
+# Was chezmoi auf DIESEM Host NICHT ausrollen soll. Die Datei ist selbst ein
+# Template und wird pro Maschine ausgewertet — deshalb steht die Hostweiche
+# hier drin und nicht in den Zieldateien.
+#
+# Pfade sind relativ zu $HOME (Zielseite), nicht zum Quellverzeichnis: hier
+# steht also .local/bin/recording-mode und nicht dot_local/bin/executable_...
+#
+# Wichtig zu wissen: chezmoi LÖSCHT ignorierte Dateien nicht, es legt sie nur
+# nicht an. Wer das Script schon auf einem Host hatte, muss es dort von Hand
+# entfernen.
+
+{{ if ne .chezmoi.hostname "cube" -}}
+# Aufnahmemodus (Scarlett auf pro-audio + CPU aus dem Sparmodus): hängt an
+# einem fest angeschlossenen Audiointerface und einer Desktop-CPU. Auf dem
+# book gibt es beides nicht — der Button wäre dort ein Schalter ins Leere.
+# Die passende Waybar-Weiche steht in dot_config/waybar/config.jsonc.tmpl,
+# die Systemschicht in bootstrap.sh; beide gaten auf denselben Hostnamen.
+.local/bin/recording-mode
+{{ end -}}
