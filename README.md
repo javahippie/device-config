@@ -1011,6 +1011,103 @@ nur mehr Tasten für dieselbe Entscheidung.
   (`grim -g "$(slurp)" - | wl-copy`). Die Semantik von `SHIFT+Print` hat sich
   dabei geändert: früher alle Monitore, jetzt der aktive.
 
+## ToDo-Schnellerfassung
+
+`SUPER+T` öffnet ein fuzzel-Overlay mit einer einzigen Eingabezeile. Tippen,
+`Enter` — der Punkt steht als `- [ ] ...` in `<XDG-Dokumente>/todo.md`, das
+Popup ist weg, `Esc` verwirft spurlos. `dot_local/bin/todo`:
+
+```sh
+todo                  # Overlay              — SUPER+T
+todo list             # offene Punkte; Enter hakt den gewählten ab — SUPER+SHIFT+T
+todo add "Milch"      # ohne Popup, für die Shell
+todo clean            # abgelegte Zeilen löschen
+todo edit             # Datei im Editor (xdg-open -> Emacs, s. mimeapps.list)
+todo status
+```
+
+**Es ist ein Tagesspeicher, kein Langfristplan.** Beim ersten Aufruf nach 05:00
+wandert alles, was noch offen ist, als *verfallen* nach unten:
+
+```markdown
+# ToDo
+
+## 2026-09-09
+- [ ] heute noch: Rechnung
+- [x] 2026-09-07 16:40 Saiten wechseln
+- [-] 2026-09-08 07:30 Backup prüfen
+```
+
+Oben unter der Datumszeile stehen die offenen Punkte, darunter wächst der
+Verlauf: `- [x]` abgehakt, `- [-]` verfallen, beide mit dem Zeitpunkt, zu dem
+sie dort gelandet sind. Gelöscht wird nichts von selbst — `todo clean` räumt
+beide Marker weg, wenn die Datei zu lang wird.
+
+**Warum fuzzel und keine ToDo-App:** das Fenster soll in dem Moment aufgehen, in
+dem der Gedanke da ist, und danach sofort wieder verschwinden. Alles mit eigenem
+Fenster (GTK-App, Emacs-Frame, Browser-Tab) kostet Start, Fokuswechsel und
+Schließen — und wäre ein weiteres Programm, das man pflegt. fuzzel läuft hier
+ohnehin (`SUPER+D`, cliphist, keybinds, wifi, bt) und steht per `fuzzel.ini` auf
+`layer=overlay`, liegt also auch über Vollbildfenstern. **Kein neues Paket.**
+
+- **Der Eingabetrick ist derselbe wie bei der Passwortabfrage in `wifi`:**
+  `--dmenu` OHNE Einträge auf STDIN. fuzzel gibt bei `Enter` dann aus, was
+  *getippt* wurde, statt einen Listeneintrag. `--prompt-only` macht genau das
+  explizit — liest kein STDIN und setzt `--lines 0`, das Popup ist damit nur die
+  eine Zeile. Es braucht also kein eigenes Eingabe-Widget.
+- **Der Tag beginnt um 05:00, nicht um Mitternacht.** Was man um halb zwei
+  nachts noch notiert, gehört zum angefangenen Tag und soll nicht vier Stunden
+  später verfallen sein. `date -d "5 hours ago"` verschiebt genau so, inklusive
+  Sommerzeitwechsel; `$TODO_DAY_START` verstellt die Grenze.
+- **Welcher Tag in der Datei steht, steht IN der Datei** (`## JJJJ-MM-TT`), nicht
+  in einer Statusdatei daneben. Man sieht im Emacs sofort, von wann die Liste
+  ist; eine kopierte `todo.md` bringt ihren Tag mit; und eine Datei *ohne*
+  Datumszeile ist damit automatisch eine normale Liste, die nie verfällt — das
+  ist der Schutz für `einkauf.md`. Verglichen wird "älter als", nicht
+  "ungleich": eine Datei mit einem Datum in der Zukunft (Uhr falsch gestellt)
+  wird in Ruhe gelassen statt abgeräumt.
+- **Die Datei liegt bewusst NICHT im Repo** (gleiche Überlegung wie beim
+  Wallpaper: das Repo ist public, eine ToDo-Liste ist privat). Sie wird beim
+  ersten Eintrag angelegt, auf einer frischen Maschine ist sie einfach leer.
+- **`~/Dokumente/todo.md`, nicht `~/Dokumente/lambdaschmiede/...`**: der
+  Unterordner ist der rclone-Mount auf mailbox.org Drive (s. u.). Eine Liste,
+  die man auf Tastendruck beschreibt, soll nicht an einer Netzverbindung hängen.
+  Zweite Liste ist eine Umgebungsvariable: `TODO_FILE=~/Dokumente/einkauf.md todo`
+  — die verfällt nicht, weil sie keine Datumszeile bekommt.
+- Pfad über `xdg-user-dir DOCUMENTS`, nicht hart `$HOME/Dokumente` — der
+  Ordnername ist lokalisiert. `screenshot` löst `<XDG-Bilder>` genauso auf.
+- **Abgehakt wird über den Zeilentext, nicht über eine Zeilennummer:** fuzzel
+  1.14 *kann* `--index` (dmenu-Modus, gibt die Position statt des Textes) — die
+  Position gilt aber nur für die Liste, die `list` gerade aufgebaut hat. Wer die
+  Datei zwischendurch im Emacs umsortiert, hakt damit den falschen Punkt ab; der
+  Text überlebt das. Preis dafür: zwei identische offene Zeilen sind zwei
+  Punkte, von denen `list` den ersten abhakt. Und weil fuzzel bei fehlendem
+  Treffer die *Rohreingabe* liefert, prüft das Skript vor dem Schreiben gegen
+  die offene Liste — sonst würde ein Tippfehler still nichts abhaken, was man
+  für "erledigt" hält. Beim Vergleich wird rechts getrimmt (Leerzeichen, Tabs,
+  CR): sonst reicht ein von Hand angehängtes Leerzeichen oder eine per CRLF
+  gespeicherte Datei, und `list` meldet bei jedem Punkt "kein offener Punkt"
+  — und nennt dabei genau den Punkt, der dasteht.
+- Der ausgewählte Text geht als **Umgebungsvariable** an `awk`, nicht per
+  `awk -v`. `-v` jagt den Wert durch die Escape-Verarbeitung: aus `C:\temp`
+  wird ein Tabulator. Punkte mit Backslash ließen sich damit nicht abhaken —
+  und zwar lautlos, weil die Vorprüfung oben den unversehrten Text sieht und
+  das Skript anschließend "Erledigt" meldete.
+- Geschrieben wird über eine Temp-Datei **neben** der Zieldatei und `cat`
+  zurück. `awk > datei` wäre kein Ersatz — die Shell leert `datei`, *bevor* awk
+  sie liest. `mv` wäre atomar, ersetzt aber den Inode und damit Rechte, Symlink
+  und Mount-Ziel; `cat` behält die Datei und tauscht nur den Inhalt, ist dafür
+  nicht atomar. Auch `add` läuft über diesen Weg, weil neue Punkte *über* den
+  Verlauf müssen und nicht ans Dateiende — Preis: `add` braucht ein
+  beschreibbares Verzeichnis, ein reines Anhängen käme mit der Datei allein aus.
+- Das Format ist eine gewöhnliche Markdown-Checkliste. Nichts daran ist an
+  dieses Skript gebunden: mit `SUPER+T` schreiben, im Emacs von Hand
+  umsortieren, in ein anderes Dokument kopieren — alles derselbe Text. `- [-]`
+  rendert nicht als Kästchen, sondern als Text; das ist gewollt, verfallen ist
+  kein Zustand, den man wieder anklickt.
+- Kein Waybar-Modul mit Zähler. Wer es will, hat mit `todo status` die Zahl
+  schon; das wäre ein `custom/`-Modul nach dem Muster von `custom/keybinds`.
+
 ## Login-Screen (SDDM)
 
 Ersetzt den früheren TTY1-Autostart. Der ist nicht weg, sondern zum Notfallpfad

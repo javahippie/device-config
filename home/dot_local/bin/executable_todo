@@ -1,0 +1,382 @@
+#!/usr/bin/env bash
+# ToDo-Schnellerfassung — SUPER+T oeffnet ein fuzzel-Overlay, Enter haengt eine
+# Zeile an eine Markdown-Datei, Popup weg. Kein Daemon, keine Datenbank, kein
+# Sync: die Liste IST die Datei, und die ist mit jedem Editor lesbar.
+#
+# Warum fuzzel und keine ToDo-App: das Fenster soll in dem Moment aufgehen, in
+# dem der Gedanke da ist, und danach sofort wieder verschwinden. Alles mit
+# eigenem Fenster (GTK-App, Emacs-Frame, Browser-Tab) kostet Start, Fokuswechsel
+# und Schliessen. fuzzel laeuft hier ohnehin (SUPER+D, cliphist, keybinds, wifi,
+# bt) und steht per fuzzel.ini auf layer=overlay — es liegt damit ueber allem,
+# auch ueber Vollbildfenstern.
+#
+# Der Eingabetrick ist derselbe wie bei der Passwortabfrage in 'wifi': --dmenu
+# OHNE Eintraege. fuzzel gibt bei Enter dann aus, was getippt wurde, statt einen
+# Listeneintrag. --prompt-only macht genau das explizit — liest kein STDIN und
+# setzt --lines 0, das Popup ist also nur die eine Eingabezeile.
+set -euo pipefail
+
+# Zielort: <XDG-Dokumente>/todo.md. xdg-user-dir statt hart $HOME/Dokumente,
+# weil der Ordnername lokalisiert ist (hier "Dokumente", auf einem englischen
+# System "Documents") — 'screenshot' loest <XDG-Bilder> genauso auf.
+# Ueberschreibbar mit $TODO_FILE, damit eine zweite Liste eine Zeile kostet:
+#     TODO_FILE=~/Dokumente/einkauf.md todo
+FILE="${TODO_FILE:-}"
+# Die Standardliste ist ein TAGESSPEICHER, eine per $TODO_FILE gesetzte nicht:
+# 'einkauf.md' soll morgens nicht leer sein. Wer eine zweite Liste doch taeglich
+# geleert haben will, schreibt die Datumszeile von Hand hinein (s. roll_over).
+DAILY=1
+if [ -z "$FILE" ]; then
+    docs="$(xdg-user-dir DOCUMENTS 2>/dev/null || true)"
+    [ -n "$docs" ] || docs="$HOME"
+    FILE="$docs/todo.md"
+else
+    DAILY=0
+fi
+
+# Ein ToDo-Tag beginnt um 05:00, nicht um Mitternacht: was man um halb zwei
+# nachts noch notiert, gehoert zum angefangenen Tag und soll nicht vier Stunden
+# spaeter weg sein. 'date -d "5 hours ago"' verschiebt genau so — um 04:59 ist
+# das noch gestern, um 05:00 heute. Sommerzeitwechsel macht date selbst richtig.
+TODO_DAY_START="${TODO_DAY_START:-5}"
+
+usage() {
+    cat <<EOF
+Usage: todo [add [TEXT]|list|clean|edit|status]
+
+  add      Overlay oeffnen und einen Punkt notieren (Default ohne Argument).
+           Mit TEXT wird direkt geschrieben, ohne Popup — fuer die Shell.
+  list     Offene Punkte zeigen; Enter hakt den gewaehlten ab.
+  clean    Abgelegte Zeilen (erledigt/verfallen) aus der Datei loeschen.
+  edit     Datei im Standardeditor oeffnen (xdg-open -> Emacs, s. mimeapps.list).
+  status   Zaehlt und nennt Datei und Tag.
+
+Datei: $FILE   (ueberschreibbar mit \$TODO_FILE)
+Format: "## JJJJ-MM-TT" ueber den offenen Punkten, darunter
+        "- [ ] Text"                          offen
+        "- [x] JJJJ-MM-TT HH:MM Text"         erledigt
+        "- [-] JJJJ-MM-TT HH:MM Text"         verfallen
+
+TAGESSPEICHER: beim ersten Aufruf nach ${TODO_DAY_START}:00 wandern alle noch
+offenen Punkte als "- [-]" ans Dateiende. Nur Dateien mit Datumszeile.
+EOF
+}
+
+notify() { command -v notify-send >/dev/null 2>&1 && notify-send "$@" || true; }
+
+need_fuzzel() {
+    command -v fuzzel >/dev/null 2>&1 || {
+        echo "todo: fuzzel fehlt (dnf install fuzzel)" >&2; exit 1
+    }
+}
+
+# Eine ToDo-Zeile ist eine Zeile. Umbrueche aus einem CLI-Aufruf wuerden die
+# Liste zerlegen, deshalb werden sie zu Leerzeichen; fuzzel selbst liefert nie
+# mehrzeilig.
+clean_text() {
+    local s="$1"
+    s="${s//$'\n'/ }"
+    s="${s//$'\t'/ }"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+}
+
+ensure_file() {
+    mkdir -p "$(dirname "$FILE")"
+    if [ ! -e "$FILE" ]; then
+        if [ "$DAILY" = 1 ]; then
+            printf '# ToDo\n\n## %s\n' "$(today_stamp)" > "$FILE"
+        else
+            printf '# ToDo\n\n' > "$FILE"
+        fi
+        return 0
+    fi
+    # Frueher stand hier eine Wache gegen eine fehlende Schluss-Newline: das
+    # alte 'printf >> FILE' haette sonst die letzte Zeile VERLAENGERT statt
+    # eine neue anzufangen. Seit add ueber awk einfuegt, ist das erledigt —
+    # awk beendet jede ausgegebene Zeile selbst.
+}
+
+# Die beiden Filter sind die einzige Stelle, die das Dateiformat kennt: fuehrende
+# Leerzeichen erlaubt (eingerueckte Unterpunkte), Marker "- [ ]" bzw. "- [x]".
+#
+# Das Zeilenende wird mit abgeschnitten (Leerzeichen, Tabs, CR). Grund: was
+# fuzzel zurueckgibt, laeuft durch clean_text und ist dann rechts getrimmt —
+# eine handeditierte Zeile mit nachlaufendem Leerzeichen oder eine Datei mit
+# CRLF haette danach nie mehr gepasst, und 'list' haette bei JEDEM Punkt
+# "kein offener Punkt: <genau der Punkt>" gemeldet. mark_done trimmt beim
+# Vergleich genauso; in der Datei bleibt die Zeile, wie sie ist.
+open_items() {
+    [ -f "$FILE" ] || return 0
+    awk '/^[ \t]*- \[ \][ \t]+./ {
+             sub(/^[ \t]*- \[ \][ \t]+/, "")
+             sub(/[ \t\r]+$/, "")
+             if (length($0)) print
+         }' "$FILE"
+}
+
+# Abgelegt = erledigt ODER verfallen. Beide stehen unten in der Datei und
+# unterscheiden sich nur im Marker; fuer Zaehlen und Aufraeumen sind sie gleich.
+count_filed() {
+    [ -f "$FILE" ] || { echo 0; return 0; }
+    awk '/^[ \t]*- \[[xX-]\]/ { n++ } END { print n + 0 }' "$FILE"
+}
+
+# In-place-Schreiben ueber eine Temp-Datei NEBEN dem Ziel. Ein 'awk > FILE'
+# waere kein Ersatz: die Shell truncatet FILE, BEVOR awk es liest — die Liste
+# waere sofort leer, awk laese nichts mehr, und beim kleinsten Fehler stuende
+# nichts mehr in der Datei.
+# Zurueckgeschrieben wird mit 'cat > FILE', nicht mit 'mv'. Ein mv waere atomar,
+# ersetzt aber den Inode: ein Symlink auf todo.md waere danach ueberschrieben,
+# Rechte und ein evtl. Mount-Ziel gaeben nach. 'cat' behaelt die Datei und
+# tauscht nur den Inhalt — dafuer ist es NICHT atomar. Der Kompromiss geht hier
+# in Ordnung, weil nur dieses Skript schreibt und der Schreibvorgang eine
+# Handvoll Zeilen lang ist; die Temp-Datei existiert trotzdem, damit ein
+# fehlgeschlagenes awk (Syntaxfehler, kaputte Datei) die Liste gar nicht erst
+# anfasst.
+# Aufgeraeumt wird von Hand, NICHT per 'trap ... RETURN': ein in einer Funktion
+# gesetzter RETURN-Trap bleibt danach installiert und feuert am Skriptende noch
+# einmal — dann ist das lokale $tmp weg und set -u beendet das Skript mit 1,
+# obwohl die Datei laengst korrekt geschrieben ist.
+rewrite() {
+    local tmp status=0
+    # Ohne die Pruefung laeuft es mit leerem $tmp weiter — set -e greift hier
+    # nicht, weil rewrite selbst in einem '|| ...' steht und -e damit fuer die
+    # ganze Funktion aus ist. Sichtbar wurde das als nacktes
+    # "Zeile NN: : Datei oder Verzeichnis nicht gefunden" aus der Shell, etwa
+    # wenn das Verzeichnis nicht schreibbar ist.
+    tmp="$(mktemp "${FILE}.XXXXXX" 2>/dev/null)" || {
+        echo "todo: kann nicht neben $FILE schreiben" >&2
+        return 1
+    }
+    if "$@" > "$tmp"; then
+        cat "$tmp" > "$FILE"
+    else
+        status=1
+    fi
+    rm -f "$tmp"
+    return "$status"
+}
+
+# ---------------------------------------------------------------- Tagesspeicher
+# Die Liste haelt EINEN Tag. Beim ersten Aufruf nach TODO_DAY_START wandert
+# alles noch Offene als "- [-] <Zeitstempel> Text" ans Dateiende — dieselbe
+# Ablage wie beim Abhaken, nur mit anderem Marker. Geloescht wird nichts; wer
+# aufraeumen will, ruft 'todo clean'.
+#
+# Der Zustand "welcher Tag steht gerade drin" liegt als "## JJJJ-MM-TT" IN der
+# Datei, nicht in einer Statusdatei daneben. Drei Gruende: man sieht im Emacs
+# sofort, von wann die Liste ist; eine kopierte todo.md bringt ihren Tag mit;
+# und eine Datei OHNE Datumszeile ist damit automatisch eine normale Liste, die
+# nie verfaellt — das ist der Schutz fuer 'einkauf.md'.
+
+now_ts()      { date '+%Y-%m-%d %H:%M'; }
+today_stamp() { date -d "$TODO_DAY_START hours ago" +%Y-%m-%d; }
+
+file_stamp() {
+    [ -f "$FILE" ] || return 0
+    awk '/^[ \t]*##[ \t]+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][ \t\r]*$/ {
+             sub(/^[ \t]*##[ \t]+/, ""); sub(/[ \t\r]+$/, ""); print; exit
+         }' "$FILE"
+}
+
+roll_over() {
+    local stamp today
+    [ -f "$FILE" ] || return 0
+    stamp="$(file_stamp)"
+    [ -n "$stamp" ] || return 0
+    today="$(today_stamp)"
+    # "aelter als", nicht "ungleich": ISO-Daten sortieren als Text richtig, und
+    # eine Datei mit einem Datum in der ZUKUNFT (Uhr falsch gestellt) wird so in
+    # Ruhe gelassen statt abgeraeumt.
+    [[ "$stamp" < "$today" ]] || return 0
+    TODO_TODAY="$today" TODO_TS="$(now_ts)" rewrite awk '
+        BEGIN { today = ENVIRON["TODO_TODAY"]; ts = ENVIRON["TODO_TS"] }
+        /^[ \t]*##[ \t]+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][ \t\r]*$/ {
+            print "## " today; next
+        }
+        match($0, /^[ \t]*- \[ \][ \t]+/) {
+            text = substr($0, RLENGTH + 1)
+            sub(/[ \t\r]+$/, "", text)
+            gone[++n] = "- [-] " ts " " text
+            next
+        }
+        { print }
+        END { for (i = 1; i <= n; i++) print gone[i] }
+    ' "$FILE"
+}
+
+# Nur die Standardliste wird von selbst zum Tagesspeicher. Das Stempeln loescht
+# nichts — es setzt die Zeile ueber den ersten Punkt, der erste Wechsel kommt
+# also fruehestens am naechsten Morgen.
+stamp_file() {
+    [ "$DAILY" = 1 ] || return 0
+    [ -f "$FILE" ] || return 0
+    [ -z "$(file_stamp)" ] || return 0
+    TODO_TODAY="$(today_stamp)" rewrite awk '
+        BEGIN { today = ENVIRON["TODO_TODAY"] }
+        !seen && /^[ \t]*- \[/ { print "## " today; seen = 1 }
+        { print }
+        END { if (!seen) print "## " today }
+    ' "$FILE"
+}
+
+# Gemeinsamer Einstieg fuer alles, was die Datei anfasst.
+begin_day() { roll_over; stamp_file; }
+
+# Neue Punkte kommen HINTER den letzten offenen Punkt, nicht ans Dateiende:
+# unten waechst der Verlauf aus erledigt/verfallen, und dazwischen soll nichts
+# Offenes mehr auftauchen. Ohne Datumszeile und ohne offene Punkte (also bei
+# einer frischen Zweitliste) bleibt es beim Anhaengen.
+insert_open() {
+    TODO_NEW="$1" rewrite awk '
+        BEGIN { line = "- [ ] " ENVIRON["TODO_NEW"] }
+        { buf[++n] = $0 }
+        /^[ \t]*- \[ \][ \t]+/                                       { at = n }
+        /^[ \t]*##[ \t]+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/  { if (!at) at = n }
+        END {
+            for (i = 1; i <= n; i++) { print buf[i]; if (i == at) print line }
+            if (!at) print line
+        }
+    ' "$FILE"
+}
+
+cmd_add() {
+    local text="$*"
+    begin_day
+    if [ -z "$text" ]; then
+        need_fuzzel
+        text="$(fuzzel --dmenu --prompt-only='  ToDo: ' \
+                       --placeholder='Was ist zu tun?' --width=60 </dev/null || true)"
+    fi
+    text="$(clean_text "$text")"
+    # Leer heisst abgebrochen (Esc) oder nichts getippt — dann passiert nichts,
+    # ohne Meldung. Ein Popup, das man versehentlich oeffnet, soll spurlos
+    # wieder zugehen koennen.
+    [ -n "$text" ] || return 0
+    ensure_file
+    insert_open "$text" || return 1
+    notify 'ToDo notiert' "$text"
+    [ -t 1 ] && echo "todo: + $text" || true
+}
+
+mark_done() {
+    local status=0
+    # Nur das ERSTE Vorkommen: zwei identische offene Zeilen sind zwei Punkte,
+    # von denen einer abgehakt wird.
+    # Abgeglichen wird ueber den Text, obwohl fuzzel 1.14 sehr wohl ein --index
+    # kennt (dmenu-Modus, gibt die Position statt des Textes). Die Position
+    # gilt aber nur fuer die Liste, die 'list' gerade erzeugt hat: wer die
+    # Datei zwischendurch im Emacs umsortiert oder einen Punkt loescht, haekelt
+    # damit den falschen ab. Der Text bleibt derselbe, egal was mit der Datei
+    # passiert — und 'todo' hat sonst keine Sperre gegen paralleles Editieren.
+    #
+    # Der Text kommt ueber die UMGEBUNG zu awk, NICHT ueber 'awk -v want=...':
+    # -v jagt den Wert durch die Escape-Verarbeitung, aus "C:\temp" wird ein
+    # Tabulator und aus "\neu" ein Zeilenumbruch. Der Vergleich scheiterte dann
+    # genau bei den Punkten, die einen Backslash enthalten — lautlos, denn die
+    # Vorpruefung in cmd_list sieht ja den unversehrten Text. ENVIRON liefert
+    # den Rohwert.
+    #
+    # Die Zeile wird nicht an Ort und Stelle umgehakt, sondern mit Zeitstempel
+    # ans Dateiende gehaengt — genau wie beim Tageswechsel. Oben stehen damit
+    # immer nur die offenen Punkte, unten waechst der Verlauf.
+    export TODO_WANT="$1"
+    TODO_TS="$(now_ts)" rewrite awk '
+        BEGIN { want = ENVIRON["TODO_WANT"]; ts = ENVIRON["TODO_TS"] }
+        !hit && match($0, /^[ \t]*- \[ \][ \t]+/) {
+            text = substr($0, RLENGTH + 1)
+            sub(/[ \t\r]+$/, "", text)   # muss zu open_items passen
+            if (text == want) { filed = "- [x] " ts " " text; hit = 1; next }
+        }
+        { print }
+        # Kein Treffer heisst: NICHT schreiben und 1 melden. Sonst wuerde die
+        # Datei unveraendert zurueckgeschrieben und 'Erledigt' gemeldet, ohne
+        # dass irgendetwas abgehakt waere.
+        END { if (!hit) exit 1; print filed }
+    ' "$FILE" || status=$?
+    unset TODO_WANT
+    return "$status"
+}
+
+cmd_list() {
+    need_fuzzel
+    local items sel
+    begin_day
+    items="$(open_items)"
+    if [ -z "$items" ]; then
+        notify 'ToDo' 'Nichts offen.'
+        echo "todo: keine offenen Punkte in $FILE" >&2
+        return 0
+    fi
+    sel="$(printf '%s\n' "$items" | fuzzel --dmenu --prompt='  Erledigt: ' \
+              --width=60 --lines=12 --minimal-lines --counter || true)"
+    sel="$(clean_text "${sel:-}")"
+    [ -n "$sel" ] || return 0
+    # Getippter Text ohne Treffer kommt hier genauso an wie ein gewaehlter
+    # Eintrag — fuzzel gibt in dmenu-Modus die Rohreingabe zurueck, wenn nichts
+    # matcht. Deshalb wird geprueft statt blind geschrieben; sonst haekelt ein
+    # Tippfehler still nichts ab und man haelt es fuer erledigt.
+    if ! printf '%s\n' "$items" | grep -qxF -- "$sel"; then
+        notify 'ToDo' "Kein offener Punkt: $sel"
+        echo "todo: kein offener Punkt: $sel" >&2
+        return 1
+    fi
+    if ! mark_done "$sel"; then
+        notify 'ToDo' "Nicht abgehakt: $sel"
+        echo "todo: konnte nicht abhaken: $sel" >&2
+        return 1
+    fi
+    notify 'ToDo erledigt' "$sel"
+}
+
+cmd_clean() {
+    local n
+    begin_day
+    n="$(count_filed)"
+    if [ "$n" -eq 0 ]; then
+        echo "todo: nichts abzulegen in $FILE"
+        return 0
+    fi
+    rewrite awk '!/^[ \t]*- \[[xX-]\]/' "$FILE"
+    echo "todo: $n abgelegte Zeile(n) entfernt"
+    notify 'ToDo aufgeraeumt' "$n abgelegte Zeile(n) entfernt"
+}
+
+cmd_edit() {
+    ensure_file
+    begin_day
+    if command -v xdg-open >/dev/null 2>&1; then
+        # setsid + Discard: sonst haengt der Aufruf am Hyprland-exec bzw. am
+        # Terminal, aus dem er kam.
+        setsid xdg-open "$FILE" >/dev/null 2>&1 &
+    else
+        "${EDITOR:-nano}" "$FILE"
+    fi
+}
+
+cmd_status() {
+    local open
+    begin_day
+    open="$(open_items | grep -c . || true)"
+    echo "Datei:    $FILE"
+    echo "Tag:      $(file_stamp)"
+    echo "Offen:    ${open:-0}"
+    echo "Abgelegt: $(count_filed)"
+}
+
+# Ohne Argument setzt ${1:-add} den Default ein, OHNE dass ein Argument da
+# waere — "shift" liefe dann auf einer leeren Liste, gaebe 1 zurueck und
+# set -e wuerde das Skript beenden, bevor das Popup ueberhaupt aufgeht.
+case "${1:-add}" in
+    add)            shift || true; cmd_add "$@" ;;
+    list|pick|done) cmd_list ;;
+    clean)          cmd_clean ;;
+    edit|open)      cmd_edit ;;
+    status)         cmd_status ;;
+    -h|--help|help) usage ;;
+    # Bewusst KEIN "alles Unbekannte ist ToDo-Text": ein vertipptes
+    # Unterkommando wuerde sonst still einen Punkt namens "lst" anlegen.
+    *)              usage >&2; exit 1 ;;
+esac
