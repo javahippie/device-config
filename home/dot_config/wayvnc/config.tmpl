@@ -1,0 +1,28 @@
+# wayvnc: Mac als Thin Client fuer den cube (nur dort, nur LAN). Laeuft NICHT
+# dauerhaft — dot_local/bin/remote startet die User-Unit
+# systemd/user/wayvnc.service zusammen mit dem virtuellen Monitor "mac", und
+# `remote off` beendet beides wieder. Solange nichts an ist, lauscht hier auch
+# nichts.
+#
+# Hier steht NUR das Unsekrete. Benutzer und Passwort liegen in
+# ~/.config/wayvnc/config.secret (nicht im Repo, legt bootstrap.sh an); die
+# Unit klebt beide Dateien beim Start zu $XDG_RUNTIME_DIR/wayvnc.conf zusammen.
+# Grund fuer die Trennung: wayvnc kennt weder Include noch Env-Variablen, und
+# ein `chezmoi re-add` auf eine Datei mit Passwort wuerde es ins oeffentliche
+# Repo schreiben.
+
+# Alle Interfaces; die Grenze zieht die Firewall (vnc-server-Service, nur
+# Zone public, s. bootstrap.sh) und der Router, der 5900 nicht weiterleitet.
+address=0.0.0.0
+port=5900
+
+# RSA-AES statt TLS: der Server weist sich mit dem Schluessel aus (der Client
+# merkt sich den Fingerprint wie SSH), das Passwort geht verschluesselt
+# darueber. Kein Zertifikat, keine CA. Schluessel erzeugt bootstrap.sh.
+enable_auth=true
+rsa_private_key_file={{ .chezmoi.homeDir }}/.config/wayvnc/rsa_key.pem
+
+# Der VNC-Client schickt Keysyms, wayvnc uebersetzt sie ueber eine eigene
+# xkb-Keymap in Keycodes fuer Hyprland. Muss zum kb_layout in base.conf passen,
+# sonst landen Umlaute und Sonderzeichen falsch.
+xkb_layout=de

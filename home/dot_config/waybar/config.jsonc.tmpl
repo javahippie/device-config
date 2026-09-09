@@ -11,7 +11,7 @@
 
     "modules-left": ["hyprland/workspaces", "hyprland/window"],
     "modules-center": ["clock"],
-    "modules-right": ["idle_inhibitor", "custom/keybinds", {{ if eq .chezmoi.hostname "cube" }}"custom/recording", {{ end }}"pulseaudio", "bluetooth", "network", "battery", "tray"],
+    "modules-right": ["custom/screenrec", "idle_inhibitor", "custom/keybinds", {{ if eq .chezmoi.hostname "cube" }}"custom/recording", {{ end }}"pulseaudio", "bluetooth", "network", "battery", "tray"],
 
     // Haelt den Rechner wach, solange laengere Hintergrund-Jobs laufen.
     // Klick schaltet um: "Idle" = normale Kette aus hypridle.conf (5 min Lock,
@@ -54,6 +54,34 @@
         "format": "Keys",
         "tooltip": false,
         "on-click": "~/.local/bin/keybinds"
+    },
+
+    // Laufende Bildschirmaufnahme (dot_local/bin/record, wf-recorder).
+    // NICHT zu verwechseln mit custom/recording weiter oben — das ist der
+    // Audio-Aufnahmemodus (Scarlett + CPU). Deshalb auch ein anderes Signal:
+    // 8 hier, 7 dort.
+    //
+    // Auf BEIDEN Hosts, anders als custom/recording: aufnehmen kann man
+    // ueberall, dafuer braucht es keine bestimmte Hardware.
+    //
+    // Ohne Aufnahme liefert `record status` leeren Text — Waybar blendet das
+    // Modul dann komplett aus. Es ist also nur zu sehen, wenn es etwas zu
+    // sagen hat; ein dauerhaftes "keine Aufnahme" waere reine Bar-Belegung.
+    //
+    // interval 1, damit die Laufzeit mitzaehlt. Das ist hier vertretbar, weil
+    // `record status` bewusst ohne jq, date und cat auskommt (reine
+    // Bash-Builtins, s. Kommentar dort) — der Sekundentakt kostet damit
+    // nichts. Das Signal ist trotzdem noetig: Start und Stopp sollen sofort
+    // stehen, nicht erst nach bis zu einer Sekunde.
+    //
+    // Kein on-click zum Stoppen: eine laufende Aufnahme per Mausklick auf die
+    // Bar zu beenden hiesse, mit dem Zeiger IM Bild herumzufahren. Dafuer sind
+    // die drei R-Tasten da.
+    "custom/screenrec": {
+        "exec": "~/.local/bin/record status",
+        "return-type": "json",
+        "interval": 1,
+        "signal": 8
     },
 {{ if eq .chezmoi.hostname "cube" }}
     // Aufnahmemodus (dot_local/bin/recording-mode): schiebt das Scarlett ins
@@ -113,6 +141,13 @@
             // thunderbird_esr heute; .* deckt auch den Wechsel auf den
             // Nicht-ESR-Zweig ab.
             "class<org\\.mozilla\\.thunderbird.*>": "\u2709\ufe0f",
+            // Citrix (Wfica). Fenster = die Windows-Sitzung beim Kunden, die
+            // ueber Citrix drin haengt; \ud83d\udda5 ist schon fuer foot vergeben.
+            // U+1FA9F ist ein junges Emoji (13.0) -- Abdeckung in
+            // NotoEmoji-Regular gegengeprueft (fc-list :charset=1fa9f).
+            // Klein geschrieben kommt Wfica auch vor (s. rules.conf.tmpl),
+            // deshalb die Zeichenklasse.
+            "class<[Ww]fica>": "\ud83e\ude9f",
             "class<com\\.slack\\.Slack>": "\ud83d\udcac",
             // Element meldet sich als im.riot.Riot — Altlast aus der Riot-Zeit.
             "class<im\\.riot\\.Riot>": "\ud83d\udd37",

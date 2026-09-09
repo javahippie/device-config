@@ -45,3 +45,40 @@ workspace = 3, persistent:true
 workspace = 4, persistent:true
 workspace = 5, persistent:true
 workspace = 6, persistent:true
+{{ if eq .chezmoi.hostname "cube" }}
+# --- Fester Startplatz pro App (nur cube) ---
+# Jede App kommt beim OEFFNEN auf ihren Workspace. Das ist eine Fensterregel,
+# kein Autostart und kein Pinning: sie greift genau einmal, im Moment des
+# Fensteroeffnens. Wer danach mit $mod+SHIFT+<n> umsortiert, behaelt das --
+# Hyprland wendet die Regel auf ein bereits offenes Fenster nicht erneut an.
+#
+# BEWUSST OHNE `silent`: der Workspace wird mitgewechselt, man landet also bei
+# dem Programm, das man gerade gestartet hat. Wer eine App lieber im
+# Hintergrund aufgehen laesst, haengt an ihre Zeile ein `silent` an
+# (`workspace 3 silent`). Beide Formen gegen das laufende 0.56 geprueft
+# (hyprctl keyword windowrule -> ok, keine configerrors).
+#
+# foot steht hier bewusst NICHT: das Terminal soll dort aufgehen, wo man
+# gerade ist.
+#
+# Nur auf dem cube, weil die Aufteilung an diesem Arbeitsplatz haengt (Citrix
+# fuer den Kunden, ein Monitor). Das book verteilt Workspaces auf zwei
+# Monitore (s. monitors.conf.tmpl) und braucht eine eigene Aufteilung, sobald
+# sie feststeht.
+#
+# Klassen mit `hyprctl clients -j` gegengeprueft (08.09.2026).
+# Workspace 5 bleibt absichtlich leer: Platz zum Ausbreiten.
+windowrule = workspace 1, match:class ^(org\.mozilla\.firefox)$
+# Citrix: dieselbe Klasse wie die Deko-Ausnahme ganz oben. Bewusst zwei
+# getrennte Regeln -- die Deko-Regel gilt auf jedem Host, dieser Platz nur hier.
+windowrule = workspace 2, match:class ^(Wfica|wfica)$
+# thunderbird_esr heute; .* deckt den Wechsel auf den Nicht-ESR-Zweig ab
+# (gleiche Ueberlegung wie beim Icon in waybar/config.jsonc.tmpl).
+windowrule = workspace 3, match:class ^(org\.mozilla\.thunderbird.*)$
+windowrule = workspace 4, match:class ^(com\.slack\.Slack)$
+# Element meldet sich als im.riot.Riot -- Altlast aus der Riot-Zeit.
+windowrule = workspace 4, match:class ^(im\.riot\.Riot)$
+# KeePassXC lief beim Gegenpruefen nicht; Klasse aus der bereits verifizierten
+# window-rewrite-Liste in waybar/config.jsonc.tmpl uebernommen.
+windowrule = workspace 6, match:class ^(org\.keepassxc\.KeePassXC)$
+{{- end }}

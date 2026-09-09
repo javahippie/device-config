@@ -66,6 +66,15 @@ swaybg                      # Wallpaper. NICHT hyprpaper: das ist wie hyprland s
                             # paketiert. Switcher: dot_local/bin/wallpaper.
 grim                        # Screenshots, zusammen mit slurp+jq — s. dot_local/bin/screenshot
 slurp
+wf-recorder                 # Bildschirmaufnahme als Video — s. dot_local/bin/record.
+                            # Das Video-Gegenstück zu grim und teilt sich mit ihm
+                            # slurp und jq. NICHT OBS: das ist ein Studio mit Szenen
+                            # und Quellen für eine Aufgabe, die hier aus einem
+                            # Tastendruck besteht. NICHT gpu-screen-recorder: liegt
+                            # nur in Fremd-Repos. wf-recorder steht regulär in Fedora
+                            # (0.6.0/F44) und ist EIN Prozess, den ein Toggle-Keybind
+                            # per SIGINT sauber beendet — dieselbe Überlegung wie
+                            # swaybg statt hyprpaper und grim statt grimblast.
 wev                         # Wayland-Ersatz für xev: zeigt zu einer gedrückten Taste das
                             # Keysym. Erstes Werkzeug bei "welchen Namen hat diese Taste,
                             # damit ich sie in binds.conf binden kann". Zeigt NICHTS für
@@ -303,6 +312,19 @@ fuse3                         # liefert /usr/bin/fusermount3 — den setuid-Helf
                                # cups-filters oder nss-mdns: eine Abhaengigkeit, die man erst
                                # bemerkt, wenn ein anderes Installationsprofil sie weglaesst.
                                # Ausserdem ruft das ExecStop der Unit fusermount3 direkt auf.
+
+# --- Remote-Zugriff: Mac als Thin Client (Nutzung nur cube, s. README) ---
+wayvnc                        # VNC-Server fuer wlroots-artige Compositoren; redet mit
+                               # Hyprland ueber ext-image-copy-capture plus virtuelle
+                               # Tastatur und Maus. Paket hostunabhaengig (klein, startet
+                               # ab Werk nichts) — Unit, Script, Monitor-Regel und
+                               # Firewall sind cube-only (chezmoiignore,
+                               # monitors.conf.tmpl, bootstrap.sh). Fedoras neatvnc
+                               # (seine Encoder-Bibliothek) ist MIT libavcodec, TurboJPEG
+                               # und VAAPI gebaut — H.264 gibt es also, aber nur mit
+                               # `--gpu` (DMA-BUF-Capture) und nur, wenn der Client es
+                               # anbietet; steht so in der Unit. neatvnc und aml liegen
+                               # hier schon, dnf zieht sie sonst selbst mit.
 
 # --- Drucken & Scannen (Netzwerkgerät, treiberlos — s. README) ---
 cups                          # Print-Server + lp/lpstat/lpadmin. Zieht cups-filters HART

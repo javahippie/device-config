@@ -1,0 +1,44 @@
+# VNC-Server fuer den Mac als Thin Client (nur cube, s. README "Mac als Thin
+# Client"). BEWUSST kein [Install]: die Unit wird nicht enabled, sondern von
+# dot_local/bin/remote gestartet — zusammen mit dem virtuellen Monitor "mac",
+# auf den --output hier zeigt. Ohne den Monitor bricht wayvnc sofort ab
+# ("Failed to find output"), ein direktes `systemctl --user start` ist also
+# sinnlos. Immer ueber `remote on` / `remote off`.
+[Unit]
+Description=wayvnc (Mac als Thin Client, nur LAN)
+Documentation=man:wayvnc(1)
+# Haengt an der grafischen Session: endet Hyprland, geht das hier mit.
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+# Repo-Config und Secret-Datei zu EINER Datei zusammenkleben, Begruendung in
+# dot_config/wayvnc/config.tmpl. umask 077, weil das Passwort drinsteht;
+# %t ist $XDG_RUNTIME_DIR (tmpfs, nur der Benutzer kommt ran).
+ExecStartPre=/bin/sh -c 'umask 077; cat %h/.config/wayvnc/config %h/.config/wayvnc/config.secret > %t/wayvnc.conf'
+# Flags, alle mit Grund (README, Thin-Client-Abschnitt, "Wenn es ruckelt"):
+# --gpu           Frames als DMA-BUF ueber den Render-Node der iGPU (renderD129,
+#                 dieselbe GPU, auf der Hyprland rendert) statt als Shared-Memory-
+#                 Kopie, die Hyprland im Compositor-Thread von der GPU zurueck-
+#                 lesen muss. Erst damit kann neatvnc H.264 anbieten (Fedoras
+#                 Build hat libavcodec/VAAPI). Zusammen mit --render-cursor auf
+#                 cube geprueft (07.09.2026, Test-Client, 8 s, Cursor-Verstecken
+#                 inklusive: stabil).
+# --render-cursor MUSS bleiben: ohne das bricht wayvnc 0.9.1 ab, sobald in seiner
+#                 Cursor-Session (ext-image-copy-capture) ein Frame fehlschlaegt —
+#                 Zeiger wird versteckt (Hyprland cursor:inactive_timeout,
+#                 hide_on_key_press) oder verlaesst den Output ("Fatal error while
+#                 capturing", src/main.c:1591). Mit dem Flag malt Hyprland den
+#                 Zeiger ins Hauptbild (PAINT_CURSORS) und der Abbruch bleibt aus;
+#                 A/B auf cube reproduziert (07.09.2026). Die Cursor-Session legt
+#                 wayvnc TROTZDEM an (configure_cursor_sc laeuft unabhaengig vom
+#                 Flag) — deshalb darf der Output "mac" nie entfernt werden,
+#                 solange ein Client verbunden ist, s. dot_local/bin/remote.
+#                 Kein Config-Schluessel dafuer, nur dieses CLI-Flag.
+# --max-fps=60    Voreinstellung ist 30; der Output laeuft mit 60.
+# --log-level=info  Wenige Zeilen pro Verbindung, darunter "Choosing <x>
+#                 encoding for client" — die erste Frage, wenn es ruckelt.
+ExecStart=/usr/bin/wayvnc --gpu --render-cursor --max-fps=60 --log-level=info --config=%t/wayvnc.conf --output=mac
+ExecStopPost=/usr/bin/rm -f %t/wayvnc.conf
+Restart=on-failure
+RestartSec=2

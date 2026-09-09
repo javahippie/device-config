@@ -952,6 +952,48 @@ $ cat /sys/power/pm_wakeup_irq
 Aussage über das Gerät, das zuckt, sondern über den PCIe-Zweig, an dem es
 steckt. Erst `pm_wakeup_irq` lesen, dann den Zweig auflösen — nicht raten.
 
+## Fester Workspace pro App (nur `cube`)
+
+Die Fenster liegen an diesem Arbeitsplatz immer gleich, also steht das auch so
+in der Config — im cube-Zweig von `hypr/rules.conf.tmpl`:
+
+| WS | App | Klasse |
+|---|---|---|
+| 1 | Firefox | `org.mozilla.firefox` |
+| 2 | Citrix | `Wfica` |
+| 3 | Thunderbird | `org.mozilla.thunderbird_esr` |
+| 4 | Slack, Element | `com.slack.Slack`, `im.riot.Riot` |
+| 5 | *frei* | — |
+| 6 | KeePassXC | `org.keepassxc.KeePassXC` |
+
+- **Fensterregel, kein Autostart.** Nichts wird beim Login gestartet; die Regel
+  greift erst, wenn man die App selbst öffnet. Wer Thunderbird nie startet, hat
+  eine leere 3.
+- **Und kein Pinning.** Hyprland wertet Fensterregeln genau einmal aus, beim
+  Öffnen des Fensters. Danach ist das Fenster ein Fenster wie jedes andere —
+  `$mod+SHIFT+<n>` schiebt es weiter, und es bleibt dort. Die Regel holt es
+  nicht zurück.
+- **`foot` steht bewusst nicht in der Liste.** Ein Terminal soll dort aufgehen,
+  wo man gerade arbeitet; ein fester Platz wäre hier genau die falsche Hilfe.
+- **Ohne `silent`**, der Workspace wird also mitgewechselt: man startet eine App
+  und steht danach davor. Wer eine davon lieber im Hintergrund aufgehen lässt,
+  hängt an ihre Zeile ein `silent` an (`workspace 3 silent`). Beide Formen sind
+  gegen das laufende 0.56 geprüft (`hyprctl keyword windowrule` → `ok`, keine
+  `configerrors`).
+- **Warum nur auf dem cube:** die Aufteilung hängt an diesem Arbeitsplatz —
+  Citrix für den Kunden, ein Monitor. Das book verteilt Workspaces über zwei
+  Monitore (`monitors.conf.tmpl`) und braucht eine eigene Aufteilung, sobald sie
+  feststeht. Deshalb ist `rules.conf` seit dieser Änderung ein chezmoi-Template
+  (`rules.conf.tmpl`); Zielname und `source =`-Zeile in `hyprland.conf` bleiben
+  unverändert.
+- Citrix hat in Waybars `window-rewrite` jetzt auch ein Icon: 🪟 (U+1FA9F) für
+  die Windows-Sitzung, die dort drin hängt — 🖥 war schon für `foot` vergeben.
+  Das Zeichen ist mit `fc-list :charset=1fa9f` gegen NotoEmoji-Regular geprüft,
+  es ist jung genug (Emoji 13.0), dass sich das lohnt.
+- Die Klassen sind alle mit `hyprctl clients -j` abgelesen (08.09.2026), bis auf
+  KeePassXC — das lief beim Gegenprüfen nicht, die Klasse stammt aus der bereits
+  verifizierten `window-rewrite`-Liste in `waybar/config.jsonc.tmpl`.
+
 ## Keybind-Übersicht
 
 `SUPER+F1` oder der Klick auf **"Keys"** in der Waybar zeigt die Tastenbelegung
@@ -1010,6 +1052,125 @@ nur mehr Tasten für dieselbe Entscheidung.
 - Vorher lag das als zwei Einzeiler direkt in `binds.conf`
   (`grim -g "$(slurp)" - | wl-copy`). Die Semantik von `SHIFT+Print` hat sich
   dabei geändert: früher alle Monitore, jetzt der aktive.
+
+## Bildschirmaufnahme
+
+`dot_local/bin/record`, das Video-Gegenstück zum Screenshot — gleiche Modusnamen,
+damit es kein zweites Vokabular zu lernen gibt:
+
+| Taste | Modus | Was |
+|---|---|---|
+| `SUPER`+`SHIFT`+`R` | `region` | Rechteck mit der Maus (slurp) |
+| `SUPER`+`SHIFT`+`CTRL`+`R` | `window` | Fenster anklicken — slurp rastet auf die Kanten ein |
+| `SUPER`+`SHIFT`+`ALT`+`R` | `screen` | Der Monitor der aktiven Workspace |
+
+Alle drei rufen `record toggle`: **läuft schon eine Aufnahme, beendet jede der
+drei Tasten sie.** Man soll sich nicht merken müssen, mit welcher man angefangen
+hat. Ablage ist `<XDG-Videoordner>/Screenrecordings`, überschreibbar per
+`$RECORD_DIR`.
+
+```sh
+record region|window|screen [--audio[=GERÄT]]
+record stop
+record status          # JSON für Waybar
+record toggle [modus]  # was die Tasten tun
+```
+
+- **`wf-recorder`, nicht OBS und nicht gpu-screen-recorder.** OBS ist ein Studio
+  mit Szenen und Quellen für eine Aufgabe, die hier aus einem Tastendruck
+  besteht; gpu-screen-recorder liegt nur in Fremd-Repos. wf-recorder steht
+  regulär in Fedora (0.6.0 in F44), hängt also an keiner COPR, und ist **ein**
+  Prozess, den ein Toggle sauber per Signal beendet. Dieselbe Überlegung wie
+  swaybg statt hyprpaper und grim statt grimblast.
+- **Warum `R` und nicht die Kamera-Taste.** Die MX Keys auf dem cube schickt eine
+  feste Kombination (`Win+Shift+S`), und ihre drei stapelbaren Varianten sind von
+  den Screenshots belegt. Für eine Aufnahme bliebe nur
+  `SUPER+SHIFT+CTRL+ALT+S` — ein Vierfingergriff für eine Taste, die man mitten
+  in einer Aufnahme trifft. `R` war auf beiden Hosts komplett frei
+  (`hyprctl binds` gegengeprüft), beide bekommen deshalb dieselbe Bindung —
+  anders als bei den Screenshots, wo zwei Sätze nebeneinander stehen müssen.
+- **Ton ist aus, solange nichts anderes gesagt wird.** Ein Toggle, der unbemerkt
+  das Mikrofon mitschneidet, ist die falsche Vorgabe. Ein `--audio` schaltet ihn
+  für einen CLI-Aufruf dazu, `RECORD_AUDIO=1` dauerhaft — nur so bekommt auch der
+  Keybind Ton, der kriegt ja keine Argumente mit. `--audio` allein nimmt die
+  Standard-Quelle, also das **Mikrofon**. Für den Ton, der aus den Lautsprechern
+  kommt, braucht es die Monitor-Quelle des Sinks:
+
+  ```sh
+  pactl list sources short | grep monitor      # Namen ansehen
+  record screen --audio=alsa_output.…​.monitor
+  ```
+- **VP9 in `.webm`, und h264 gibt es hier nicht.** Das ist keine Vorliebe,
+  sondern auf dieser Kiste nachgemessen (08.09.2026):
+
+  | Versuch | Ergebnis |
+  |---|---|
+  | `-c libx264` | `Failed to find the given codec` |
+  | `-c h264_vaapi -d /dev/dri/renderD128` (RX 6400) | Filtergraph-Fehler |
+  | `-c h264_vaapi -d /dev/dri/renderD129` (Raphael-iGPU) | `avcodec_open2 failed: Function not implemented` |
+
+  Fedora liefert `ffmpeg-free` **ohne** die patentbehafteten Encoder, und
+  `mesa-va-drivers` ist gar nicht installiert — die Variante *mit* h264 heißt
+  `mesa-va-drivers-freeworld` und kommt aus RPM Fusion, das hier bewusst
+  nirgends eingebunden ist. h264 fehlt also in Software **und** auf der GPU;
+  wf-recorders Vorgabe ist deshalb libvpx-vp9. (Die RX 6400 wäre ohnehin die
+  falsche Karte: Navi 24 hat gar keinen Encoder. Enkodieren könnte nur die
+  Raphael-iGPU auf `renderD129`.)
+
+  Entscheidend ist dann der **Container**: `.mp4` ergäbe VP9-in-MP4, genau die
+  Kombination, an der Slack, QuickTime und der Windows-Player aussteigen. VP9
+  gehört in eine `.webm` — die spielen Firefox, Element und Windows problemlos.
+  In der Praxis bestätigt: eine so aufgenommene Datei ist ohne Nacharbeit auf
+  Mastodon hochgeladen und dort abgespielt worden (08.09.2026). Für den
+  Alltagsfall reicht webm also, der Absatz unten ist der Notfallplan.
+  **Wer h264 braucht** (ein Mac-Gegenüber, ein altes Schnittprogramm), kommt um
+  RPM Fusion nicht herum: `mesa-va-drivers-freeworld` für die iGPU, dann
+  `RECORD_ARGS="-c h264_vaapi -d /dev/dri/renderD129"`. Das ist eine
+  Repo-Entscheidung, keine Skript-Einstellung — bisher hängt hier nichts an
+  einem Fremd-Repo, und das war der Punkt.
+- **30 fps statt der Monitorwiederholrate.** Der cube läuft mit ~100 Hz auf
+  3440×1440, encodiert wird in Software. Bei 30 fps sind das gemessene 150–190 %
+  eines Kerns — von 24 also gut verkraftbar, und die Bildrate hält durch.
+  `RECORD_FPS` hebt an; danach lohnt ein Blick, ob wirklich alle Frames ankommen.
+  `RECORD_ARGS` ist der Notausgang für alles Weitere (z. B.
+  `-p deadline=good` für Qualität statt Realtime) — bewusst eine Durchreiche
+  für alle wf-recorder-Optionen, statt für jede eine eigene Flagge.
+- **Kein `all`.** wf-recorder nimmt genau **einen** Output auf. Auf dem cube ist
+  das ohnehin dasselbe wie `screen`; auf dem book muss man sich entscheiden. Bei
+  `region`/`window` leitet das Skript den Output aus der **Auswahl** ab
+  (`hyprctl monitors`), nicht aus der aktiven Workspace — man zieht das Rechteck
+  mit der Maus, und die kann auf dem anderen Monitor landen. Die Kantenlängen
+  kommen dabei in physischen Pixeln, `x`/`y` im logischen Raum, deshalb steht im
+  Skript `width / scale`.
+- **Stoppen per `SIGINT`, nicht `SIGTERM`.** wf-recorder fängt `SIGINT` ab, leert
+  seine Puffer und schreibt den Container zu Ende. Abgeschossen bliebe eine Datei
+  ohne Abschluss liegen — bei Matroska/WebM ohne Cues und ohne Gesamtlänge, also
+  bestenfalls halb abspielbar.
+- **Zustand liegt in `$XDG_RUNTIME_DIR/record/`**, nicht in `~/.local/state` wie
+  beim Wallpaper: eine Aufnahme darf einen Reboot nicht überleben, ein tmpfs
+  räumt das von selbst weg. Die PID-Datei allein gilt dabei nicht als Wahrheit —
+  nach einem Absturz kann die Nummer längst einem fremden Prozess gehören,
+  deshalb wird zusätzlich `/proc/<pid>/comm` geprüft.
+- **Waybar-Modul ist `custom/screenrec`** — nicht zu verwechseln mit
+  `custom/recording`, das ist der *Audio*-Aufnahmemodus (Scarlett + CPU, nur
+  cube). Deshalb auch ein anderes Signal: 8 statt 7. Ohne Aufnahme liefert
+  `record status` leeren Text, und Waybar blendet das Modul komplett aus — es ist
+  nur zu sehen, wenn es etwas zu sagen hat. Mit Aufnahme zeigt es `REC m:ss` auf
+  roter Fläche; das ist der einzige Ort in `style.css`, an dem Rot nicht "kaputt"
+  heißt, sondern genau die Warnung ist, die man braucht, bevor man in ein
+  aufgezeichnetes Fenster tippt.
+- **`interval: 1` ist hier vertretbar**, weil `record status` bewusst ohne `jq`,
+  `date` und `cat` auskommt — reine Bash-Builtins, also kein Fork pro Sekunde.
+  Das Signal ist trotzdem nötig, damit Start und Stopp sofort stehen.
+- **Kein `on-click` zum Stoppen:** eine laufende Aufnahme per Klick auf die Bar
+  zu beenden hieße, mit dem Zeiger *im Bild* herumzufahren.
+
+**Offener Punkt:** eine lange Aufnahme läuft in den Lockscreen. hypridle sperrt
+nach 5 Minuten, und `record` hält den Rechner nicht wach — beim Vorführen tippt
+und klickt man meist, dann greift der Timer nie, aber sicher ist das nicht. Bis
+dahin: vor langen Aufnahmen den **"Wach"**-Schalter der Waybar drücken (s.
+"Idle-Verhalten"). Sauber wäre ein kleiner Helfer, der für die Dauer der Aufnahme
+einen `zwp_idle_inhibitor` hält — genau das, was Waybar für diesen Schalter tut.
 
 ## ToDo-Schnellerfassung
 
@@ -1107,6 +1268,214 @@ ohnehin (`SUPER+D`, cliphist, keybinds, wifi, bt) und steht per `fuzzel.ini` auf
   kein Zustand, den man wieder anklickt.
 - Kein Waybar-Modul mit Zähler. Wer es will, hat mit `todo status` die Zahl
   schon; das wäre ein `custom/`-Modul nach dem Muster von `custom/keybinds`.
+
+## Mac als Thin Client (nur `cube`)
+
+Das MacBook zeigt den Hyprland-Desktop des cube im Vollbild, Tastatur und
+Trackpad gehen durch. Server ist `wayvnc` (packages.txt), gestartet von
+`dot_local/bin/remote` über die User-Unit `systemd/user/wayvnc.service`.
+Nur im LAN, nur solange es eingeschaltet ist.
+
+```sh
+remote on          # am cube — oder vom Mac aus: ssh cube remote on
+remote off
+remote toggle
+remote status      # on / off / halb
+```
+
+Auf dem Mac dann `cube.local:5900` im VNC-Client, Benutzer und Passwort aus
+`~/.config/wayvnc/config.secret` auf dem cube. Beim ersten Verbinden zeigt der
+Client den Fingerprint des Serverschlüssels — einmal bestätigen, danach kennt
+er ihn wie SSH einen Host-Key.
+
+**Client:** TigerVNC Viewer (`brew install --cask tigervnc-viewer`). wayvnc
+bietet beim Handshake ausschließlich RSA-AES an (Security-Types `RA2` und
+`RA2_256`, per Handshake-Probe geprüft); TigerVNC kann das seit 1.12. Apples
+eingebaute Bildschirmfreigabe (`open vnc://cube.local`) kennt nach allem, was
+bekannt ist, nur ihre eigenen und die klassische VNC-Anmeldung — einen Versuch
+wert, aber nicht darauf bauen.
+
+**Passwort merken kann TigerVNC hier nicht.** Seine Passwortdatei
+(`PasswordFile`) gilt nur für die klassische VNC-Anmeldung ohne Benutzername;
+bei RSA-AES mit Benutzer fragt der Dialog immer (`vncviewer/UserDialog.cxx`:
+Datei wird nur ausgewertet, wenn kein `user` verlangt ist). Der einzige
+Automatik-Weg sind die Umgebungsvariablen `VNC_USERNAME` und `VNC_PASSWORD`,
+die der Viewer vor dem Dialog liest (1.15 geprüft). Auf dem Mac also einmal
+ins Schlüsselbund und dann per Skript starten, statt die App zu klicken:
+
+```sh
+# einmalig: Passwort aus ~/.config/wayvnc/config.secret (cube) ablegen
+security add-generic-password -a zoellert -s cube-vnc -w
+# Startskript, z. B. ~/bin/cube
+VNC_USERNAME=zoellert \
+VNC_PASSWORD="$(security find-generic-password -a zoellert -s cube-vnc -w)" \
+  exec /Applications/TigerVNC\ Viewer*.app/Contents/MacOS/TigerVNC\ Viewer cube.local:5900
+```
+
+Der Mac ist nicht Teil dieses Repos, das Skript lebt nur dort.
+
+**Unscharf heißt JPEG.** TigerVNC handelt hier Tight aus (Journal: `Choosing
+tight encoding`) und regelt mit „Auto select" die JPEG-Qualität nach der
+gemessenen Bandbreite herunter. Im LAN: *Options → Compression*, „Auto select"
+aus, „Allow JPEG compression" aus (verlustfrei) oder Qualität auf 9. Kostet
+Bandbreite, die hier egal ist. Die Einstellung lässt sich im selben Dialog als
+Voreinstellung speichern, das funktioniert, anders als beim Passwort.
+
+**Warum es ohne Extra-Handgriff ins Fenster passt.** Der Remote hat eine feste
+Größe. Wäre sie größer als das TigerVNC-Fenster, zeigte der Client das Bild 1:1
+mit Scrollbalken — das halbe, abgeschnittene Bild. Deshalb steht die `mac`-Zeile
+in `monitors.conf.tmpl` auf `1440x900` (Skalierung 1), dem logischen
+16:10-Standardformat des 13"-Macs. Das passt ohne Vollbild ins Fenster und füllt
+einen Vollbild-Client exakt. Auf dem Touch-Bar-MacBook ist das wichtig, weil es
+dort kein bequemes `F8` fürs Vollbildmenü gibt.
+
+`„Resize remote session to the local window"` in TigerVNC (*Options → Screen*)
+kann aus bleiben: wayvnc lehnt Resize bei diesem Output bewusst ab (s. u.), es
+brächte nur Log-Rauschen.
+
+**Warum die Auflösung fix ist und nicht dem Fenster folgt.** wayvnc entscheidet
+allein am Output-*Namen* (Präfix `HEADLESS-`/`NOOP-`), ob es die Größe auf
+Client-Zuruf ändert. Mit einem `HEADLESS-`Namen täte es das — stürzt dabei auf
+Hyprland 0.56 aber reproduzierbar mit SIGSEGV ab (07.09.2026 nachgestellt: der
+Client schickt `SetDesktopSize`, wayvnc fängt an zu resizen und segfaultet). Der
+Output heißt deshalb absichtlich `mac`; wayvnc meldet dann
+`not resizing output mac: not a headless one` und bleibt stehen. Die Größe legt
+also `monitors.conf.tmpl` fest, das Anpassen ans Panel macht der Client per
+Vollbild/Skalierung. Nicht auf einen `HEADLESS-`Namen umbenennen.
+
+**Anderes Panel / lieber gestochen scharf ohne Client-Skalierung.** Wenn dein
+TigerVNC kein pixelgenaues Retina beherrscht und im Vollbild trotzdem abschneidet,
+ist es „punktbasiert": es braucht ein Bild, das in Bildschirm*punkte* passt. Dann
+in `monitors.conf.tmpl` die `mac`-Zeile auf die Punkt-Auflösung deines Macs setzen
+(16:10 behalten, damit nichts verzerrt), Skalierung 1, und `chezmoi apply`:
+
+| MacBook | native (Pixel) | typische Punkt-Auflösung (16:10) |
+| --- | --- | --- |
+| 13" M1 | 2560x1600 | `1680x1050` oder `1440x900`, Skalierung 1 |
+| 14"    | 3024x1964 | `1512x982`, Skalierung 2 (dann native Pixel) |
+
+Beispiel 13": `monitor = mac, 1680x1050@60, -1680x-3000, 1` — Position-x = die
+neue Breite, damit der HDMI-Monitor bei 0x0 bleibt.
+
+**Was `remote on` tut.** Es legt einen virtuellen Monitor `mac` an
+(`hyprctl output create headless mac`); die Regel dafür steht im cube-Zweig von
+`monitors.conf.tmpl`: 1440x900 bei Skalierung 1 (Begründung oben). Dann wandern
+alle Workspaces vom HDMI-Monitor auf `mac`, der Fokus folgt, und wayvnc startet
+auf genau diesem Output. `remote off` dreht es in umgekehrter Reihenfolge
+zurück: erst wayvnc beenden, warten bis der Prozess weg ist, Workspaces zurück,
+dann den Monitor entfernen. Beides idempotent. Die Reihenfolge beim Ausschalten
+ist Pflicht, s. u. "Den Monitor nie unter einem verbundenen Client entfernen".
+
+**Warum kein Spiegeln und kein Abschalten des echten Monitors.** 21:9 auf
+einem 16:10-Panel ist entweder winzig oder abgeschnitten, deshalb der eigene
+Output. Und `monitor = HDMI-A-2, disable` wäre zwar der offensichtliche Weg,
+zerstört aber den `wl_output` — genau das Ereignis, das Thunderbird kaputtmacht
+(s. "Display-Aus killt Thunderbird"). Fenster zwischen zwei bestehenden Outputs
+zu verschieben ist dagegen normaler Multi-Monitor-Betrieb. Preis: der echte
+Monitor bleibt an und zeigt einen leeren Workspace. Wer ihn dunkel will, drückt
+seinen Knopf — nicht `dpms off`, aus demselben Grund.
+
+Der virtuelle Monitor liegt bewusst NICHT angrenzend am HDMI-Monitor
+(`-1440x-3000`): Hyprland lässt den Cursor nur zwischen sich berührenden
+Monitoren wechseln, so kann er nicht auf den echten Bildschirm rutschen, wo
+ihn der VNC-Client nicht zeigt.
+
+**Sicherheit und Reichweite.**
+
+- wayvnc lauscht nur, solange `remote on` aktiv ist. Im Alltag ist Port 5900 zu.
+- Anmeldung per RSA-AES: Serverschlüssel `~/.config/wayvnc/rsa_key.pem`,
+  Zugangsdaten `~/.config/wayvnc/config.secret`. Beides legt bootstrap.sh
+  einmalig an, beides liegt NICHT im Repo (öffentlich!). Die chezmoi-verwaltete
+  `config` enthält nur das Unsekrete; die Unit klebt beim Start beide Dateien
+  nach `$XDG_RUNTIME_DIR/wayvnc.conf` zusammen, weil wayvnc weder Include noch
+  Umgebungsvariablen kennt. Deshalb auch nie `chezmoi add ~/.config/wayvnc/`
+  als Verzeichnis — das würde die Secret-Datei mitnehmen.
+- Firewall: firewalld-Service `vnc-server` in Zone `public` (bootstrap.sh).
+  "Nur LAN" heißt: der Router leitet 5900 nicht weiter. Für Zugriff von
+  außerhalb wäre der Weg ein SSH-Tunnel (`ssh -L 5900:localhost:5900 cube`),
+  der Port selbst bleibt zu.
+- Kein Schlüssel-Rotieren: der Client hat sich den Fingerprint gemerkt und
+  würde nach einem neuen Schlüssel einen fremden Server vermuten.
+
+**Wenn der Client kurz ein Bild zeigt und dann abbricht** (TigerVNC „connection
+closed"), lief wayvnc ohne `--render-cursor`. wayvnc 0.9.1 holt den Mauszeiger
+über eine eigene Cursor-Session von Hyprlands `ext-image-copy-capture`;
+scheitert darin ein Frame — der Zeiger wird versteckt (`cursor:inactive_timeout`)
+oder verlässt den Output — wertet wayvnc das als fatal und beendet sich
+(`Fatal error while capturing`, `journalctl --user -u wayvnc.service`). Mit
+`--render-cursor` malt Hyprland den Zeiger ins Hauptbild (PAINT_CURSORS) und der
+Abbruch bleibt aus; auf cube per A/B reproduziert (07.09.2026): ohne Flag
+Absturz beim Verstecken des Cursors, mit Flag stabil über wiederholte
+enter/leave-Zyklen. Fürs Verständnis wichtig: die Cursor-Session gibt es mit
+dem Flag trotzdem — wayvnc legt sie unabhängig davon an (`configure_cursor_sc`
+in `src/main.c`), sie stirbt nur nicht mehr. Warum genau, ist nicht geklärt.
+Diese Session ist es, die Hyprland im nächsten Absatz zum Absturz bringt.
+
+**Den Monitor nie unter einem verbundenen Client entfernen.** Solange ein
+VNC-Client verbunden ist, hält Hyprland für wayvnc die Cursor-Session
+(`CCursorshareSession`) auf dem Output `mac`. Wird der Output dann entfernt
+(`hyprctl output remove mac`), stürzt Hyprland 0.56.2 beim nächsten
+Cursor-Wechsel mit SIGSEGV ab (`CCursorshareSession::copy` →
+`beginFullFakeRender` → `CMonitor::resources()` auf dem toten Monitor) und
+reißt die ganze Sitzung mit: man landet im SDDM, alle Fenster sind weg. Am
+07.09.2026 genau so passiert — ein Test räumte mit `hyprctl output remove mac`
+auf, während TigerVNC auf dem Mac verbunden war (Coredump und
+`~/.cache/hyprland/hyprlandCrashReport*.txt` belegen die Kette). wayvnc selbst
+stirbt beim Wegbrechen des Compositors mit einem Double-Free in
+`xkb_keymap_unref`; das ist Folge, nicht Ursache. Deshalb: den Monitor
+ausschließlich über `remote off` loswerden. Das beendet erst wayvnc (damit die
+Cursor-Session sauber verschwindet), wartet, bis kein wayvnc-Prozess mehr
+lebt, und entfernt den Output erst dann; lebt noch einer, bricht es ab und
+lässt den Monitor stehen. Test-Instanzen nie auf denselben Output setzen,
+sondern auf einen eigenen (`hyprctl output create headless mactest`).
+
+**Wenn es ruckelt oder nachzieht.** Drei Stellschrauben, alle in der Unit:
+
+- `--gpu`: ohne das Flag holt wayvnc jedes Bild als Shared-Memory-Kopie, d. h.
+  Hyprland liest den Frame im Compositor-Thread von der GPU zurück, und der
+  H.264-Encoder von neatvnc steht nicht zur Verfügung (er braucht DMA-BUF).
+  Mit dem Flag öffnet wayvnc den Render-Node der iGPU (`renderD129`, dieselbe
+  GPU, auf der Hyprland rendert) und bekommt die Frames als DMA-BUF. Fedoras
+  neatvnc ist mit libavcodec, TurboJPEG und VAAPI gebaut (`rpm -q --requires
+  neatvnc`), H.264 gibt es also, sobald der Client es anbietet.
+- `--max-fps=60`: wayvnc begrenzt sonst auf 30 Bilder/s, der Output läuft mit 60.
+- Die Kodierung entscheidet der Client. Was er bekommen hat, steht dank
+  `--log-level=info` im Journal (`Choosing <x> encoding for client`). TigerVNC
+  nimmt per Voreinstellung Tight mit JPEG; H.264 nur, wenn sein Build es kann
+  (*Options → Compression*, „Auto select" aus, dann ist es aufgelistet oder
+  eben nicht). Im LAN kostet Bandbreite nichts, Kompressionsarbeit schon:
+  „Compression level" runter, „JPEG quality" hoch.
+
+Stand 07.09.2026: ohne `--gpu` und mit 30 fps war TigerVNC vom Mac deutlich
+träge. Mit `--gpu`, 60 fps und `--render-cursor` läuft es mit TigerVNC
+spürbar flüssiger (Tight-Encoding, MIN-RTT 1 ms, wayvnc bei ~4 % CPU),
+Restunschärfe kommt von JPEG, s. o. „Unscharf heißt JPEG".
+
+**Grenzen.**
+
+- Die Hyprland-Session muss am cube laufen; nach einem Reboot muss jemand am
+  SDDM anmelden. hyprlock lässt sich über VNC entsperren.
+- Eingaben über VNC zählen für hypridle als Aktivität, die Kiste bleibt also
+  wach, solange gearbeitet wird. Wer sich trennt, ohne `remote off`, lässt
+  sie nach 5 min sperren und nach 15 min in den Suspend gehen — danach ist sie
+  aus dem LAN nicht mehr erreichbar (kein Wake-on-LAN eingerichtet). Vor dem
+  Trennen also `remote off`, oder den `Wach`-Schalter in der Waybar setzen.
+- Kein Ton. Video, Bitwig oder Cider streamt man so nicht; für Terminal,
+  Editor und Browser reicht es im LAN.
+- Über SSH funktioniert `remote` nur, weil das Script die Hyprland-Instanz
+  selbst sucht (`hyprctl instances`) — die Signatur-Variable, die hyprctl
+  sonst braucht, gibt es in einer SSH-Sitzung nicht.
+
+Auf Hardware verifiziert (07.09.2026): `remote on`/`off` als Rundlauf, auch
+ohne Hyprland-Signatur in der Umgebung (SSH-Fall) — Output mit Name und
+Wunschmodus, Monitor-Regel greift, HDMI bleibt bei 0x0, sechs Workspaces mit
+Fenstern hin und zurück, Fokus landet wieder auf dem vorher aktiven Workspace,
+Unit startet mit zusammengeklebter Config und räumt sie beim Stopp weg, Port
+5900 offen bzw. zu, und der Cursor-Absturz oben ohne/mit `--render-cursor` (ohne
+Flag reproduzierbar tot, mit Flag stabil). Mit dem echten TigerVNC-Client vom
+Mac: Verbindung, Anmeldung und Bild bei 1440x900 bestätigt. Cursor-Test und
+`--gpu` nur mit einem selbstgebauten RFB-Client, der dieselbe
+Cursor-Anforderung stellt.
 
 ## Login-Screen (SDDM)
 

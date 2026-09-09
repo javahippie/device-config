@@ -1,0 +1,327 @@
+#!/usr/bin/env bash
+# Bildschirmaufnahme fuer Hyprland — das Video-Gegenstueck zu
+# dot_local/bin/screenshot. wf-recorder nimmt auf, slurp waehlt aus, jq liest
+# Hyprlands JSON. Die Modusnamen sind ABSICHTLICH dieselben wie beim Screenshot
+# (region/window/screen), damit es hier kein zweites Vokabular zu lernen gibt.
+#
+# wf-recorder und nicht OBS oder gpu-screen-recorder: es steht regulaer in den
+# Fedora-Repos (0.6.0 in F44), haengt also an keiner COPR, und es ist EIN
+# Prozess, den man mit einem Signal sauber beendet — genau das, was ein
+# Toggle-Keybind braucht. Dieselbe Ueberlegung wie swaybg statt hyprpaper beim
+# Wallpaper und wie grim statt grimblast beim Screenshot.
+#
+# Aufgenommen wird VP9 in einer .webm — und zwar nicht aus Geschmack, sondern
+# weil auf diesem System nichts anderes uebrig bleibt. Auf Hardware nachgemessen
+# (08.09.2026, cube):
+#   -c libx264                      -> "Failed to find the given codec"
+#   -c h264_vaapi -d renderD128/129 -> Filtergraph- bzw. avcodec_open2-Fehler
+# Fedora liefert ffmpeg-free ohne die patentbehafteten Encoder, und die
+# mesa-VA-Treiber sind gar nicht installiert (mesa-va-drivers fehlt; die
+# Variante MIT h264 heisst mesa-va-drivers-freeworld und kommt aus RPM Fusion,
+# das hier bewusst nirgends eingebunden ist). h264 gibt es hier also weder in
+# Software noch auf der GPU. wf-recorders Vorgabe ist deshalb libvpx-vp9.
+#
+# Wichtig ist dann der CONTAINER: die Endung .mp4 ergaebe VP9-in-MP4, genau die
+# Kombination, an der Slack, QuickTime und der Windows-Player aussteigen. VP9
+# gehoert in eine .webm, und die spielt jeder Browser, Element und Windows.
+# Wer wirklich h264 braucht (Mac-Gegenueber, altes Schnittprogramm), kommt um
+# RPM Fusion nicht herum — s. README, Abschnitt "Bildschirmaufnahme".
+#
+# Der Unterschied zum Screenshot ist der Zustand: eine Aufnahme laeuft weiter,
+# nachdem das Skript zurueckgekehrt ist. Deshalb die drei Dateien in
+# $XDG_RUNTIME_DIR (s. STATE_DIR) — und deshalb dort und nicht in
+# ~/.local/state wie beim Wallpaper: eine Aufnahme darf einen Reboot NICHT
+# ueberleben, ein tmpfs raeumt das von selbst weg.
+set -euo pipefail
+
+DIR="${RECORD_DIR:-$(xdg-user-dir VIDEOS 2>/dev/null || echo "$HOME/Videos")/Screenrecordings}"
+
+# 30 statt der Monitorwiederholrate: der cube laeuft mit ~100 Hz auf 3440x1440,
+# und encodiert wird in Software (s. Codec-Absatz unten). Bei 30 fps kostet das
+# gemessene 150-190 % eines Kerns — von 24 also gut verkraftbar, und die
+# Aufnahme haelt die Bildrate durch. Wer die vollen Hz will, setzt RECORD_FPS
+# und sollte danach einmal nachsehen, ob wirklich alle Frames ankommen.
+FPS="${RECORD_FPS:-30}"
+
+# Waybar-Modul custom/screenrec. Muss zu "signal" in waybar/config.jsonc.tmpl
+# passen — 7 ist dort schon vom Aufnahmemodus (Audio) belegt.
+WAYBAR_SIGNAL=8
+
+STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/record"
+PIDFILE="$STATE_DIR/pid"
+PATHFILE="$STATE_DIR/path"
+STARTFILE="$STATE_DIR/start"
+LOGFILE="$STATE_DIR/log"
+
+usage() {
+    cat <<EOF
+Usage: record <region|window|screen> [--audio[=GERAET]]
+       record stop | status | toggle [region|window|screen]
+
+  region    Rechteck mit der Maus aufziehen (slurp)
+  window    Fenster der aktuellen Workspace anklicken — slurp rastet auf die
+            Fensterkanten ein, wie beim Screenshot
+  screen    Der Monitor, auf dem die aktive Workspace liegt
+  stop      Laufende Aufnahme beenden und die Datei schliessen
+  status    Zeile fuer Waybar (JSON); ohne Aufnahme leerer Text
+  toggle    Laeuft eine Aufnahme, beenden — sonst im angegebenen Modus starten
+
+Kein 'all' wie beim Screenshot: wf-recorder nimmt genau EINEN Output auf. Auf
+dem cube ist das ohnehin dasselbe wie 'screen', auf dem book muss man sich
+entscheiden.
+
+Ton ist AUS, solange nichts anderes gesagt wird — s. --audio und RECORD_AUDIO.
+Ablage: \$RECORD_DIR oder <XDG-Videoordner>/Screenrecordings
+
+Umgebung:
+  RECORD_AUDIO=1|<Geraet>  Ton dauerhaft an (wirkt auch auf den Keybind)
+  RECORD_FPS=<n>           Bilder pro Sekunde (Vorgabe $FPS)
+  RECORD_ARGS="..."        zusaetzliche wf-recorder-Argumente, z. B.
+                           "-p deadline=good" fuer bessere Qualitaet statt
+                           Realtime. h264 geht hier NICHT, s. Codec-Absatz
+                           im Skriptkopf
+EOF
+}
+
+# mako laeuft, notify-send kommt aber aus libnotify. Fehlt es, bleibt es still —
+# die Aufnahme laeuft trotzdem. Gleiche Bauart wie in screenshot.
+notify() {
+    command -v notify-send >/dev/null 2>&1 && notify-send "$@" || true
+}
+
+fail() {
+    echo "$1" >&2
+    # Aus einem Keybind gestartet gibt es kein Terminal fuer stderr.
+    #
+    # BEWUSST ohne -u critical, obwohl es sich anbietet: mako gibt [urgency=high]
+    # ein default-timeout=0 (mako/config), so eine Meldung bleibt also stehen,
+    # bis man sie wegklickt. Das ist fuer "es laeuft keine Aufnahme" die falsche
+    # Lautstaerke — und dass eine Aufnahme NICHT angelaufen ist, sieht man
+    # ohnehin sofort daran, dass in der Waybar kein REC steht. Gleiche
+    # Zurueckhaltung wie im screenshot-Skript.
+    [ -t 2 ] || notify "Aufnahme" "$1"
+    exit 1
+}
+
+# Waybar sofort nachziehen lassen, statt auf das interval zu warten.
+poke_waybar() {
+    pkill -RTMIN+$WAYBAR_SIGNAL waybar 2>/dev/null || true
+}
+
+# Laeuft eine Aufnahme? Die PID-Datei allein ist keine Wahrheit: nach einem
+# Absturz steht dort eine Nummer, die inzwischen einem fremden Prozess gehoert.
+# Deshalb zusaetzlich der Prozessname.
+#
+# Ausschliesslich Builtins, kein cat: `status` ruft das im Sekundentakt auf
+# (s. dort).
+recorder_pid() {
+    local pid comm
+    # Die Umleitung von stderr steht VOR der Eingabeumleitung: bash wendet
+    # Umleitungen von links nach rechts an, und eine fehlende Datei meldet es
+    # beim Oeffnen — mit 2>/dev/null dahinter waere die Meldung schon raus.
+    read -r pid 2>/dev/null < "$PIDFILE" || return 1
+    [ -n "$pid" ] || return 1
+    read -r comm 2>/dev/null < "/proc/$pid/comm" || return 1
+    [ "$comm" = "wf-recorder" ] || return 1
+    printf '%s' "$pid"
+}
+
+# Nur sichtbare Fenster der aktiven Workspace anbieten; `slurp -r` rastet die
+# Auswahl dann auf genau diese Rechtecke ein. Wortgleich mit screenshot —
+# bewusst kopiert statt in eine gemeinsame Bibliothek gezogen: zwei Skripte, die
+# man je in einem Rutsch lesen kann, sind hier mehr wert als eine dritte Datei.
+window_geometry() {
+    local ws
+    ws="$(hyprctl activeworkspace -j | jq -r '.id')"
+    hyprctl clients -j | jq -r --argjson ws "$ws" '
+        .[]
+        | select(.workspace.id == $ws and .mapped == true and .hidden == false)
+        | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"' \
+        | slurp -r
+}
+
+# Welcher Monitor liegt unter diesem Punkt? Nicht "der aktive": man zieht die
+# Auswahl mit der Maus auf, und die kann auf dem book auf dem anderen Monitor
+# landen als die aktive Workspace. Groesse aus width/scale, weil hyprctl die
+# Kantenlaengen in PHYSISCHEN Pixeln meldet, x/y aber im logischen Raum — auf
+# einem skalierten Monitor faellt das auseinander.
+monitor_at() {
+    hyprctl monitors -j | jq -r --argjson x "$1" --argjson y "$2" '
+        [ .[]
+          | select($x >= .x and $x < (.x + .width / .scale)
+               and $y >= .y and $y < (.y + .height / .scale))
+        ] | first | .name // empty'
+}
+
+start() {
+    local mode="$1" audio="$2"
+    local args=() geom monitor file pid
+
+    command -v wf-recorder >/dev/null 2>&1 \
+        || fail "record: wf-recorder fehlt (dnf install wf-recorder)"
+
+    case "$mode" in
+        region)
+            # Abbruch mit Esc ist kein Fehler, nur ein "doch nicht".
+            geom="$(slurp)" || exit 0
+            ;;
+        window)
+            geom="$(window_geometry)" || exit 0
+            ;;
+        screen)
+            geom=""
+            ;;
+        *)
+            usage
+            exit 1
+            ;;
+    esac
+
+    if [ -n "$geom" ]; then
+        # slurp liefert "x,y bxh". Den Monitor aus der Auswahl ableiten, nicht
+        # aus der aktiven Workspace (s. monitor_at). wf-recorder braucht bei
+        # mehreren Outputs beides: -o sagt WELCHER Bildschirm, -g WELCHER
+        # Ausschnitt davon. Eine Auswahl ueber zwei Monitore hinweg kann
+        # wf-recorder nicht — sie wird auf diesen einen beschnitten.
+        local xy="${geom%% *}"
+        monitor="$(monitor_at "${xy%,*}" "${xy#*,}")"
+        [ -n "$monitor" ] || fail "record: kein Monitor unter der Auswahl"
+        args=(-o "$monitor" -g "$geom")
+    else
+        # -o statt -g, damit wf-recorder die Groesse selbst ausrechnet: auf
+        # skalierten Monitoren waeren hyprctl-Koordinaten falsch. Gleiche
+        # Ueberlegung wie bei `grim -o` im screenshot-Skript.
+        monitor="$(hyprctl activeworkspace -j | jq -r '.monitor')"
+        args=(-o "$monitor")
+    fi
+
+    case "$audio" in
+        "")  ;;
+        1)   args+=(--audio) ;;
+        *)   args+=("--audio=$audio") ;;
+    esac
+
+    # Ungequotet und mit Absicht: RECORD_ARGS ist der Notausgang fuer
+    # wf-recorder-Optionen, die hier keine eigene Flagge verdienen (Codec,
+    # VAAPI-Geraet, Pixelformat). Wer die Variable setzt, meint genau das.
+    # shellcheck disable=SC2206
+    local -a extra=(${RECORD_ARGS:-})
+
+    mkdir -p "$DIR" "$STATE_DIR"
+    file="$DIR/recording_$(date +%Y-%m-%d_%H-%M-%S).webm"
+
+    wf-recorder -f "$file" -r "$FPS" "${args[@]}" "${extra[@]}" >"$LOGFILE" 2>&1 &
+    pid=$!
+
+    # Mit Zeilenumbruch: `read` liefert sonst zwar den Wert, quittiert das EOF
+    # aber mit != 0 — und der Fallback dahinter wuerde den korrekt gelesenen
+    # Wert wieder ueberschreiben.
+    printf '%s\n' "$pid"          > "$PIDFILE"
+    printf '%s\n' "$file"         > "$PATHFILE"
+    printf '%s\n' "$EPOCHSECONDS" > "$STARTFILE"
+
+    # wf-recorder scheitert erst NACH dem Start, wenn etwa der Codec fehlt oder
+    # die Auswahl leer war. Ohne diese Pause meldete das Skript eine Aufnahme,
+    # die es nicht gibt, und in der Waybar stuende ein REC, das nie weggeht.
+    sleep 0.5
+    if ! kill -0 "$pid" 2>/dev/null; then
+        rm -f "$PIDFILE" "$PATHFILE" "$STARTFILE"
+        poke_waybar
+        fail "record: wf-recorder ist sofort gestorben — $(tail -n1 "$LOGFILE" 2>/dev/null)"
+    fi
+
+    poke_waybar
+    notify "Aufnahme laeuft" "$mode${audio:+, mit Ton} — SUPER+SHIFT+R beendet"
+    echo "$file"
+}
+
+stop() {
+    local pid file i
+    pid="$(recorder_pid)" || fail "record: es laeuft keine Aufnahme"
+    file="$(cat "$PATHFILE" 2>/dev/null || true)"
+
+    # SIGINT, NICHT SIGTERM oder SIGKILL: wf-recorder faengt SIGINT ab, leert
+    # seine Puffer und schreibt den Container zu Ende. Abgeschossen bliebe eine
+    # Datei ohne Abschluss liegen — bei Matroska/WebM ohne Cues und ohne
+    # Gesamtlaenge, also bestenfalls halb abspielbar.
+    kill -INT "$pid" 2>/dev/null || true
+    for ((i = 0; i < 40; i++)); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.25
+    done
+
+    rm -f "$PIDFILE" "$PATHFILE" "$STARTFILE"
+    poke_waybar
+
+    [ -n "$file" ] && [ -s "$file" ] || fail "record: die Datei ist leer geblieben"
+
+    # Das Gegenstueck zu "speichert UND kopiert" beim Screenshot, so weit es bei
+    # einem Video geht: ein Video in die Zwischenablage zu legen kann keine App
+    # gebrauchen, der PFAD dagegen laesst sich in einen Datei-Dialog oder ein
+    # Terminal einwerfen. Fehlt wl-copy, ist das kein Grund zur Fehlermeldung.
+    command -v wl-copy >/dev/null 2>&1 && printf '%s' "$file" | wl-copy || true
+
+    notify "Aufnahme fertig" "$(basename "$file")"
+    echo "$file"
+}
+
+# Absichtlich OHNE jq, date oder sonst einen Unterprozess: Waybar ruft das im
+# Sekundentakt auf (interval 1), damit die Laufzeit mitzaehlt. Mit reinen
+# Bash-Builtins kostet dieser Takt nichts Messbares — drei Forks pro Sekunde
+# waeren dagegen ein Dauerlaeufer im Hintergrund.
+status() {
+    local start file elapsed mm ss
+    if ! recorder_pid >/dev/null; then
+        printf '{"text":"","tooltip":"","class":"idle"}\n'
+        return 0
+    fi
+    read -r start 2>/dev/null < "$STARTFILE" || start=$EPOCHSECONDS
+    read -r file  2>/dev/null < "$PATHFILE"  || file="?"
+    elapsed=$(( EPOCHSECONDS - start ))
+    mm=$(( elapsed / 60 ))
+    ss=$(( elapsed % 60 ))
+    printf '{"text":"REC %d:%02d","tooltip":"%s","class":"recording"}\n' \
+        "$mm" "$ss" "${file##*/}"
+}
+
+audio=""
+positional=()
+for arg in "$@"; do
+    case "$arg" in
+        --audio)    audio="${RECORD_AUDIO:-1}" ;;
+        --audio=*)  audio="${arg#--audio=}" ;;
+        -h|--help)  usage; exit 0 ;;
+        *)          positional+=("$arg") ;;
+    esac
+done
+# RECORD_AUDIO wirkt auch ohne Flagge — nur so kann der Keybind ueberhaupt Ton
+# aufnehmen, der bekommt naemlich keine Argumente mit.
+[ -n "$audio" ] || audio="${RECORD_AUDIO:-}"
+
+case "${positional[0]:-}" in
+    region|window|screen)
+        if recorder_pid >/dev/null; then
+            fail "record: es laeuft schon eine Aufnahme"
+        fi
+        start "${positional[0]}" "$audio"
+        ;;
+    stop)
+        stop
+        ;;
+    status)
+        status
+        ;;
+    toggle)
+        # Jeder der drei Keybinds stoppt jede laufende Aufnahme — man soll nicht
+        # nachhalten muessen, mit welchem man sie gestartet hat.
+        if recorder_pid >/dev/null; then
+            stop
+        else
+            start "${positional[1]:-region}" "$audio"
+        fi
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac

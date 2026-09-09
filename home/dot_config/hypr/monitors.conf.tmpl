@@ -2,6 +2,36 @@
 # Cube: Samsung C34H89x (HDMI-A-2). `preferred` liefert hier nur den
 # EDID-Modus 3440x1440@49.99Hz -- highrr waehlt stattdessen 99.98Hz.
 monitor = , highrr, auto, 1
+
+# Virtueller Monitor fuer den Mac als Thin Client (dot_local/bin/remote, README
+# "Mac als Thin Client"). Existiert nur, solange `remote on` laeuft; die Regel
+# hier greift in dem Moment, in dem das Script den Output anlegt.
+# 1440x900 bei Skalierung 1: das logische 16:10-Standardformat des 13"-Macs.
+# BEWUSST NICHT die nativen 2560x1600 — der Remote hat eine FESTE Groesse (s.u.),
+# und TigerVNC zeigt ein Bild, das groesser als sein Fenster ist, einfach 1:1 mit
+# Scrollbalken (es gibt auf dem Touch-Bar-Mac kein bequemes F8 fuers Vollbild).
+# 1440x900 passt dagegen ohne Vollbild ins Fenster und fuellt einen
+# punktbasierten Vollbild-Client exakt. Preis: auf einem Retina-faehigen
+# TigerVNC im Vollbild leicht hochskaliert statt pixelscharf. Wer das Vollbild
+# sicher hinbekommt (scharfes 1:1), kann hier auf 2560x1600 @ 1.6 zurueck; mehr
+# Platz ohne Vollbild gibt 1680x1050 @ 1. 14"-Modell: 1512x982 @ 2.
+# Bei anderer Breite auch die Position-x anpassen (= neue Breite, negativ),
+# damit der HDMI-Monitor bei 0x0 bleibt.
+# Position BEWUSST mit Abstand zum HDMI-Monitor statt angrenzend: der Cursor
+# wechselt in Hyprland nur zwischen sich beruehrenden Monitoren, so kann er
+# nicht auf den echten Bildschirm rutschen, wo ihn der VNC-Client nicht sieht.
+# x = -1600 (die logische Breite), damit der rechte Rand bei 0 liegt und die
+# auto-Regel oben den HDMI-Monitor weiter bei 0x0 platziert.
+# Der Name ist BEWUSST "mac" und NICHT "HEADLESS-...": wayvnc entscheidet
+# allein am Namenspraefix (HEADLESS-/NOOP-, src/output.c), ob es den Output
+# auf Zuruf des Clients (RFB SetDesktopSize / TigerVNCs "Resize remote
+# session") groesser/kleiner zieht. Bei einem HEADLESS-Namen tut wayvnc 0.9.1
+# das zwar, STUERZT dabei auf Hyprland aber reproduzierbar mit SIGSEGV ab
+# (07.09.2026 nachgestellt). Mit "mac" lehnt es das Resize sauber ab
+# ("not resizing output mac: not a headless one") und bleibt stehen — die
+# Aufloesung ist damit fix, der Client skaliert (s. README, Thin-Client-
+# Abschnitt, Vollbild). Diese Zeile also nie auf HEADLESS-* umbenennen.
+monitor = mac, 1440x900@60, -1440x-3000, 1
 {{- else if eq .chezmoi.hostname "book" -}}
 # Book: Laptop offen links neben dem externen Monitor, WS1 aufs Panel
 monitor = eDP-1, preferred, 0x0, 1

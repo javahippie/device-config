@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Mac als Thin Client fuer den cube (README: "Mac als Thin Client").
+#
+#   on      virtuellen Monitor "mac" anlegen (Aufloesung/Skalierung aus
+#           monitors.conf.tmpl), alle Workspaces vom echten Monitor dorthin
+#           schieben, wayvnc darauf starten
+#   off     wayvnc stoppen, Workspaces zurueck, virtuellen Monitor entfernen
+#   toggle  je nachdem
+#   status  on / off
+#
+# Warum ein eigener Monitor und nicht der echte gespiegelt: 3440x1440 (21:9)
+# auf einem 16:10-Notebook-Panel ist entweder winzig oder abgeschnitten. Der
+# virtuelle Monitor hat ein 16:10-Format, das ins TigerVNC-Fenster des Macs
+# passt (1440x900, Begruendung in monitors.conf.tmpl).
+#
+# Reihenfolge bei `off` ist PFLICHT, nicht Kosmetik: solange ein VNC-Client
+# verbunden ist, haelt Hyprland fuer wayvnc eine Cursor-Session auf dem Output.
+# Wird der Output darunter entfernt, stuerzt Hyprland 0.56.2 beim naechsten
+# Cursor-Wechsel ab (SIGSEGV in CCursorshareSession::copy) und reisst die ganze
+# Sitzung mit — am 07.09.2026 genau so passiert (README, Thin-Client-Abschnitt,
+# "Den Monitor nie unter einem verbundenen Client entfernen"). Deshalb: erst
+# wayvnc beenden, warten bis der Prozess weg ist, DANN den Output entfernen.
+# Nie von Hand `hyprctl output remove mac`, solange wayvnc laeuft.
+#
+# Warum die Workspaces WANDERN und der echte Monitor nicht einfach abgeschaltet
+# wird: `monitor = HDMI-A-2, disable` zerstoert den wl_output — genau das
+# Ereignis, das Thunderbird kaputtmacht (README, "Display-Aus killt
+# Thunderbird"). Ein Fenster von einem bestehenden Output auf einen anderen
+# zu schieben ist dagegen normaler Multi-Monitor-Alltag. Preis: der echte
+# Monitor zeigt waehrenddessen einen leeren Workspace und bleibt an.
+#
+# Laeuft auch ueber SSH vom Mac aus (`ssh cube remote on`): hyprctl braucht
+# dafuer die Instanz-Signatur, die in einer SSH-Umgebung fehlt — s. unten.
+set -euo pipefail
+
+OUTPUT="${REMOTE_OUTPUT:-mac}"
+PHYSICAL="${REMOTE_PHYSICAL:-HDMI-A-2}"
+UNIT=wayvnc.service
+
+for tool in hyprctl jq systemctl; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "remote: '$tool' fehlt" >&2; exit 1; }
+done
+
+# hyprctl findet die Instanz nur ueber HYPRLAND_INSTANCE_SIGNATURE. Ueber SSH
+# ist die Variable nicht gesetzt; `hyprctl instances` geht aber auch ohne und
+# liefert die laufenden Instanzen — wir nehmen die juengste mit lebender PID.
+if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+    sig=$(hyprctl instances -j 2>/dev/null \
+          | jq -r 'map(select(.pid > 0)) | max_by(.time) | .instance // empty')
+    [[ -n "$sig" ]] || { echo "remote: kein laufendes Hyprland gefunden" >&2; exit 1; }
+    export HYPRLAND_INSTANCE_SIGNATURE="$sig"
+fi
+
+have_output() {
+    hyprctl monitors -j | jq -e --arg o "$OUTPUT" 'any(.[]; .name == $o)' >/dev/null
+}
+
+active_workspace() {   # $1 = Monitorname
+    hyprctl monitors -j | jq -r --arg m "$1" '.[] | select(.name == $m) | .activeWorkspace.id'
+}
+
+# Alle normalen Workspaces (id > 0; Specials sind negativ) von $1 nach $2.
+move_workspaces() {
+    local ws
+    for ws in $(hyprctl workspaces -j | jq -r --arg m "$1" '.[] | select(.monitor == $m and .id > 0) | .id'); do
+        hyprctl dispatch moveworkspacetomonitor "$ws" "$2" >/dev/null
+    done
+}
+
+status() {
+    if have_output && systemctl --user is-active --quiet "$UNIT"; then
+        echo on
+    elif have_output || systemctl --user is-active --quiet "$UNIT"; then
+        echo "halb (Monitor: $(have_output && echo da || echo fehlt), wayvnc: $(systemctl --user is-active "$UNIT"))"
+    else
+        echo off
+    fi
+}
+
+on() {
+    local ws
+    ws=$(active_workspace "$PHYSICAL")
+    if ! have_output; then
+        # Die Monitor-Regel (Aufloesung, Skalierung, Position) greift beim
+        # Anlegen automatisch — sie steht in monitors.conf.tmpl, cube-Zweig.
+        hyprctl output create headless "$OUTPUT" >/dev/null
+    fi
+    move_workspaces "$PHYSICAL" "$OUTPUT"
+    hyprctl dispatch focusmonitor "$OUTPUT" >/dev/null
+    [[ -n "$ws" ]] && hyprctl dispatch workspace "$ws" >/dev/null
+    systemctl --user start "$UNIT"
+    echo "remote: an — auf dem Mac verbinden mit $(hostname -s).local:5900"
+}
+
+off() {
+    local ws i
+    systemctl --user stop "$UNIT" 2>/dev/null || true
+    # Sicherheitsnetz (s. Kopf): kein Output-Remove, solange irgendein wayvnc
+    # lebt — auch keine Test-Instanz, die nicht ueber die Unit laeuft.
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        pgrep -x wayvnc >/dev/null || break
+        sleep 0.3
+    done
+    if pgrep -x wayvnc >/dev/null; then
+        echo "remote: wayvnc laeuft noch (PID $(pgrep -x wayvnc | tr '\n' ' ')) — Monitor bleibt, sonst stuerzt Hyprland ab. Erst wayvnc beenden, dann 'remote off' wiederholen." >&2
+        exit 1
+    fi
+    if have_output; then
+        ws=$(active_workspace "$OUTPUT")
+        move_workspaces "$OUTPUT" "$PHYSICAL"
+        hyprctl dispatch focusmonitor "$PHYSICAL" >/dev/null
+        [[ -n "$ws" ]] && hyprctl dispatch workspace "$ws" >/dev/null
+        # Erst NACH dem Verschieben entfernen: Hyprland wuerde die Workspaces
+        # zwar selbst retten, laesst den echten Monitor dann aber auf dem
+        # leeren Ersatz-Workspace stehen.
+        hyprctl output remove "$OUTPUT" >/dev/null
+    fi
+    echo "remote: aus"
+}
+
+case "${1:-}" in
+    on)     on ;;
+    off)    off ;;
+    toggle) [[ "$(status)" == off ]] && on || off ;;
+    status) status ;;
+    *)      echo "usage: remote on|off|toggle|status" >&2; exit 2 ;;
+esac

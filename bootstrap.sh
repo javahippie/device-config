@@ -121,6 +121,49 @@ if [ "$(hostname -s)" = cube ]; then
         echo "       Pruefen: sudo ls -l /etc/sudoers.d/recording-mode (muss -r--r----- root root sein)"
         echo "       und ob /etc/sudoers ein '@includedir /etc/sudoers.d' enthaelt."
     fi
+
+    echo "==> Mac als Thin Client: wayvnc-Schluessel, Zugangsdaten, Firewall (nur cube)"
+    # Gehoert zusammen mit: dot_config/wayvnc/config.tmpl, systemd/user/wayvnc.service,
+    # dot_local/bin/remote, dem Monitor "mac" in monitors.conf.tmpl. README-Abschnitt
+    # "Mac als Thin Client". Alles im Home ist chezmoi-unbekannt und wird von
+    # `chezmoi apply` weder angefasst noch geloescht.
+    WAYVNC_DIR="$HOME/.config/wayvnc"
+    mkdir -p "$WAYVNC_DIR"
+
+    # RSA-AES-Serverschluessel. Aufruf 1:1 aus der wayvnc-Doku; PEM-Format ist
+    # Pflicht, das OpenSSH-Default-Format liest wayvnc nicht. Nur der private
+    # Teil wird gebraucht, die .pub kann weg. Nie erneuern: der Client hat sich
+    # den Fingerprint gemerkt und wuerde sonst einen fremden Server vermuten.
+    if [ ! -f "$WAYVNC_DIR/rsa_key.pem" ]; then
+        ssh-keygen -q -m PEM -t rsa -b 4096 -N "" -f "$WAYVNC_DIR/rsa_key.pem"
+        rm -f "$WAYVNC_DIR/rsa_key.pem.pub"
+        echo "    Serverschluessel erzeugt"
+    fi
+
+    # Zugangsdaten. NICHT im Repo (oeffentlich!) und deshalb auch nicht in der
+    # chezmoi-verwalteten config — die Unit haengt diese Datei beim Start an.
+    # Einmal zufaellig erzeugt, danach nie wieder angefasst; anderes Passwort =
+    # Datei editieren. Kein openssl im Minimal Install, daher /dev/urandom.
+    if [ ! -f "$WAYVNC_DIR/config.secret" ]; then
+        (
+            umask 077
+            pw=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)
+            printf 'username=%s\npassword=%s\n' "$(id -un)" "$pw" > "$WAYVNC_DIR/config.secret"
+        )
+        echo "    Zugangsdaten angelegt: $WAYVNC_DIR/config.secret (Passwort dort nachlesen)"
+    fi
+
+    # Port 5900 in Zone public (= alle Interfaces, der cube hat nur LAN).
+    # "Nur LAN" heisst hier: der Router leitet 5900 nicht weiter, und wayvnc
+    # lauscht ueberhaupt nur, solange `remote on` aktiv ist. vnc-server ist
+    # ein vordefinierter firewalld-Service (5900-5903/tcp).
+    if sudo firewall-cmd --permanent --query-service=vnc-server >/dev/null 2>&1; then
+        echo "    Firewall: vnc-server schon offen"
+    else
+        sudo firewall-cmd --permanent --add-service=vnc-server >/dev/null
+        sudo firewall-cmd --reload >/dev/null
+        echo "    Firewall: vnc-server (5900/tcp) in Zone public geoeffnet"
+    fi
 fi
 
 # RGB-Tastaturbeleuchtung im "book". Nur wenn der Controller wirklich steckt —

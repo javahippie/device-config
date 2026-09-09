@@ -48,6 +48,7 @@ window#waybar {
 #battery,
 #custom-keybinds,
 #custom-recording,
+#custom-screenrec,
 #idle_inhibitor,
 #tray {
     padding: 0 10px;
@@ -97,6 +98,17 @@ window#waybar {
 /* Interface nicht angeschlossen: kein Fehler, nur nichts zu tun. */
 #custom-recording.absent {
     color: @overlay1;
+}
+
+/* Laufende Bildschirmaufnahme (dot_local/bin/record). Rot mit voller Flaeche,
+   und das ist der einzige Ort, an dem Rot hier NICHT "kaputt" heisst: es ist
+   die eine Farbe, die jeder von einer laufenden Aufnahme kennt, und genau die
+   Warnung, die man braucht, bevor man in ein aufgezeichnetes Fenster tippt.
+   Einen .idle-Zustand gibt es nicht — ohne Aufnahme liefert `record status`
+   leeren Text und Waybar blendet das Modul ganz aus (s. config.jsonc.tmpl). */
+#custom-screenrec.recording {
+    color: @base;
+    background: @red;
 }
 
 /* Aus (oder kein Adapter) ist kein Fehler — nur gedämpft, nicht rot. */
