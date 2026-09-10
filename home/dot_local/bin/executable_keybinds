@@ -1,22 +1,51 @@
 #!/usr/bin/env bash
 # Zeigt die Tastenbelegung als durchsuchbares fuzzel-Popup.
 #
-# Quelle ist binds.conf SELBST, keine zweite gepflegte Liste — eine Übersicht,
-# die man von Hand nachziehen muss, ist nach dem dritten neuen Binding falsch.
-# Auch die "# --- Abschnitt ---"-Kommentare aus der Datei werden übernommen,
-# die Gliederung steht also ebenfalls nur an einer Stelle.
+# Quelle ist die binds-Datei SELBST, keine zweite gepflegte Liste — eine
+# Übersicht, die man von Hand nachziehen muss, ist nach dem dritten neuen
+# Binding falsch. Auch die "# --- Abschnitt ---"-Kommentare aus der Datei werden
+# übernommen, die Gliederung steht also ebenfalls nur an einer Stelle.
 #
-# Bewusst nicht `hyprctl binds -j`: das kennt zwar den Live-Zustand, liefert
-# aber Modmasken statt Namen und hat keine Abschnitte. Der Unterschied fällt nur
-# auf, wenn man Bindings zur Laufzeit per `hyprctl keyword` ändert — dann fehlen
-# sie hier.
+# Seit es die Sway-Session gibt, sind es ZWEI Quelldateien mit zwei Syntaxen:
+#   Hyprland  ~/.config/hypr/binds.conf   bind = $mod, D, exec, fuzzel
+#   Sway      ~/.config/sway/binds        bindsym $mod+d exec fuzzel
+# Welche gilt, entscheidet die laufende Session (s. detect_conf). Der Aufruf
+# bleibt derselbe — SUPER+F1 und der "Keys"-Knopf in der Waybar zeigen unter
+# beiden Compositoren dasselbe Popup, im selben Format.
+#
+# Bewusst nicht `hyprctl binds -j` bzw. `swaymsg -t get_binding_modes`: die
+# kennen zwar den Live-Zustand, liefern aber Modmasken statt Namen und haben
+# keine Abschnitte. Der Unterschied fällt nur auf, wenn man Bindings zur
+# Laufzeit ändert — dann fehlen sie hier.
 set -euo pipefail
 
-CONF="${HYPR_BINDS:-$HOME/.config/hypr/binds.conf}"
+# Welche Datei? Reihenfolge: ausdrücklich gesetzt > laufende Session > Hyprland.
+#
+# SWAYSOCK ist das verlässlichere Merkmal als XDG_CURRENT_DESKTOP: die Variable
+# setzt Sway selbst für jede seiner Sitzungen, während XDG_CURRENT_DESKTOP vom
+# Display-Manager kommt und bei einem TTY-Start schlicht fehlt.
+#
+# KEYBINDS_CONF übersteuert alles — praktisch, um die jeweils andere Liste
+# anzusehen, ohne die Session zu wechseln:
+#   KEYBINDS_CONF=~/.config/sway/binds keybinds
+# HYPR_BINDS bleibt aus Gewohnheit gültig, es gab die Variable vor Sway.
+detect_conf() {
+    if [ -n "${KEYBINDS_CONF:-}" ]; then
+        printf '%s' "$KEYBINDS_CONF"
+    elif [ -n "${HYPR_BINDS:-}" ]; then
+        printf '%s' "$HYPR_BINDS"
+    elif [ -n "${SWAYSOCK:-}" ]; then
+        printf '%s' "$HOME/.config/sway/binds"
+    else
+        printf '%s' "$HOME/.config/hypr/binds.conf"
+    fi
+}
 
+CONF="$(detect_conf)"
 [ -f "$CONF" ] || { echo "keybinds: nicht gefunden: $CONF" >&2; exit 1; }
 
-format_binds() {
+# --- Hyprland: bind = MODS, TASTE, dispatcher, argument ---
+format_hypr() {
     awk '
         function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
 
@@ -68,7 +97,71 @@ format_binds() {
             printed = 1
             printf "   %-24s %s\n", combo, what
         }
-    ' "$CONF"
+    ' "$1"
 }
 
-format_binds | fuzzel --dmenu --prompt 'Keybinds: ' --width 72 >/dev/null || true
+# --- Sway: bindsym [--flags] MOD+TASTE befehl argumente ---
+format_sway() {
+    awk '
+        function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+
+        # Abschnittserkennung wortgleich zum Hyprland-Zweig — die beiden
+        # binds-Dateien benutzen bewusst dieselben "# --- X ---"-Marken.
+        /^[ \t]*#[ \t]*---/ {
+            h = $0
+            sub(/^[ \t]*#[ \t]*---[ \t]*/, "", h)
+            sub(/[ \t]*---.*$/, "", h)
+            section = trim(h)
+            next
+        }
+
+        # bindsym, nicht bindcode: das Repo bindet ausschliesslich Keysyms.
+        # Ein bindcode wuerde hier durchfallen — dann bitte hier mit aufnehmen.
+        /^[ \t]*bindsym[ \t]/ {
+            line = $0
+            sub(/^[ \t]*bindsym[ \t]+/, "", line)
+
+            # Flags abraeumen (--locked, --to-code, --no-repeat, ...). Sie sagen
+            # etwas ueber die Bindung, nicht ueber die Taste, und wuerden die
+            # Spalte nur breit machen.
+            while (line ~ /^--[a-zA-Z-]+[ \t]+/) sub(/^--[a-zA-Z-]+[ \t]+/, "", line)
+
+            # Erstes Feld = Tastenkombination, Rest = Befehl.
+            combo = line; sub(/[ \t].*$/, "", combo)
+            what  = line; sub(/^[^ \t]+[ \t]+/, "", what)
+
+            gsub(/\$mod/, "SUPER", combo)
+            gsub(/\+/, " + ", combo)
+            # Modifier gross wie in der Hyprland-Liste, damit beide Popups
+            # gleich aussehen — Sway schreibt sie klein bzw. gemischt.
+            gsub(/Shift/, "SHIFT", combo)
+            gsub(/Ctrl/, "CTRL", combo)
+            gsub(/Alt/, "ALT", combo)
+            # Einzelbuchstaben ebenfalls gross (Sway: "q", Hyprland: "Q").
+            if (combo ~ / \+ [a-z]$/) combo = substr(combo, 1, length(combo) - 1) toupper(substr(combo, length(combo)))
+
+            if (what ~ /^exec[ \t]/) {
+                sub(/^exec[ \t]+/, "", what)
+                # $qtenv ist ein Sway-Variablen-Praefix aus sway/base und nur
+                # Technik (Qt-Theme fuer Double Commander) — in einer
+                # Tastenuebersicht ist es Rauschen.
+                sub(/^\$qtenv[ \t]+/, "", what)
+                sub(/^~\/\.local\/bin\//, "", what)   # eigene Skripte kurz halten
+            }
+            what = trim(what)
+
+            if (section != last_section) {
+                if (NR > 1 && printed) print ""
+                print "── " section
+                last_section = section
+            }
+            printed = 1
+            printf "   %-24s %s\n", combo, what
+        }
+    ' "$1"
+}
+
+case "$CONF" in
+    *sway*) format_sway "$CONF" ;;
+    *)      format_hypr "$CONF" ;;
+esac | fuzzel --dmenu --prompt 'Keybinds: ' --width 72 >/dev/null || true

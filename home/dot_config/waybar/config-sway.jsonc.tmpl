@@ -1,0 +1,38 @@
+// Waybar in der SWAY-Session. Gegenstueck zu config.jsonc.tmpl, gleicher
+// Aufbau: der geteilte Teil kommt per "include" aus common.jsonc, hier steht
+// nur das compositor-spezifische Paar aus Workspace- und Fenster-Modul.
+//
+// Geladen wird die Datei NICHT automatisch — Waybar sucht von sich aus nur
+// config/config.jsonc. Der Aufruf mit -c steht in dot_config/sway/base.
+// Genau deshalb heisst sie config-sway und nicht config: sonst wuerde sie in
+// der Hyprland-Session die falsche Bar starten.
+{
+    "include": ["{{ .chezmoi.homeDir }}/.config/waybar/common.jsonc"],
+
+    "modules-left": ["sway/workspaces", "sway/window"],
+
+    "sway/workspaces": {
+        // {name} statt {id}: so heisst die Workspace-Nummer im Sway-Modul
+        // (laut Manpage "Number stripped from workspace value"). Da hier
+        // nichts benannt wird, steht am Ende dasselbe da wie drueben.
+        "format": "{name} {windows}",
+        // Immer 1-6 zeigen, auch leer. Anders als bei Hyprland braucht es dafuer
+        // KEINE Entsprechung in der Compositor-Konfiguration: das Sway-Modul
+        // erzeugt die fehlenden Buttons selbst. Deshalb steht in
+        // sway/rules auch kein Gegenstueck zu `workspace = N, persistent:true`.
+        // Die leere Liste je Eintrag heisst "auf allen Outputs" — die
+        // "*"-Kurzform des Hyprland-Moduls kennt dieses hier nicht.
+        "persistent-workspaces": {
+            "1": [],
+            "2": [],
+            "3": [],
+            "4": [],
+            "5": [],
+            "6": []
+        },
+{{ template "waybar-workspaces-icons" . }}
+    },
+    "sway/window": {
+        "max-length": 60
+    }
+}

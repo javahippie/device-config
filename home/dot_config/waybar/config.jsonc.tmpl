@@ -1,204 +1,36 @@
-// Text-only, bewusst: packages.txt installiert JetBrains Mono + Font Awesome,
-// aber keine Nerd-Font-Glyphen — Icon-Glyphen würden hier zu Tofu-Boxen führen.
-// App-Icons im Workspace-Switcher nutzen deshalb Noto-Emoji (auch aus
-// packages.txt) statt Nerd-Font-Glyphen wie in den meisten geteilten Configs.
-// battery-Modul blendet sich auf Hosts ohne Akku (cube) von selbst aus.
+// Waybar in der HYPRLAND-Session. Der Loewenanteil der Bar steht in
+// common.jsonc.tmpl und wird unten per "include" hereingezogen; hier bleibt
+// nur, was compositor-spezifisch ist.
+//
+// Warum ueberhaupt geteilt: seit es die Sway-Session gibt (dot_config/sway),
+// braucht es zwei Bar-Konfigurationen, die sich in genau zwei Modulen
+// unterscheiden. Eine Datei zu kopieren hiesse, jede kuenftige Aenderung an
+// Uhr, Netz, Bluetooth oder Aufnahmemodus doppelt zu pflegen — nach der
+// dritten Aenderung waere eine der beiden Bars falsch.
+//
+// Waybars Include-Regel (waybar(5)): bei doppelten Schluesseln gewinnt die
+// EINBINDENDE Datei. Alles hier schlaegt also common.jsonc, nicht umgekehrt.
+// Der Pfad ist absolut, weil Waybar in Include-Pfaden kein "~" aufloest;
+// chezmoi setzt ihn beim Ausrollen ein.
 {
-    "layer": "top",
-    "position": "top",
-    "height": 30,
-    "spacing": 4,
+    "include": ["{{ .chezmoi.homeDir }}/.config/waybar/common.jsonc"],
 
     "modules-left": ["hyprland/workspaces", "hyprland/window"],
-    "modules-center": ["clock"],
-    "modules-right": ["custom/screenrec", "idle_inhibitor", "custom/keybinds", {{ if eq .chezmoi.hostname "cube" }}"custom/recording", {{ end }}"pulseaudio", "bluetooth", "network", "battery", "tray"],
 
-    // Haelt den Rechner wach, solange laengere Hintergrund-Jobs laufen.
-    // Klick schaltet um: "Idle" = normale Kette aus hypridle.conf (5 min Lock,
-    // 5:30 Display aus, 15 min Suspend), "Wach" = nichts davon.
-    //
-    // Technik: Waybar haelt dafuer einen zwp_idle_inhibitor_v1 auf seiner
-    // eigenen Layer-Surface. Hyprland stoppt daraufhin die
-    // ext-idle-notify-v1-Timer — und genau aus denen speist hypridle seine
-    // Listener. Es wird also nicht hypridle gestoppt, sondern ihm die Uhr
-    // angehalten; ein `pidof hypridle` sieht weiter alles normal.
-    //
-    // Der Zustand liegt bewusst nirgends auf Platte (start-activated bleibt
-    // ungesetzt): nach Waybar-Neustart oder Relogin ist der Schutz wieder aus.
-    // Ein vergessener Inhibit, der einen Reboot ueberlebt, faellt sonst erst
-    // auf, wenn der Akku leer ist.
-    "idle_inhibitor": {
-        "format": "{icon}",
-        "format-icons": {
-            "activated": "Wach",
-            "deactivated": "Idle"
-        },
-        "tooltip-format-activated": "Kein Lock, kein Suspend — Klick schaltet zurueck",
-        "tooltip-format-deactivated": "Lock nach 5 min, Suspend nach 15 min"
-    },
-
-    // Klick öffnet den Geräte-Picker (dot_local/bin/bt). Text statt Glyphe wie überall.
-    "bluetooth": {
-        "format-off": "BT off",
-        "format-on": "BT",
-        "format-connected": "BT {device_alias}",
-        "tooltip": false,
-        // Links: bekanntes Gerät verbinden/trennen. Rechts: neues koppeln.
-        "on-click": "~/.local/bin/bt pick",
-        "on-click-right": "~/.local/bin/bt pair"
-    },
-
-    // Klickbares Gegenstück zu SUPER+F1. Text statt Glyphe, wie der Rest der Bar
-    // (kein Nerd Font installiert, s. Kopf dieser Datei).
-    "custom/keybinds": {
-        "format": "Keys",
-        "tooltip": false,
-        "on-click": "~/.local/bin/keybinds"
-    },
-
-    // Laufende Bildschirmaufnahme (dot_local/bin/record, wf-recorder).
-    // NICHT zu verwechseln mit custom/recording weiter oben — das ist der
-    // Audio-Aufnahmemodus (Scarlett + CPU). Deshalb auch ein anderes Signal:
-    // 8 hier, 7 dort.
-    //
-    // Auf BEIDEN Hosts, anders als custom/recording: aufnehmen kann man
-    // ueberall, dafuer braucht es keine bestimmte Hardware.
-    //
-    // Ohne Aufnahme liefert `record status` leeren Text — Waybar blendet das
-    // Modul dann komplett aus. Es ist also nur zu sehen, wenn es etwas zu
-    // sagen hat; ein dauerhaftes "keine Aufnahme" waere reine Bar-Belegung.
-    //
-    // interval 1, damit die Laufzeit mitzaehlt. Das ist hier vertretbar, weil
-    // `record status` bewusst ohne jq, date und cat auskommt (reine
-    // Bash-Builtins, s. Kommentar dort) — der Sekundentakt kostet damit
-    // nichts. Das Signal ist trotzdem noetig: Start und Stopp sollen sofort
-    // stehen, nicht erst nach bis zu einer Sekunde.
-    //
-    // Kein on-click zum Stoppen: eine laufende Aufnahme per Mausklick auf die
-    // Bar zu beenden hiesse, mit dem Zeiger IM Bild herumzufahren. Dafuer sind
-    // die drei R-Tasten da.
-    "custom/screenrec": {
-        "exec": "~/.local/bin/record status",
-        "return-type": "json",
-        "interval": 1,
-        "signal": 8
-    },
-{{ if eq .chezmoi.hostname "cube" }}
-    // Aufnahmemodus (dot_local/bin/recording-mode): schiebt das Scarlett ins
-    // pro-audio-Profil und die CPU aus dem Sparmodus — und wieder zurueck.
-    // Text statt Glyphe wie der Rest der Bar.
-    //
-    // NUR AUF DEM CUBE. Das Modul haengt an einem fest angeschlossenen
-    // Focusrite und einer Desktop-CPU; auf dem book waere es ein Schalter ins
-    // Leere. Die Weiche steht an drei Stellen und muss zusammen gepflegt
-    // werden: hier, in .chezmoiignore (das Script selbst) und in bootstrap.sh
-    // (Root-Helfer + sudoers-Regel). Das CSS in style.css ist bewusst NICHT
-    // gegatet — Regeln fuer ein nicht vorhandenes Modul sind wirkungslos, und
-    // eine vierte Weiche waere mehr Risiko als der Gewinn.
-    //
-    // return-type json, damit ein Aufruf Text, Tooltip UND CSS-Klasse liefert.
-    // Der Zustand wird dabei jedes Mal frisch aus PipeWire und /sys gelesen und
-    // nirgends zwischengespeichert — ein von Hand mit wpctl umgestelltes Profil
-    // oder ein abgezogenes Interface faellt der Anzeige damit sofort auf,
-    // statt sie gegen eine gemerkte Wahrheit laufen zu lassen.
-    //
-    // "signal": 7 muss zu RECMODE_WAYBAR_SIGNAL im Script passen. Nach dem
-    // Umschalten schickt das Script pkill -RTMIN+7 waybar, damit die Bar sofort
-    // nachzieht; das interval ist nur der Rueckfall fuer Aenderungen, die nicht
-    // ueber den Button liefen.
-    "custom/recording": {
-        "exec": "~/.local/bin/recording-mode status",
-        "return-type": "json",
-        "interval": 10,
-        "signal": 7,
-        "on-click": "~/.local/bin/recording-mode toggle"
-    },
-{{ end }}
     "hyprland/workspaces": {
-        // Immer 1-6 zeigen, auch leer (persistent:true dafür in rules.conf).
-        // all-outputs:true heißt auf "book" (2 Monitore): beide Bars zeigen
-        // dieselben 6 Buttons — bei Bedarf später per Output aufteilen.
+        // {id} ist die Workspace-Nummer. Das Sway-Modul nennt dasselbe Feld
+        // {name} — einer von genau zwei Unterschieden zwischen den Bars.
         "format": "{id} {windows}",
-        "all-outputs": true,
+        // Immer 1-6 zeigen, auch leer. Hyprland muss die Workspaces dafuer
+        // selbst als persistent kennen, das steht in hypr/rules.conf.tmpl.
+        // Schreibweise "*" = auf allen Outputs; das Sway-Modul will hier
+        // stattdessen einen Eintrag pro Workspace (s. config-sway.jsonc.tmpl).
         "persistent-workspaces": {
             "*": [1, 2, 3, 4, 5, 6]
         },
-        "unique-icons": true,
-        "window-rewrite-default": "•",
-        // Klassen sind Vermutungen — vor dem ersten Vertrauen mit
-        // `hyprctl clients` gegenprüfen (Konvention aus rules.conf).
-        // Alle Klassen mit `hyprctl clients -j` gegengeprueft (2026-08-21).
-        //
-        // WICHTIG: waybar matcht den Ausdruck gegen die GANZE Klasse, nicht als
-        // Teilstring. Die frueheren Regeln wie class<[Ff]irefox> konnten deshalb
-        // nie greifen — die Klasse heisst org.mozilla.firefox. Funktioniert
-        // hatten nur foot, cider und ONLYOFFICE, weil dort Muster und Klasse
-        // zufaellig identisch waren. Neue Eintraege daher entweder exakt
-        // schreiben oder mit .* umschliessen.
-        "window-rewrite": {
-            "class<foot>": "\ud83d\udda5",
-            "class<org\\.mozilla\\.firefox>": "\ud83e\udd8a",
-            // thunderbird_esr heute; .* deckt auch den Wechsel auf den
-            // Nicht-ESR-Zweig ab.
-            "class<org\\.mozilla\\.thunderbird.*>": "\u2709\ufe0f",
-            // Citrix (Wfica). Fenster = die Windows-Sitzung beim Kunden, die
-            // ueber Citrix drin haengt; \ud83d\udda5 ist schon fuer foot vergeben.
-            // U+1FA9F ist ein junges Emoji (13.0) -- Abdeckung in
-            // NotoEmoji-Regular gegengeprueft (fc-list :charset=1fa9f).
-            // Klein geschrieben kommt Wfica auch vor (s. rules.conf.tmpl),
-            // deshalb die Zeichenklasse.
-            "class<[Ww]fica>": "\ud83e\ude9f",
-            "class<com\\.slack\\.Slack>": "\ud83d\udcac",
-            // Element meldet sich als im.riot.Riot — Altlast aus der Riot-Zeit.
-            "class<im\\.riot\\.Riot>": "\ud83d\udd37",
-            "class<org\\.keepassxc\\.KeePassXC>": "\ud83d\udd11",
-            // Die Klasse enthaelt die VERSION ("Apache NetBeans IDE 31"), das .*
-            // ist also nicht Kosmetik: ohne es faellt das Icon beim naechsten
-            // NetBeans-Major wieder aus.
-            "class<Apache NetBeans IDE.*>": "\u2615",
-            "class<cider>": "\ud83c\udfb5",
-            // Lokaler Player: foot mit eigener app-id (s. mpv-audio.desktop),
-            // schwebt per rules.conf. Andere Note als Cider, damit man im
-            // Workspace-Switcher sieht, WAS gerade spielt.
-            "class<mpv-audio>": "\ud83d\udcbf",
-            "class<ONLYOFFICE>": "\ud83d\udcc4",
-            // NICHT verifiziert — Signal lief beim Gegenpruefen nicht.
-            "class<.*[Ss]ignal.*>": "\ud83d\udd12"
-        }
+{{ template "waybar-workspaces-icons" . }}
     },
     "hyprland/window": {
         "max-length": 60
-    },
-    "clock": {
-        "format": "{:%H:%M   %a, %d.%m.}"
-    },
-    "pulseaudio": {
-        "format": "Vol {volume}%",
-        "format-muted": "Vol muted",
-        // Links stummschalten (wie gehabt), rechts das Ausgabegerät wechseln.
-        "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
-        "on-click-right": "~/.local/bin/audio-out pick"
-    },
-    // Klick oeffnet den Netz-Picker (dot_local/bin/wifi), analog zum
-    // bluetooth-Modul darueber. Rechts: nm-connection-editor fuer statische IP,
-    // 802.1X und VPN — alles, was der Picker bewusst nicht kann.
-    "network": {
-        "format-wifi": "{essid} {signalStrength}%",
-        "format-ethernet": "eth {ipaddr}",
-        "format-disconnected": "offline",
-        "tooltip": false,
-        "on-click": "~/.local/bin/wifi pick",
-        "on-click-right": "~/.local/bin/wifi edit"
-    },
-    "battery": {
-        "format": "Bat {capacity}%",
-        "format-charging": "Bat {capacity}% +",
-        "states": {
-            "warning": 20,
-            "critical": 10
-        }
-    },
-    "tray": {
-        "spacing": 8
     }
 }

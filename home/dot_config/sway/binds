@@ -1,0 +1,193 @@
+# Gegenstueck zu dot_config/hypr/binds.conf. Gleiche Tasten, gleiche
+# Abschnitte, gleiche Reihenfolge — wer zwischen den Sessions wechselt, soll
+# nichts umlernen.
+#
+# Die "# --- Abschnitt ---"-Zeilen sind hier nicht nur Gliederung, sondern
+# Datenformat: dot_local/bin/keybinds parst DIESE Datei und baut daraus das
+# fuzzel-Popup (unter Hyprland entsprechend die dortige). Neue Bindings tauchen
+# also von selbst auf; die Abschnittsnamen bitte identisch zu drueben halten,
+# damit beide Uebersichten gleich aussehen.
+#
+# Uebersetzungstabelle Hyprland -> Sway, falls hier etwas nachgezogen wird:
+#   bind   -> bindsym                 killactive     -> kill
+#   bindl  -> bindsym --locked        fullscreen, 0  -> fullscreen
+#   bindel -> bindsym --locked        togglefloating -> floating toggle
+#   $mod, X, dispatcher, arg          movefocus, l   -> focus left
+#     -> bindsym $mod+X <cmd>         workspace, 1   -> workspace number 1
+#
+# `bindel` braucht kein Gegenstueck: Sway wiederholt gehaltene Bindings von
+# Haus aus, das Abschalten hiesse hier `--no-repeat`.
+set $mod Mod4
+
+# Schwebende Fenster mit der Maus verschieben/groesser ziehen, ohne den 3 px
+# schmalen Rahmen treffen zu muessen: SUPER halten und links bzw. rechts
+# ziehen. Hyprland hat dafuer eigene Bindings (bindm), die in hypr/binds.conf
+# gar nicht auftauchen — dort greift Hyprlands Vorgabe. Sway hat keine Vorgabe.
+#
+# Steht BEWUSST vor dem ersten "# --- Abschnitt ---": es ist kein Tastenkuerzel,
+# und dot_local/bin/keybinds soll dafuer keinen Eintrag in der Uebersicht bauen.
+# Aus demselben Grund nicht in base — dort waere $mod noch nicht definiert,
+# base wird vor dieser Datei includet (s. config).
+floating_modifier $mod normal
+
+# --- Hilfe ---
+bindsym $mod+F1 exec ~/.local/bin/keybinds
+
+# --- Kern ---
+bindsym $mod+Return exec foot
+bindsym $mod+d exec fuzzel
+bindsym $mod+q kill
+bindsym $mod+f fullscreen
+bindsym $mod+v floating toggle
+bindsym $mod+l exec hyprlock
+
+# --- Fokus (vim-Style) ---
+# ACHTUNG semicolon: auf de-Layout liegt das Semikolon hinter SHIFT+Komma, die
+# Taste an US-Position ";" liefert "odiaeresis". Diese Zeile ist die 1:1-Kopie
+# von drueben und verhaelt sich deshalb auch genauso. Wer stattdessen die
+# PHYSISCHE Taste an US-";"-Position will (also "oe"), nimmt eine der beiden:
+#   bindsym $mod+odiaeresis focus right
+#   bindsym --to-code $mod+semicolon focus right
+# `--to-code` gibt es nur in Sway; Hyprland kennt es nicht. Wer es benutzt,
+# handelt sich also einen echten Unterschied zwischen den Sessions ein — genau
+# deshalb steht es hier auskommentiert und nicht als Vorgabe.
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+semicolon focus right
+
+# --- Workspaces 1-9 ---
+# `workspace number 1` statt `workspace 1`: mit `number` trifft es den
+# Workspace mit der Nummer 1, egal wie er sonst heisst. Ohne `number` waere "1"
+# ein NAME, und ein benannter Workspace (etwa "1: web") waere nicht mehr
+# erreichbar. Hier wird nichts benannt, aber die Form ist die robustere und
+# steht so auch in Sways Vorgabe-Konfiguration.
+bindsym $mod+1 workspace number 1
+bindsym $mod+2 workspace number 2
+bindsym $mod+3 workspace number 3
+bindsym $mod+4 workspace number 4
+bindsym $mod+5 workspace number 5
+bindsym $mod+6 workspace number 6
+bindsym $mod+7 workspace number 7
+bindsym $mod+8 workspace number 8
+bindsym $mod+9 workspace number 9
+bindsym $mod+Shift+1 move container to workspace number 1
+bindsym $mod+Shift+2 move container to workspace number 2
+bindsym $mod+Shift+3 move container to workspace number 3
+bindsym $mod+Shift+4 move container to workspace number 4
+bindsym $mod+Shift+5 move container to workspace number 5
+bindsym $mod+Shift+6 move container to workspace number 6
+bindsym $mod+Shift+7 move container to workspace number 7
+bindsym $mod+Shift+8 move container to workspace number 8
+bindsym $mod+Shift+9 move container to workspace number 9
+
+# --- Konfiguration neu laden ---
+# Der EINZIGE Bind ohne Gegenstueck in hypr/binds.conf, und das mit Absicht:
+# Hyprland liest seine .conf bei jeder Aenderung von selbst neu ein, Sway NICHT.
+# Ohne diese Taste heisst jede Anpassung an den Dateien hier: abmelden und neu
+# anmelden — beim Ausprobieren also alle paar Minuten.
+# $mod+SHIFT+C ist Sways eigene Vorgabe fuer den Reload und war unter Hyprland
+# frei ($mod+C ist dort die Clipboard-History, s. u., $mod+SHIFT+C nicht belegt).
+#
+# Was ein Reload NICHT tut: die `exec`-Zeilen aus base noch einmal starten
+# (dafuer waere `exec_always` noetig, s. Begruendung dort). waybar, mako und
+# swayidle laufen also weiter wie sie sind; wer an DEREN Konfiguration etwas
+# aendert, startet sie von Hand neu.
+bindsym $mod+Shift+c reload
+
+# --- Screenshots --- (s. dot_local/bin/screenshot; speichert UND kopiert)
+# Das Skript kann beide Compositoren und merkt selbst, in welcher Session es
+# laeuft — die Fenster- und Monitorabfrage geht unter Sway ueber `swaymsg`
+# statt `hyprctl`. Aufrufe und Modi sind identisch.
+bindsym Print exec ~/.local/bin/screenshot region
+bindsym Shift+Print exec ~/.local/bin/screenshot screen
+bindsym $mod+Print exec ~/.local/bin/screenshot window
+bindsym $mod+Shift+Print exec ~/.local/bin/screenshot all
+# Zweitbelegung ohne Print-Taste: die MX Keys auf "cube" hat keine. Ihre
+# Kamera-Taste ueber dem Nummernblock schickt Win+Shift+S — die Taste selbst
+# ist eine Kombination, deshalb trifft sie direkt die erste Zeile hier und
+# vertraegt zusaetzliche Modifier (Ctrl bzw. Alt dazuhalten).
+bindsym $mod+Shift+s exec ~/.local/bin/screenshot region
+bindsym $mod+Shift+Ctrl+s exec ~/.local/bin/screenshot window
+bindsym $mod+Shift+Alt+s exec ~/.local/bin/screenshot screen
+# 'all' bekommt hier bewusst keine Taste: cube hat einen Monitor, dort ist es
+# identisch mit 'screen'. Auf book geht es ueber SUPER+SHIFT+Print, sonst per CLI.
+
+# --- Bildschirmaufnahme --- (s. dot_local/bin/record; wf-recorder)
+# Dieselben drei Modi mit denselben Modifiern wie die Screenshot-Zweitbelegung
+# darueber, nur auf R statt S. Alle drei rufen `toggle`: laeuft schon eine
+# Aufnahme, beendet JEDE der drei Tasten sie — man soll sich nicht merken
+# muessen, mit welcher man angefangen hat.
+# Ton ist aus, solange RECORD_AUDIO nicht gesetzt ist.
+bindsym $mod+Shift+r exec ~/.local/bin/record toggle region
+bindsym $mod+Shift+Ctrl+r exec ~/.local/bin/record toggle window
+bindsym $mod+Shift+Alt+r exec ~/.local/bin/record toggle screen
+
+# --- Clipboard-History ---
+bindsym $mod+c exec cliphist list | fuzzel --dmenu | cliphist decode | wl-copy
+
+# Voller Pfad, kein blosser Name: unter SDDM laeuft die Session ohne
+# garantierten ~/.local/bin im PATH, sonst scheitern die Bindings still.
+# Sway fuehrt `exec` ueber /bin/sh -c aus, die Tilde wird also expandiert.
+
+# --- ToDo --- (s. dot_local/bin/todo; Datei <XDG-Dokumente>/todo.md)
+bindsym $mod+t exec ~/.local/bin/todo
+bindsym $mod+Shift+t exec ~/.local/bin/todo list
+
+# --- Dateimanager ---
+# SUPER+E wie unter Windows. Binary heisst doublecmd-qt6, NICHT doublecmd.
+#
+# $qtenv (definiert in base) ist der einzige Unterschied zur Hyprland-Zeile und
+# der Preis dafuer, dass Sway kein `env` kennt: Double Commander hat unter Linux
+# keinen eigenen Dark Mode und holt sich seine Palette ueber das Qt-Platform-
+# Theme aus GTK3. Ohne die Variable kaeme er hier hell hoch. Die lange
+# Herleitung steht in hypr/base.conf.
+bindsym $mod+e exec $qtenv doublecmd-qt6
+
+# --- Rechner --- (gnome-calculator, s. packages.txt)
+# Die Rechner-Taste der MX Keys schickt einen echten Keycode (Taste 148 ->
+# XF86Calculator, mit wev nachgemessen), es braucht also kein Mapping.
+bindsym XF86Calculator exec gnome-calculator
+
+# --- Elgato Key Light --- ($mod+k ist focus up, also Shift hier)
+bindsym $mod+Shift+k exec ~/.local/bin/keylight toggle
+
+# --- Audio --- (identisch zum Rechtsklick auf das Vol-Modul der Waybar)
+bindsym $mod+a exec ~/.local/bin/audio-out pick
+
+# --- Bluetooth --- (identisch zu Links-/Rechtsklick auf das BT-Modul der Waybar)
+bindsym $mod+b exec ~/.local/bin/bt pick
+bindsym $mod+Shift+b exec ~/.local/bin/bt pair
+
+# --- Wallpaper --- (Bilder in ~/Pictures/wallpapers, s. dot_local/bin/wallpaper)
+bindsym $mod+Shift+w exec ~/.local/bin/wallpaper pick
+bindsym $mod+Alt+w exec ~/.local/bin/wallpaper next
+
+# --- Tastaturbeleuchtung --- (nur "book"; auf dem cube sagt das Skript, dass
+# kein Controller da ist, statt kommentarlos nichts zu tun)
+#
+# --locked wie drueben bindl: soll auch bei gesperrtem Bildschirm gehen — Licht
+# anmachen ist nichts, wofuer man erst das Passwort tippen will. Das 'e' aus
+# `bindel` hat kein Gegenstueck, weil Sway gehaltene Bindings ohnehin wiederholt.
+bindsym --locked XF86KbdLightOnOff exec ~/.local/bin/kbdlight toggle
+bindsym --locked XF86KbdBrightnessUp exec ~/.local/bin/kbdlight up
+bindsym --locked XF86KbdBrightnessDown exec ~/.local/bin/kbdlight down
+
+# Farbwaehler, analog zu 'wallpaper pick'. $mod+Shift+k ist das Key Light,
+# deshalb hier Alt — dasselbe Muster wie beim Wallpaper.
+bindsym $mod+Alt+k exec ~/.local/bin/kbdlight pick
+
+# --- Medien --- (playerctl, steuert mpv UND Cider; s. README "Musik")
+#
+# `-p mpv,%any` ist die Kollisionsaufloesung: lokaler Player zuerst, sonst
+# irgendeiner (also Cider). Anders als bei Hyprland ist das Komma hier kein
+# Thema — Sway splittet die Kommandozeile nicht an Kommas, hinter `exec` steht
+# der Rest der Zeile ohnehin komplett in der Shell.
+#
+# --locked wie drueben bindl: Musik anhalten ist nichts, wofuer man erst das
+# Passwort tippt.
+bindsym --locked XF86AudioPlay exec playerctl -p mpv,%any play-pause
+bindsym --locked XF86AudioPause exec playerctl -p mpv,%any play-pause
+bindsym --locked XF86AudioNext exec playerctl -p mpv,%any next
+bindsym --locked XF86AudioPrev exec playerctl -p mpv,%any previous
+bindsym --locked XF86AudioStop exec playerctl -p mpv,%any stop

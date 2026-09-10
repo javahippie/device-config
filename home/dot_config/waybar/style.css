@@ -30,9 +30,25 @@ window#waybar {
     background: transparent;
 }
 
-#workspaces button.active {
+/* Der aktive Workspace. Die Klasse heisst je nach Compositor anders: das
+   hyprland/workspaces-Modul setzt .active, sway/workspaces setzt .focused.
+   Beide Selektoren stehen deshalb nebeneinander — die jeweils andere Regel
+   trifft in der laufenden Session einfach kein Element. Das ist der einzige
+   Ort, an dem dieses Stylesheet ueberhaupt etwas von den zwei Sessions weiss;
+   alle anderen Module heissen unter beiden gleich. */
+#workspaces button.active,
+#workspaces button.focused {
     color: @base;
     background: @mauve;
+}
+
+/* Nur Sway: ein Workspace, der auf einem anderen (unfokussierten) Monitor
+   sichtbar ist. Unter Hyprland gibt es dafuer keine Klasse. Gedaempft
+   hervorgehoben — er ist zu sehen, aber man tippt nicht hinein. Auf dem cube
+   (ein Monitor) kommt der Zustand nie vor, auf dem book staendig. */
+#workspaces button.visible {
+    color: @text;
+    background: @surface0;
 }
 
 #workspaces button.urgent {

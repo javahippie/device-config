@@ -126,12 +126,25 @@ recorder_pid() {
     printf '%s' "$pid"
 }
 
+# Laeuft die Session unter Sway statt Hyprland? Wortgleich mit screenshot, und
+# wie dort betrifft die Weiche NUR die drei Abfragefunktionen — wf-recorder,
+# slurp und die ganze Prozessverwaltung darunter sind compositor-unabhaengig.
+is_sway() { [ -n "${SWAYSOCK:-}" ]; }
+
 # Nur sichtbare Fenster der aktiven Workspace anbieten; `slurp -r` rastet die
 # Auswahl dann auf genau diese Rechtecke ein. Wortgleich mit screenshot —
 # bewusst kopiert statt in eine gemeinsame Bibliothek gezogen: zwei Skripte, die
 # man je in einem Rutsch lesen kann, sind hier mehr wert als eine dritte Datei.
 window_geometry() {
     local ws
+    if is_sway; then
+        swaymsg -t get_tree | jq -r '
+            .. | objects
+            | select(.pid? != null and .visible? == true)
+            | "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)"' \
+            | slurp -r
+        return
+    fi
     ws="$(hyprctl activeworkspace -j | jq -r '.id')"
     hyprctl clients -j | jq -r --argjson ws "$ws" '
         .[]
@@ -142,15 +155,37 @@ window_geometry() {
 
 # Welcher Monitor liegt unter diesem Punkt? Nicht "der aktive": man zieht die
 # Auswahl mit der Maus auf, und die kann auf dem book auf dem anderen Monitor
-# landen als die aktive Workspace. Groesse aus width/scale, weil hyprctl die
-# Kantenlaengen in PHYSISCHEN Pixeln meldet, x/y aber im logischen Raum — auf
-# einem skalierten Monitor faellt das auseinander.
+# landen als die aktive Workspace.
+#
+# Hyprland-Zweig: Groesse aus width/scale, weil hyprctl die Kantenlaengen in
+# PHYSISCHEN Pixeln meldet, x/y aber im logischen Raum — auf einem skalierten
+# Monitor faellt das auseinander.
+# Sway-Zweig: `.rect` ist bereits komplett logisch (x, y, width, height im
+# selben Raum), die Division entfaellt hier also. Das ist kein Vergessen,
+# sondern der Unterschied zwischen den beiden IPC-Formaten.
 monitor_at() {
+    if is_sway; then
+        swaymsg -t get_outputs | jq -r --argjson x "$1" --argjson y "$2" '
+            [ .[]
+              | select($x >= .rect.x and $x < (.rect.x + .rect.width)
+                   and $y >= .rect.y and $y < (.rect.y + .rect.height))
+            ] | first | .name // empty'
+        return
+    fi
     hyprctl monitors -j | jq -r --argjson x "$1" --argjson y "$2" '
         [ .[]
           | select($x >= .x and $x < (.x + .width / .scale)
                and $y >= .y and $y < (.y + .height / .scale))
         ] | first | .name // empty'
+}
+
+# Name des Monitors, auf dem gerade gearbeitet wird.
+active_monitor() {
+    if is_sway; then
+        swaymsg -t get_outputs | jq -r '.[] | select(.focused) | .name'
+    else
+        hyprctl activeworkspace -j | jq -r '.monitor'
+    fi
 }
 
 start() {
@@ -189,9 +224,9 @@ start() {
         args=(-o "$monitor" -g "$geom")
     else
         # -o statt -g, damit wf-recorder die Groesse selbst ausrechnet: auf
-        # skalierten Monitoren waeren hyprctl-Koordinaten falsch. Gleiche
-        # Ueberlegung wie bei `grim -o` im screenshot-Skript.
-        monitor="$(hyprctl activeworkspace -j | jq -r '.monitor')"
+        # skalierten Monitoren waeren die Koordinaten des Compositors falsch.
+        # Gleiche Ueberlegung wie bei `grim -o` im screenshot-Skript.
+        monitor="$(active_monitor)"
         args=(-o "$monitor")
     fi
 

@@ -1477,6 +1477,186 @@ Mac: Verbindung, Anmeldung und Bild bei 1440x900 bestätigt. Cursor-Test und
 `--gpu` nur mit einem selbstgebauten RFB-Client, der dieselbe
 Cursor-Anforderung stellt.
 
+## Sway als Zweitcompositor
+
+Sway liegt **neben** Hyprland, nicht statt seiner. Beide Sessions stehen im
+SDDM zur Auswahl, teilen sich die komplette Peripherie und lassen sich bei
+jedem Login gegeneinander tauschen. Nichts an der Hyprland-Konfiguration wurde
+dafür angefasst — wer Sway nie auswählt, merkt von diesem Abschnitt nichts.
+
+`sway` bringt seine eigene `/usr/share/wayland-sessions/sway.desktop` mit. Es
+gibt deshalb **keine** eigene Session-Datei im Repo, aus demselben Grund wie bei
+Hyprland (s. "Login-Screen (SDDM)": eine selbstgebaute Session-Datei hatte dort
+einen Login-Loop erzeugt).
+
+### Aufbau
+
+`home/dot_config/sway/` ist absichtlich Datei für Datei das Spiegelbild von
+`home/dot_config/hypr/` — gleiche Namen, gleiche Reihenfolge, gleiche
+Aufteilung, und es gilt dieselbe Regel: **Funktion in base/binds/rules, Deko
+ausschließlich in effects.**
+
+| Hyprland | Sway | Inhalt |
+|---|---|---|
+| `hyprland.conf` | `config` | Einstiegspunkt, sourct/includet nur |
+| `mocha.conf` | `mocha` | Catppuccin-Palette |
+| `base.conf` | `base` | Input, Autostart, Umgebung, Idle-Kette |
+| `monitors.conf.tmpl` | `monitors.tmpl` | Outputs, Host-Weiche |
+| `binds.conf` | `binds` | Tastenkürzel |
+| `rules.conf.tmpl` | `rules.tmpl` | Fensterregeln, Host-Weiche |
+| `effects.conf` | `effects` | Gaps, Rahmen, Farben |
+
+Die Übersetzungstabelle Hyprland → Sway (`bind` → `bindsym`, `killactive` →
+`kill`, `movefocus, l` → `focus left`, …) steht im Kopf von `sway/binds`, damit
+sie beim Nachziehen einer Änderung direkt danebensteht.
+
+### Was geteilt wird, statt kopiert zu sein
+
+Der Punkt der Übung: **eine** Peripherie für zwei Compositoren.
+
+- **waybar** — hier steckte die einzige echte Arbeit. Die Bar unterscheidet
+  sich zwischen den Sessions in genau zwei Modulen (`*/workspaces`,
+  `*/window`), der Rest ist identisch. Statt die Datei zu kopieren, ist sie
+  jetzt dreigeteilt:
+  - `common.jsonc.tmpl` — Uhr, Netz, Bluetooth, Lautstärke, Akku, Tray,
+    Idle-Schalter, Aufnahmemodus, Bildschirmaufnahme, Keys-Knopf. Wird von
+    Waybar nie direkt geladen.
+  - `config.jsonc.tmpl` / `config-sway.jsonc.tmpl` — je `modules-left` plus das
+    compositor-eigene Modulpaar, und ein `include` auf `common.jsonc`.
+    Waybars Regel dabei (`waybar(5)`): bei doppelten Schlüsseln gewinnt die
+    **einbindende** Datei. Der Include-Pfad ist absolut, weil Waybar dort kein
+    `~` auflöst; chezmoi setzt ihn beim Ausrollen ein.
+  - `home/.chezmoitemplates/waybar-workspaces-icons` — die App-Emoji-Liste.
+    Die steht damit einmal im Repo und landet in beiden Modulen; ein
+    Doppelpflegen der zwölf Einträge wäre nach der zweiten Änderung schiefgegangen.
+
+  `style.css` ist unverändert geteilt, bis auf einen Zusatz: der aktive
+  Workspace heißt unter Hyprland `.active` und unter Sway `.focused`, beide
+  Selektoren stehen jetzt nebeneinander. Dazu kommt `.visible` für den
+  Sway-Fall "Workspace liegt auf dem anderen Monitor vorne".
+
+- **`keybinds`** liest weiter die binds-Datei selbst statt einer zweiten
+  gepflegten Liste — jetzt nur eben die der laufenden Session, mit einem
+  zweiten awk-Parser für die `bindsym`-Syntax. Die Abschnittsmarken
+  (`# --- Kern ---`) sind in beiden Dateien dieselben, die Modifier werden
+  angeglichen (`Shift` → `SHIFT`, `q` → `Q`): **die beiden Popups sehen
+  identisch aus.** Mit `KEYBINDS_CONF=~/.config/sway/binds keybinds` lässt sich
+  die jeweils andere Liste ansehen, ohne die Session zu wechseln.
+
+- **`screenshot` und `record`** fragen den Compositor nur an drei Stellen
+  (sichtbare Fenster, Monitor unter der Maus, aktiver Monitor). Die gehen jetzt
+  über `swaymsg` statt `hyprctl`, wenn `SWAYSOCK` gesetzt ist. Ein Detail dabei:
+  Sways `.rect` ist bereits vollständig logisch, die Division durch `scale` aus
+  dem Hyprland-Zweig entfällt hier.
+
+- **Unverändert übernommen**, weil compositor-unabhängig: fuzzel, foot, mako,
+  swaybg (und damit das ganze `wallpaper`-Skript), grim, slurp, wf-recorder,
+  cliphist, playerctl, `bt`, `wifi`, `audio-out`, `todo`, `keylight`,
+  `kbdlight`, `music`, `recording-mode`.
+
+- **`hyprlock` bleibt auch unter Sway der Sperrbildschirm.** Es braucht laut
+  `strings /usr/bin/hyprlock` nur Standardprotokolle (`ext-session-lock-v1`,
+  `wp-cursor-shape`, `wp-fractional-scale`, `wp-viewporter`, `wlr-screencopy`) —
+  alles Dinge, die Sway kann. Damit sieht der Lockscreen in beiden Sessions
+  gleich aus und `hypr/hyprlock.conf` bleibt die einzige Quelle dafür.
+  Kein `swaylock`: das wären zwei Lockscreens zum Pflegen und Themen.
+
+- **`hypridle` dagegen nicht.** Dieselbe Prüfung zeigt neben
+  `ext-idle-notify-v1` auch `hyprland-lock-notification-v1` — ein
+  Hyprland-eigenes Protokoll. Ob hypridle ohne das sauber degradiert, ist
+  nichts, was man am Sperrbildschirm ausprobiert; in der Sway-Session macht
+  deshalb `swayidle` die Kette (Zeiten und Begründungen identisch: 5 min
+  sperren, 15 min Suspend, **keine** dpms-off-Stufe dazwischen — die
+  Herleitung dazu steht in `hypr/hypridle.conf` und hängt am Monitor, nicht am
+  Compositor).
+
+- **Portale**: `xdg-desktop-portal-wlr` neben dem hyprland-Backend, dazu
+  `sway-portals.conf` neben `hyprland-portals.conf`. Welches greift, entscheidet
+  `xdg-desktop-portal` an `XDG_CURRENT_DESKTOP` — der Dateiname muss dazu passen.
+
+- **`sway-session.target`** neben `hyprland-session.target`, gleiche Aufgabe:
+  irgendetwas muss `graphical-session.target` binden, sonst bleibt
+  `xdg-desktop-portal.service` für immer "Dependency failed".
+
+### Unterschiede, die man kennen muss
+
+Nichts davon ist ein Fehler, aber alles davon fällt beim ersten Login auf:
+
+1. **Keine Rundung, keine Animationen.** Sway kann beides nicht. Die zwei
+   bewussten Ausnahmen vom Deko-Nullpunkt aus `hypr/effects.conf`
+   (`rounding = 4`, kurze Slides) haben hier kein Gegenstück — Fenster sind
+   eckig und erscheinen ohne Übergang. Das ist der sichtbarste Unterschied.
+   Wer beides will, bräuchte swayfx; bewusst nicht Teil dieses Versuchsaufbaus.
+2. **Apps landen still auf ihrem Workspace** (nur `cube`, s. "Fester Workspace
+   pro App"). `assign` platziert, ohne mitzuwechseln; drüben steht die Regel
+   bewusst ohne `silent` und man landet bei dem Programm, das man gerade
+   gestartet hat. Die Alternative (`for_window … move container to workspace
+   number N, workspace number N`) steht auskommentiert in `sway/rules.tmpl` —
+   erst ausprobieren, dann umstellen.
+3. **`SUPER+SHIFT+C` lädt die Konfiguration neu.** Das ist der einzige Bind
+   ohne Gegenstück in `hypr/binds.conf`, und der einzige bewusste Zusatz:
+   Hyprland liest seine `.conf` bei jeder Änderung von selbst neu ein, Sway
+   nicht. Ohne die Taste hieße jede Anpassung: abmelden und neu anmelden.
+   Was ein Reload **nicht** tut: die `exec`-Zeilen erneut starten — waybar,
+   mako und swayidle laufen weiter wie sie sind.
+4. **`app_id` vs. `class`.** Hyprlands `class` deckt beides ab, Sway hat zwei
+   getrennte Felder: `app_id` trifft nur Wayland-Fenster, `class` nur
+   XWayland-Fenster. Deshalb steht Citrix in `sway/rules.tmpl` als `class`, alle
+   anderen als `app_id`. Eine Regel mit dem falschen Feld fällt **still** durch —
+   genau die Falle wie bei Hyprlands Fensterregel-Grammatik. Gegenprüfen:
+   `swaymsg -t get_tree` (das Gegenstück zu `hyprctl clients`).
+5. **Sway kennt kein `env`.** Die zwei Zeilen aus `hypr/base.conf`
+   (`QT_QPA_PLATFORMTHEME`, `ELECTRON_OZONE_PLATFORM_HINT`) gehen deshalb
+   literal per `dbus-update-activation-environment` in die
+   Activation-Environment — das deckt alles ab, was systemd oder D-Bus startet.
+   Was Sway **direkt** startet (Keybind, fuzzel), erbt sie nicht. Für den einen
+   Fall, in dem das sichtbar wird, steht ein explizites `env` davor: Double
+   Commander hat unter Linux keinen eigenen Dark Mode und käme sonst hell hoch
+   (`$qtenv` in `sway/base`, benutzt in `sway/binds`).
+6. **`remote` (Mac als Thin Client) gibt es unter Sway nicht.** Das ist eine
+   bewusste Lücke, kein Vergessen: der ganze Aufbau hängt daran, dass der
+   virtuelle Output **nicht** `HEADLESS-` heißt — wayvnc entscheidet allein am
+   Namenspräfix, ob es den Output auf Zuruf des Clients resized, und stürzt
+   dabei ab (07.09.2026 nachgestellt, s. "Mac als Thin Client"). Sway vergibt
+   die Namen für `create_output` selbst und nummeriert zwangsweise
+   `HEADLESS-1`, `HEADLESS-2`, … — der Trick aus `hypr/monitors.conf.tmpl`
+   lässt sich hier nicht nachbauen. Für den Thin Client also weiter Hyprland.
+7. **`SUPER+;` (Fokus nach rechts)** verhält sich wie drüben, also auf
+   de-Layout hinter `SHIFT+,`. Die Zeile ist die 1:1-Kopie. Wer die *physische*
+   Taste an US-`;`-Position will (also `ö`), findet zwei Alternativen
+   auskommentiert in `sway/binds` — beide erzeugen dann aber einen echten
+   Unterschied zwischen den Sessions.
+8. **Modus statt `highrr`** auf dem `cube`: Sway kennt das Schlüsselwort nicht,
+   der Modus steht ausgeschrieben (`3440x1440@99.982Hz`, gemessener Wert). Auf
+   dem `book` gibt es kein `auto-right`, die Positionen stehen als Koordinaten
+   und die `1920` ist zu prüfen (`swaymsg -t get_outputs`, Feld `rect`).
+
+### Stand
+
+Konfiguration und Skripte sind geschrieben und übersetzen sauber; die
+Waybar-Aufteilung ist gegengeprüft (die Hyprland-Bar rendert nach dem Split
+**semantisch identisch** zu vorher, und beide Bars ergeben nach dem Include
+eine vollständige Konfiguration mit derselben Icon-Liste). Der `keybinds`-Parser
+ist gegen beide binds-Dateien gelaufen, die Hyprland-Ausgabe ist unverändert.
+
+**Nicht auf Hardware verifiziert** — zum Zeitpunkt der Einrichtung war `sway`
+noch nicht installiert, es konnte also weder `sway -C` (Konfigurationsprüfung)
+noch ein echter Login laufen. Erster Lauf deshalb in dieser Reihenfolge:
+
+```bash
+sudo ./bootstrap.sh          # zieht sway, swayidle, xdg-desktop-portal-wlr
+chezmoi apply
+sway -C                      # Konfiguration prüfen, OHNE die Session zu starten
+```
+
+Erst danach im SDDM "Sway" auswählen. Fällt etwas um, ist die Hyprland-Session
+unberührt daneben — sie ist der Rückweg.
+
+Nach dem ersten erfolgreichen Login gegenprüfen:
+`swaymsg -t get_outputs` (Modus und Position), `swaymsg -t get_tree` (app_id
+gegen die Regeln in `rules`), Waybar vollständig, `SUPER+F1` (Popup identisch
+zu Hyprland), ein Screenshot je Modus, Lock über `SUPER+L`.
+
 ## Login-Screen (SDDM)
 
 Ersetzt den früheren TTY1-Autostart. Der ist nicht weg, sondern zum Notfallpfad

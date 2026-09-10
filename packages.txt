@@ -7,6 +7,29 @@ hyprlock
 hypridle
 xdg-desktop-portal-hyprland # Screencast/Screenshot — ebenfalls COPR
 
+# --- Zweitcompositor Sway (regulaer aus Fedora, KEINE COPR) ---
+# Parallel installiert zum Ausprobieren, s. README "Sway als Zweitcompositor".
+# Beide Sessions stehen im SDDM nebeneinander; sway bringt seine
+# wayland-sessions/sway.desktop selbst mit, es braucht keine eigene
+# Session-Datei im Repo. Konfiguration: home/dot_config/sway/.
+sway
+swayidle                    # Idle-Kette (Lock/Suspend) in der Sway-Session.
+                            # Ersetzt dort hypridle, weil das neben
+                            # ext-idle-notify-v1 auch hyprland-lock-notify-v1
+                            # spricht — ein Hyprland-eigenes Protokoll, das
+                            # Sway nicht hat (mit `strings /usr/bin/hypridle`
+                            # nachgesehen). hyprlock BLEIBT dagegen unter beiden
+                            # der Sperrbildschirm: es kommt laut derselben
+                            # Pruefung mit reinen Standardprotokollen aus.
+                            # KEIN swaylock — sonst haette man zwei
+                            # Lockscreens zu pflegen und zu themen.
+xdg-desktop-portal-wlr      # Screencast/Screenshot in der Sway-Session, das
+                            # wlroots-Gegenstueck zum hyprland-Portal darueber.
+                            # Beide sind installiert; welches genommen wird,
+                            # entscheidet xdg-desktop-portal anhand von
+                            # XDG_CURRENT_DESKTOP und der passenden
+                            # *-portals.conf (home/dot_config/xdg-desktop-portal/).
+
 # --- Session-Plumbing ---
 mate-polkit                 # Polkit-Agent (hyprpolkitagent existiert in F44 nicht)
 xdg-desktop-portal-gtk      # Datei-Dialoge, Settings — ohne den brechen Flatpak-Apps

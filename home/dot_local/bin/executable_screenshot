@@ -40,16 +40,46 @@ fail() {
     exit 1
 }
 
+# Läuft die Session unter Sway statt Hyprland? SWAYSOCK setzt Sway selbst für
+# jede Sitzung und ist damit verlässlicher als XDG_CURRENT_DESKTOP, das vom
+# Display-Manager kommt und bei einem TTY-Start fehlt.
+# Alles außerhalb der beiden folgenden Funktionen ist compositor-unabhängig:
+# grim, slurp und wl-copy sprechen reine wlroots-Protokolle.
+is_sway() { [ -n "${SWAYSOCK:-}" ]; }
+
 # Nur sichtbare Fenster der aktiven Workspace anbieten. `slurp -r` rastet die
 # Auswahl dann auf genau diese Rechtecke ein.
+#
+# Sway-Zweig: `.visible` gibt es im Baum nur bei echten Fenstern, es ersetzt
+# Hyprlands mapped/hidden UND die Einschränkung auf die aktive Workspace in
+# einem — unsichtbar ist ein Fenster ja gerade dann, wenn seine Workspace nicht
+# vorne liegt. `.pid` als zweite Bedingung filtert die Container-Knoten heraus,
+# die keine Fenster sind (Splits, Workspaces, Outputs).
 window_geometry() {
     local ws
+    if is_sway; then
+        swaymsg -t get_tree | jq -r '
+            .. | objects
+            | select(.pid? != null and .visible? == true)
+            | "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)"' \
+            | slurp -r
+        return
+    fi
     ws="$(hyprctl activeworkspace -j | jq -r '.id')"
     hyprctl clients -j | jq -r --argjson ws "$ws" '
         .[]
         | select(.workspace.id == $ws and .mapped == true and .hidden == false)
         | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"' \
         | slurp -r
+}
+
+# Name des Monitors, auf dem gerade gearbeitet wird.
+active_monitor() {
+    if is_sway; then
+        swaymsg -t get_outputs | jq -r '.[] | select(.focused) | .name'
+    else
+        hyprctl activeworkspace -j | jq -r '.monitor'
+    fi
 }
 
 mode="${1:-}"
@@ -67,9 +97,9 @@ case "$mode" in
         ;;
     screen)
         # Gezielt -o statt -g: grim rechnet die Ausgabegröße dann selbst aus.
-        # Über hyprctl-Koordinaten zu gehen wäre auf skalierten Monitoren falsch,
-        # weil dort Pixel- und Logikmaße auseinanderfallen.
-        args=(-o "$(hyprctl activeworkspace -j | jq -r '.monitor')")
+        # Über die Koordinaten des Compositors zu gehen wäre auf skalierten
+        # Monitoren falsch, weil dort Pixel- und Logikmaße auseinanderfallen.
+        args=(-o "$(active_monitor)")
         ;;
     all)
         args=()

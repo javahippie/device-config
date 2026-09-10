@@ -1,0 +1,45 @@
+# ============================================================
+# DEKO-NULLPUNKT, wie in hypr/effects.conf. Jeder Effekt, der
+# je dazukommt, ist eine bewusste Zeile HIER.
+# Live testen:  swaymsg gaps inner all set 8
+# ============================================================
+#
+# Sway macht den Nullpunkt an zwei Stellen leichter als Hyprland und an einer
+# Stelle unmoeglich:
+#   - Blur, Schatten und dim_inactive gibt es hier gar nicht erst. Die
+#     entsprechenden Aus-Schalter aus hypr/effects.conf entfallen ersatzlos.
+#   - Titelleisten schaltet `default_border pixel N` mit ab (s. u.).
+#   - Fenster-RUNDUNG und ANIMATIONEN kann Sway nicht. Die beiden bewussten
+#     Ausnahmen vom Nullpunkt drueben (rounding = 4, kurze Slides) haben hier
+#     also kein Gegenstueck — Fenster sind eckig und erscheinen ohne Uebergang.
+#     Das ist der sichtbarste optische Unterschied zwischen den beiden Sessions.
+#     Wer beides will, braucht swayfx statt sway; bewusst nicht Teil dieses
+#     Versuchsaufbaus, das waere ein dritter Compositor.
+
+# Gaps wie drueben (gaps_in = 4, gaps_out = 8).
+gaps inner 4
+gaps outer 8
+
+# `pixel 3` statt `normal`: `normal` waere ein Rahmen MIT Titelleiste. Die Zahl
+# ist dieselbe wie border_size = 3 drueben, und aus demselben Grund: der aktive
+# Rahmen ist die einzige Fokusanzeige (kein dim_inactive, keine Schatten), und
+# bei 2 px geht der Mauve-Rahmen auf 3440x1440 zwischen den Fenstern unter.
+default_border pixel 3
+default_floating_border pixel 3
+
+# Farbe ist keine Deko im Sinne der Nullpunkt-Regel (der Rahmen ist so oder so
+# da) — Catppuccin Mocha, Mauve-Akzent. Palette kommt aus mocha.
+#
+# Die Reihenfolge der fuenf Werte ist: border, background, text, indicator,
+# child_border. Sichtbar ist bei `default_border pixel` praktisch nur
+# child_border (der Rahmen ums Fenster) — die drei ersten Werte gehoeren zur
+# Titelleiste, die es hier nicht gibt. Sie werden trotzdem gesetzt, weil Sway
+# alle fuenf verlangt und ein spaeteres `normal` sonst grell aufschlaegt.
+#
+# `indicator` ist der einzige Wert ohne Entsprechung in Hyprland: er markiert
+# die Kante, an der ein neues Fenster aufgeht. Bewusst auf Mauve wie der Rahmen
+# statt auf eine zweite Akzentfarbe — es soll ein Rahmen bleiben, kein Ampelbild.
+client.focused          $mauve    $mauve    $base $mauve    $mauve
+client.focused_inactive $surface1 $surface1 $text $surface1 $surface1
+client.unfocused        $surface1 $surface1 $text $surface1 $surface1
+client.urgent           $red      $red      $base $red      $red

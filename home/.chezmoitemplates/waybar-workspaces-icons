@@ -1,0 +1,64 @@
+        // ---- GETEILT: von waybar/config.jsonc.tmpl UND config-sway.jsonc.tmpl ----
+        // Quelle ist home/.chezmoitemplates/waybar-workspaces-icons; beide
+        // Dateien ziehen den Block per chezmoi-Template herein. Die Liste steht
+        // damit EINMAL im Repo, obwohl sie in zwei Modulen landet
+        // (hyprland/workspaces und sway/workspaces). Wer hier etwas aendert,
+        // aendert es fuer beide Sessions — das ist der Zweck der Aufteilung.
+        //
+        // Was NICHT hierher gehoert: alles, was sich zwischen den beiden
+        // Modulen unterscheidet. Das sind genau zwei Dinge, "format" (die
+        // Workspace-Nummer heisst drueben {id} und hier {name}) und
+        // "persistent-workspaces" (andere Schreibweise) — die stehen deshalb
+        // in den beiden aufrufenden Dateien.
+        "all-outputs": true,
+        // "unique-icons" ist in keiner der beiden Manpages dokumentiert, tut in
+        // hyprland/workspaces aber das Richtige (gleiche App zweimal = ein Icon).
+        // Kennt sway/workspaces es nicht, ignoriert Waybar den Schluessel still —
+        // dann stehen dort im Zweifel zwei gleiche Emoji nebeneinander, mehr
+        // passiert nicht. Deshalb hier gemeinsam statt in zwei Fassungen.
+        "unique-icons": true,
+        "window-rewrite-default": "•",
+        // WICHTIG: waybar matcht den Ausdruck gegen die GANZE Klasse, nicht als
+        // Teilstring. Die frueheren Regeln wie class<[Ff]irefox> konnten deshalb
+        // nie greifen — die Klasse heisst org.mozilla.firefox. Funktioniert
+        // hatten nur foot, cider und ONLYOFFICE, weil dort Muster und Klasse
+        // zufaellig identisch waren. Neue Eintraege daher entweder exakt
+        // schreiben oder mit .* umschliessen.
+        //
+        // Was "class" hier bedeutet, haengt am FENSTER, nicht am Compositor:
+        // fuer Wayland-Fenster ist es die app_id, fuer XWayland-Fenster die
+        // WM_CLASS. Beide Manpages sagen das wortgleich — und genau deshalb
+        // passt dieselbe Liste unter Sway und unter Hyprland.
+        //
+        // Alle Klassen mit `hyprctl clients -j` gegengeprueft (2026-08-21).
+        // Gegenstueck unter Sway: `swaymsg -t get_tree`.
+        "window-rewrite": {
+            "class<foot>": "\ud83d\udda5",
+            "class<org\\.mozilla\\.firefox>": "\ud83e\udd8a",
+            // thunderbird_esr heute; .* deckt auch den Wechsel auf den
+            // Nicht-ESR-Zweig ab.
+            "class<org\\.mozilla\\.thunderbird.*>": "\u2709\ufe0f",
+            // Citrix (Wfica). Fenster = die Windows-Sitzung beim Kunden, die
+            // ueber Citrix drin haengt; \ud83d\udda5 ist schon fuer foot vergeben.
+            // U+1FA9F ist ein junges Emoji (13.0) -- Abdeckung in
+            // NotoEmoji-Regular gegengeprueft (fc-list :charset=1fa9f).
+            // Klein geschrieben kommt Wfica auch vor (s. rules), deshalb die
+            // Zeichenklasse.
+            "class<[Ww]fica>": "\ud83e\ude9f",
+            "class<com\\.slack\\.Slack>": "\ud83d\udcac",
+            // Element meldet sich als im.riot.Riot — Altlast aus der Riot-Zeit.
+            "class<im\\.riot\\.Riot>": "\ud83d\udd37",
+            "class<org\\.keepassxc\\.KeePassXC>": "\ud83d\udd11",
+            // Die Klasse enthaelt die VERSION ("Apache NetBeans IDE 31"), das .*
+            // ist also nicht Kosmetik: ohne es faellt das Icon beim naechsten
+            // NetBeans-Major wieder aus.
+            "class<Apache NetBeans IDE.*>": "\u2615",
+            "class<cider>": "\ud83c\udfb5",
+            // Lokaler Player: foot mit eigener app-id (s. mpv-audio.desktop),
+            // schwebt per rules. Andere Note als Cider, damit man im
+            // Workspace-Switcher sieht, WAS gerade spielt.
+            "class<mpv-audio>": "\ud83d\udcbf",
+            "class<ONLYOFFICE>": "\ud83d\udcc4",
+            // NICHT verifiziert — Signal lief beim Gegenpruefen nicht.
+            "class<.*[Ss]ignal.*>": "\ud83d\udd12"
+        }

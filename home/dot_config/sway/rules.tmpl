@@ -1,0 +1,90 @@
+# Gegenstueck zu dot_config/hypr/rules.conf.tmpl.
+#
+# Kriterien-Grammatik: `for_window [<kriterium>="<regex>"] <befehl>[, <befehl>]`.
+# Der entscheidende Unterschied zu Hyprlands `match:class`: Sway hat ZWEI
+# Felder statt einem.
+#   app_id  -> nur Wayland-native Fenster (xdg-shell app_id)
+#   class   -> nur XWayland-Fenster (WM_CLASS)
+# Hyprlands `class` deckt beides ab. Ein `app_id`-Kriterium auf ein
+# XWayland-Fenster trifft hier also NIE — und faellt, wie drueben eine falsche
+# Regel, still durch. Womit ein Fenster laeuft, sagt `swaymsg -t get_tree`:
+# steht dort `"app_id": null` und stattdessen ein `window_properties.class`,
+# ist es XWayland.
+#
+# Gegenpruefen live: `swaymsg -t get_tree | jq '.. | select(.pid?) |
+# {app_id, class: .window_properties.class, name}'` — das Gegenstueck zu
+# `hyprctl clients`.
+
+# Die Deko-Ausnahme fuer Citrix aus dem Hyprland-Zweig hat hier BEWUSST kein
+# Gegenstueck. Sie schaltet drueben Blur, Dim und Transparenz ab — Sway hat
+# davon nichts (s. effects), das Fenster ist also ohnehin schon unangetastet.
+# Eine Regel, die nichts abschaltet, was es nicht gibt, waere nur eine Zeile
+# mehr zum Mitpflegen.
+
+# Der Rechner schwebt, statt gekachelt zu werden — wie sein Windows-Vorbild und
+# aus demselben Grund: er soll neben der Arbeit liegen, nicht die Arbeit
+# umschichten. Er bleibt dabei ein normales Fenster, $mod+v holt ihn zurueck in
+# die Kachelung.
+#
+# Drei Befehle an einem Kriterium, mit Komma verkettet. `resize set` und
+# `move position center` ersetzen Hyprlands `size`/`center on`; die Reihenfolge
+# ist nicht egal — erst schweben lassen, dann Groesse, dann zentrieren, sonst
+# rechnet `center` mit der alten Groesse.
+for_window [app_id="^org\.gnome\.Calculator$"] floating enable, resize set 400 600, move position center
+
+# Der lokale Musik-Player schwebt klein, statt als halbes Terminal mitgekachelt
+# zu werden — er zeigt eine Laufzeit und einen Balken, mehr hat er nicht zu
+# sagen. Gleiche Ueberlegung wie beim Rechner darueber.
+#
+# Die app_id ist NICHT foot: das Fenster startet als `foot --app-id=mpv-audio`
+# aus dot_local/share/applications/mpv-audio.desktop. Ohne die eigene app-id
+# traefe die Regel jedes Terminal.
+#
+# `move position center` statt einer festen Ecke: dieselbe Ueberlegung wie
+# drueben, wo `move` in absoluten Pixeln rechnet und damit hostabhaengig waere.
+# Sway koennte hier zwar Prozente (`move position 78 ppt 80 ppt`), aber zwei
+# verschiedene Platzierungen in zwei Sessions sind schlechter als eine.
+for_window [app_id="^mpv-audio$"] floating enable, resize set 700 260, move position center
+
+# KEIN Gegenstueck zu `workspace = N, persistent:true`. Das ist keine Luecke:
+# Sway kennt keine persistenten Workspaces, und es braucht sie hier auch nicht.
+# Der Grund fuer die Zeilen drueben war Waybar — dessen hyprland/workspaces-Modul
+# zeigt die leeren Workspaces 1-6 nur, wenn Hyprland sie selbst kennt. Das
+# sway/workspaces-Modul erzeugt seine `persistent-workspaces` dagegen selbst,
+# ohne Zutun des Compositors (s. waybar/config-sway.jsonc.tmpl).
+{{ if eq .chezmoi.hostname "cube" }}
+# --- Fester Startplatz pro App (nur cube) ---
+# Jede App kommt beim OEFFNEN auf ihren Workspace. Das ist eine Fensterregel,
+# kein Autostart und kein Pinning: sie greift genau einmal, im Moment des
+# Fensteroeffnens. Wer danach mit $mod+Shift+<n> umsortiert, behaelt das.
+#
+# ECHTER VERHALTENSUNTERSCHIED zu Hyprland, bitte lesen: `assign` platziert
+# STILL. Drueben steht die Regel bewusst ohne `silent`, dort wechselt der
+# Workspace also mit und man landet bei dem Programm, das man gerade gestartet
+# hat. Hier bleibt man stehen, wo man ist, und die App geht im Hintergrund auf.
+#
+# Wer das Hyprland-Verhalten will, ersetzt die betreffende Zeile durch:
+#   for_window [app_id="^org\.mozilla\.firefox$"] move container to workspace number 1, workspace number 1
+# Das ist BEWUSST nicht die Vorgabe: `assign` ist der dokumentierte Weg und
+# platziert zuverlaessig, die Verkettung oben haengt an der Auswertungs-
+# reihenfolge zweier Befehle und ist an dieser Stelle noch nicht nachgemessen.
+# Erst ausprobieren, dann umstellen.
+#
+# app_id vs. class ist hier nicht kosmetisch (s. Kopf der Datei): Citrix laeuft
+# unter XWayland und braucht `class`, alle anderen sind Wayland-nativ.
+#
+# Die Muster sind aus rules.conf.tmpl uebernommen, wo sie mit `hyprctl clients -j`
+# gegengeprueft wurden (08.09.2026). Hyprlands `class` IST fuer Wayland-Fenster
+# die app_id, die Werte stimmen also — nach dem ersten Sway-Start trotzdem
+# einmal mit `swaymsg -t get_tree` gegenlesen.
+# Workspace 5 bleibt absichtlich leer: Platz zum Ausbreiten.
+assign [app_id="^org\.mozilla\.firefox$"] workspace number 1
+# Citrix: XWayland, deshalb class. Klein geschrieben kommt Wfica auch vor.
+assign [class="^[Ww]fica$"] workspace number 2
+# thunderbird_esr heute; .* deckt den Wechsel auf den Nicht-ESR-Zweig ab.
+assign [app_id="^org\.mozilla\.thunderbird.*$"] workspace number 3
+assign [app_id="^com\.slack\.Slack$"] workspace number 4
+# Element meldet sich als im.riot.Riot — Altlast aus der Riot-Zeit.
+assign [app_id="^im\.riot\.Riot$"] workspace number 4
+assign [app_id="^org\.keepassxc\.KeePassXC$"] workspace number 6
+{{- end }}

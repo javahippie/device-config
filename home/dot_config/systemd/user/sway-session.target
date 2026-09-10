@@ -1,0 +1,20 @@
+# Gegenstueck zu hyprland-session.target, gleiche Aufgabe und gleiche Not:
+# irgendetwas muss graphical-session.target binden, sonst bleibt
+# xdg-desktop-portal.service fuer immer im Zustand "Dependency failed" — kein
+# Portal-Call geht durch, egal wie sauber Env und mimeapps.list sonst sind.
+# Gestartet per `exec systemctl --user start sway-session.target` in
+# dot_config/sway/base.
+#
+# Der Name ist der in der Sway-Welt uebliche (so heisst die Unit auch im
+# sway-systemd-Projekt), damit fremde Units, die sich an eine Sway-Session
+# haengen wollen, ihn finden.
+#
+# Bewusst KEINE Verdrahtung mit hyprland-session.target: die beiden Sessions
+# laufen nie gleichzeitig, und ein `Conflicts=` waere eine Sicherung gegen
+# etwas, das nicht passieren kann. Beim Logout raeumt systemd --user ohnehin ab.
+[Unit]
+Description=Sway session
+BindsTo=graphical-session.target
+Wants=graphical-session-pre.target
+After=graphical-session-pre.target
+PropagatesStopTo=graphical-session.target
