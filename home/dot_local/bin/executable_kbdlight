@@ -19,17 +19,25 @@
 # nicht kennt.
 set -euo pipefail
 
-CTL="ite8291r3-ctl"
+# Voller Pfad, kein blosser Name: pipx legt das Tool nach ~/.local/bin, und das
+# ist unter SDDM NICHT im PATH (Session ohne Login-Shell, s. sway/binds). Die
+# Bindings rufen dieses Skript zwar absolut auf, aber das half dem Skript nichts,
+# wenn es seinerseits den Nachbarn per Namen suchte (Review 13.09.2026).
+CTL="${KBDLIGHT_CTL:-$HOME/.local/bin/ite8291r3-ctl}"
 MAX=50                  # Helligkeitsbereich des Controllers ist 0..50
 STEP=5
 DEFAULT_COLOR="mauve"   # passt zum SDDM-Theme (catppuccin-mocha-mauve)
 DEFAULT_BRIGHT=25
 
-# Die Farbwerte werden NICHT hier dupliziert, sondern aus der Hyprland-Palette
-# gelesen. mocha.conf sagt ueber sich selbst "Einzige Quelle der Palette" — das
-# soll auch fuer die Tastatur gelten, sonst laufen Bildschirm und Beleuchtung
-# beim naechsten Theme-Dreh auseinander.
-PALETTE="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/mocha.conf"
+# Die Farbwerte werden NICHT hier dupliziert, sondern aus sway/mocha gelesen —
+# derselben Datei, aus der die Session ihre Palette holt. Sonst laufen Desktop
+# und Tastaturbeleuchtung beim naechsten Theme-Dreh auseinander.
+#
+# Bis 13.09.2026 war die Quelle hypr/mocha.conf (Format `$name = rgb(hex)`),
+# weil hyprlock sie sowieso brauchte. Mit hyprlock ist auch hypr/ gegangen;
+# das Sway-Format ist `set $name #hex`, die beiden sed-Ausdruecke unten
+# kennen nur noch dieses.
+PALETTE="${XDG_CONFIG_HOME:-$HOME/.config}/sway/mocha"
 
 # Zustand: die zuletzt benutzte Helligkeit und Farbe. Der Controller kann zwar
 # seine Helligkeit sagen, aber nicht seine Farbe — und fuer `toggle` braucht es
@@ -50,7 +58,7 @@ Usage: kbdlight [on|off|toggle|up|down|color <name>|pick|status|list]
   color NAME   Catppuccin-Mocha-Farbe setzen, z. B. mauve, teal, peach
   pick         Farbe per fuzzel auswaehlen
   status       aktuelle Helligkeit und gemerkte Farbe
-  list         verfuegbare Farbnamen aus mocha.conf
+  list         verfuegbare Farbnamen aus sway/mocha
 EOF
 }
 
@@ -67,8 +75,8 @@ need_ctl() {
 color_rgb() {
     local name="$1" hex
     [ -r "$PALETTE" ] || die "Palette nicht lesbar: $PALETTE"
-    # Zeilenformat in mocha.conf:  $mauve = rgb(cba6f7)
-    hex=$(sed -nE "s/^\\\$${name}[[:space:]]*=[[:space:]]*rgb\(([0-9a-fA-F]{6})\).*/\1/p" \
+    # Zeilenformat in sway/mocha:  set $mauve     #cba6f7
+    hex=$(sed -nE "s/^set[[:space:]]+\\\$${name}[[:space:]]+#([0-9a-fA-F]{6}).*/\1/p" \
           "$PALETTE" | head -1)
     [ -n "$hex" ] || die "Farbe '$name' steht nicht in $PALETTE (kbdlight list)"
     printf '%d,%d,%d' "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
@@ -76,8 +84,8 @@ color_rgb() {
 
 list_colors() {
     [ -r "$PALETTE" ] || die "Palette nicht lesbar: $PALETTE"
-    # Nur echte rgb()-Eintraege, nicht die $xAlpha-Varianten am Dateiende.
-    sed -nE 's/^\$([a-zA-Z0-9]+)[[:space:]]*=[[:space:]]*rgb\([0-9a-fA-F]{6}\).*/\1/p' "$PALETTE"
+    # Nur `set`-Zeilen mit Farbwert; Kommentare und Leerzeilen fallen durch.
+    sed -nE 's/^set[[:space:]]+\$([a-zA-Z0-9]+)[[:space:]]+#[0-9a-fA-F]{6}.*/\1/p' "$PALETTE"
 }
 
 state_get() {   # $1 = Schluessel, $2 = Default

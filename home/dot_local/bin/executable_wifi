@@ -116,8 +116,12 @@ case "${1:-pick}" in
         sel="$(printf '%s\n' "$entries" | fuzzel --dmenu --prompt 'WLAN: ' --width 56 || true)"
         [ -n "$sel" ] || exit 0                    # Abbruch ist kein Fehler
 
-        # Feldbreiten oben sind fix, der SSID ist alles ab Spalte 27.
-        ssid="${sel:26}"
+        # Feldbreiten oben sind fix: Markierung(1) + Stern(1) + Leerzeichen(1)
+        # + Signal(3) + %(1) + zwei Leerzeichen + Sicherheit(14) + Leerzeichen
+        # = 24 Zeichen, der SSID beginnt also bei Offset 24. Bis 13.09.2026
+        # stand hier 26 — zwei Zeichen der SSID fehlten, gespeicherte Netze
+        # wurden nie erkannt und fragten jedes Mal neu nach dem Passwort.
+        ssid="${sel:24}"
         [ -n "$ssid" ] || fail "wifi: kein SSID in '$sel'"
         connected="${sel:0:1}"
 

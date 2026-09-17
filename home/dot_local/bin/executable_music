@@ -15,7 +15,7 @@
 # Datei als 'replace' und der Rest als 'append', die Playlist bleibt also ganz.
 #
 # Es wird NICHT der Fokus geholt. Wer das anders will, haengt hinter die
-# Sende-Schleife: hyprctl dispatch focuswindow class:mpv-audio
+# Sende-Schleife: swaymsg '[app_id="mpv-audio"] focus'
 # Bewusst nicht Default: ein Doppelklick im Dateimanager soll nicht die
 # Workspace wechseln.
 set -euo pipefail
@@ -63,7 +63,7 @@ fi
 rm -f "$SOCK"
 
 # --no-video, --msg-level und --term-osd-bar: s. README, Abschnitt
-# "Das Player-Fenster". Die app-id haengt an der Fensterregel in rules.conf.
+# "Das Player-Fenster". Die app-id haengt an der Fensterregel in sway/rules.
 exec foot --app-id=mpv-audio -e mpv \
     --no-video \
     --msg-level=all=warn,statusline=status \

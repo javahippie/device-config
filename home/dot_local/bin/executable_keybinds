@@ -6,107 +6,33 @@
 # Binding falsch. Auch die "# --- Abschnitt ---"-Kommentare aus der Datei werden
 # übernommen, die Gliederung steht also ebenfalls nur an einer Stelle.
 #
-# Seit es die Sway-Session gibt, sind es ZWEI Quelldateien mit zwei Syntaxen:
-#   Hyprland  ~/.config/hypr/binds.conf   bind = $mod, D, exec, fuzzel
-#   Sway      ~/.config/sway/binds        bindsym $mod+d exec fuzzel
-# Welche gilt, entscheidet die laufende Session (s. detect_conf). Der Aufruf
-# bleibt derselbe — SUPER+F1 und der "Keys"-Knopf in der Waybar zeigen unter
-# beiden Compositoren dasselbe Popup, im selben Format.
+# Bis 10.09.2026 konnte das Skript zwei Syntaxen (Hyprlands "bind = $mod, D, exec, …"
+# und Sways "bindsym $mod+d exec …") und suchte sich anhand der laufenden Session
+# die passende aus. Hyprland ist weg, damit auch der Zweig — geblieben ist die
+# Sway-Variante.
 #
-# Bewusst nicht `hyprctl binds -j` bzw. `swaymsg -t get_binding_modes`: die
-# kennen zwar den Live-Zustand, liefern aber Modmasken statt Namen und haben
-# keine Abschnitte. Der Unterschied fällt nur auf, wenn man Bindings zur
-# Laufzeit ändert — dann fehlen sie hier.
+# Bewusst nicht `swaymsg -t get_binding_modes` o. ä.: das kennt zwar den
+# Live-Zustand, liefert aber Modmasken statt Namen und hat keine Abschnitte.
+# Der Unterschied fällt nur auf, wenn man Bindings zur Laufzeit ändert — dann
+# fehlen sie hier.
 set -euo pipefail
 
-# Welche Datei? Reihenfolge: ausdrücklich gesetzt > laufende Session > Hyprland.
-#
-# SWAYSOCK ist das verlässlichere Merkmal als XDG_CURRENT_DESKTOP: die Variable
-# setzt Sway selbst für jede seiner Sitzungen, während XDG_CURRENT_DESKTOP vom
-# Display-Manager kommt und bei einem TTY-Start schlicht fehlt.
-#
-# KEYBINDS_CONF übersteuert alles — praktisch, um die jeweils andere Liste
-# anzusehen, ohne die Session zu wechseln:
-#   KEYBINDS_CONF=~/.config/sway/binds keybinds
-# HYPR_BINDS bleibt aus Gewohnheit gültig, es gab die Variable vor Sway.
+# KEYBINDS_CONF uebersteuert den Pfad — praktisch, um eine andere binds-Datei
+# anzusehen, ohne sie an ihren Platz zu legen. HYPR_BINDS gab es hier bis
+# 10.09.2026 als zweite Variable; sie ist mit Hyprland weggefallen.
 detect_conf() {
-    if [ -n "${KEYBINDS_CONF:-}" ]; then
-        printf '%s' "$KEYBINDS_CONF"
-    elif [ -n "${HYPR_BINDS:-}" ]; then
-        printf '%s' "$HYPR_BINDS"
-    elif [ -n "${SWAYSOCK:-}" ]; then
-        printf '%s' "$HOME/.config/sway/binds"
-    else
-        printf '%s' "$HOME/.config/hypr/binds.conf"
-    fi
+    printf '%s' "${KEYBINDS_CONF:-$HOME/.config/sway/binds}"
 }
 
 CONF="$(detect_conf)"
 [ -f "$CONF" ] || { echo "keybinds: nicht gefunden: $CONF" >&2; exit 1; }
 
-# --- Hyprland: bind = MODS, TASTE, dispatcher, argument ---
-format_hypr() {
-    awk '
-        function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
-
-        # "# --- Kern ---" und "# --- Screenshots --- (Zusatz)" -> "Kern" / "Screenshots"
-        /^[ \t]*#[ \t]*---/ {
-            h = $0
-            sub(/^[ \t]*#[ \t]*---[ \t]*/, "", h)
-            sub(/[ \t]*---.*$/, "", h)
-            section = trim(h)
-            next
-        }
-
-        # bind[a-z]* statt bindm?: Hyprland kennt neben bind/bindm auch bindl
-        # (auch bei Lock), binde (Wiederholung) und Kombinationen wie bindel.
-        # Mit dem alten Muster fielen genau die durch — die Beleuchtungs- und
-        # Medientasten standen in binds.conf und fehlten trotzdem im Popup,
-        # ohne dass irgendwo etwas schiefging.
-        /^[ \t]*bind[a-z]*[ \t]*=/ {
-            line = $0
-            sub(/^[ \t]*bind[a-z]*[ \t]*=[ \t]*/, "", line)
-
-            n = split(line, f, ",")
-            mods = trim(f[1])
-            key  = trim(f[2])
-            disp = trim(f[3])
-
-            # Alles ab Feld 4 ist das Argument — inklusive eigener Kommas,
-            # die beim Splitten verlorengegangen sind (z. B. bei exec-Pipelines).
-            args = ""
-            for (i = 4; i <= n; i++) args = args (i > 4 ? "," : "") f[i]
-            args = trim(args)
-
-            gsub(/\$mod/, "SUPER", mods)
-            gsub(/[ \t]+/, " + ", mods)
-            combo = (mods == "") ? key : mods " + " key
-
-            if (disp == "exec") {
-                what = args
-                sub(/^~\/\.local\/bin\//, "", what)   # eigene Skripte kurz halten
-            } else {
-                what = (args == "") ? disp : disp " " args
-            }
-
-            if (section != last_section) {
-                if (NR > 1 && printed) print ""
-                print "── " section
-                last_section = section
-            }
-            printed = 1
-            printf "   %-24s %s\n", combo, what
-        }
-    ' "$1"
-}
-
-# --- Sway: bindsym [--flags] MOD+TASTE befehl argumente ---
+# --- bindsym [--flags] MOD+TASTE befehl argumente ---
 format_sway() {
     awk '
         function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
 
-        # Abschnittserkennung wortgleich zum Hyprland-Zweig — die beiden
-        # binds-Dateien benutzen bewusst dieselben "# --- X ---"-Marken.
+        # Abschnitte kommen aus den "# --- X ---"-Kommentaren der binds-Datei.
         /^[ \t]*#[ \t]*---/ {
             h = $0
             sub(/^[ \t]*#[ \t]*---[ \t]*/, "", h)
@@ -132,12 +58,12 @@ format_sway() {
 
             gsub(/\$mod/, "SUPER", combo)
             gsub(/\+/, " + ", combo)
-            # Modifier gross wie in der Hyprland-Liste, damit beide Popups
-            # gleich aussehen — Sway schreibt sie klein bzw. gemischt.
+            # Modifier gross schreiben: Sway notiert sie klein bzw. gemischt,
+            # in der Uebersicht sollen sie einheitlich aussehen.
             gsub(/Shift/, "SHIFT", combo)
             gsub(/Ctrl/, "CTRL", combo)
             gsub(/Alt/, "ALT", combo)
-            # Einzelbuchstaben ebenfalls gross (Sway: "q", Hyprland: "Q").
+            # Einzelbuchstaben ebenfalls gross (Sway notiert "q").
             if (combo ~ / \+ [a-z]$/) combo = substr(combo, 1, length(combo) - 1) toupper(substr(combo, length(combo)))
 
             if (what ~ /^exec[ \t]/) {
@@ -161,7 +87,4 @@ format_sway() {
     ' "$1"
 }
 
-case "$CONF" in
-    *sway*) format_sway "$CONF" ;;
-    *)      format_hypr "$CONF" ;;
-esac | fuzzel --dmenu --prompt 'Keybinds: ' --width 72 >/dev/null || true
+format_sway "$CONF" | fuzzel --dmenu --prompt 'Keybinds: ' --width 72 >/dev/null || true

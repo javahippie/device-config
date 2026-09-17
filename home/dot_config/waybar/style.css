@@ -30,20 +30,17 @@ window#waybar {
     background: transparent;
 }
 
-/* Der aktive Workspace. Die Klasse heisst je nach Compositor anders: das
-   hyprland/workspaces-Modul setzt .active, sway/workspaces setzt .focused.
-   Beide Selektoren stehen deshalb nebeneinander — die jeweils andere Regel
-   trifft in der laufenden Session einfach kein Element. Das ist der einzige
-   Ort, an dem dieses Stylesheet ueberhaupt etwas von den zwei Sessions weiss;
-   alle anderen Module heissen unter beiden gleich. */
+/* Der aktive Workspace. sway/workspaces setzt .focused; .active stand hier
+   fuer das frueher danebenliegende hyprland/workspaces-Modul und ist als
+   harmloser Rest stehen geblieben — der Selektor trifft schlicht nichts. */
 #workspaces button.active,
 #workspaces button.focused {
     color: @base;
     background: @mauve;
 }
 
-/* Nur Sway: ein Workspace, der auf einem anderen (unfokussierten) Monitor
-   sichtbar ist. Unter Hyprland gibt es dafuer keine Klasse. Gedaempft
+/* Ein Workspace, der auf einem anderen (unfokussierten) Monitor
+   sichtbar ist. Gedaempft
    hervorgehoben — er ist zu sehen, aber man tippt nicht hinein. Auf dem cube
    (ein Monitor) kommt der Zustand nie vor, auf dem book staendig. */
 #workspaces button.visible {
@@ -63,6 +60,7 @@ window#waybar {
 #network,
 #battery,
 #custom-keybinds,
+#custom-notification,
 #custom-recording,
 #custom-screenrec,
 #idle_inhibitor,
@@ -125,6 +123,44 @@ window#waybar {
 #custom-screenrec.recording {
     color: @base;
     background: @red;
+}
+
+/* Benachrichtigungen (swaync). Drei Zustaende, und die Farbwahl folgt genau
+   derselben Logik wie beim Idle-Schalter darueber:
+
+   "Msg 0" ist der Normalfall und damit Hintergrundrauschen — gedaempft wie ein
+   ausgeschaltetes BT. Es steht trotzdem dauerhaft da (kein Ausblenden wie bei
+   custom-screenrec), weil das Modul auch der KNOPF zum Panel ist: ein Schalter,
+   der nur sichtbar ist, wenn es etwas zu sehen gibt, ist keiner.
+
+   Ungelesenes bekommt Mauve — sichtbar, aber kein Alarm. Bewusst nur die
+   Schriftfarbe und nicht die volle Flaeche wie beim Aufnahmemodus: eine
+   ungelesene Meldung ist kein Betriebszustand des Rechners.
+
+   "Nicht stoeren" ist Gelb, aus demselben Grund wie "Wach": kein Fehler, aber
+   ein Zustand, den man aktiv wieder abstellen muss — und der einzige, in dem
+   der Rechner absichtlich schweigt. Deshalb sagt das Modul dann auch "DND"
+   statt "Msg" (format-icons in common.jsonc.tmpl); die Farbe allein wuerde man
+   nach zwei Wochen nicht mehr lesen.
+
+   Die inhibited-*-Klassen bleiben hier ohne eigene Regel: sie erben die Farbe
+   des jeweiligen Grundzustands, und "Waybar haelt gerade einen Idle-Inhibit"
+   sagt das idle_inhibitor-Modul schon zwei Plaetze weiter links. */
+#custom-notification.none,
+#custom-notification.inhibited-none {
+    color: @overlay1;
+}
+
+#custom-notification.notification,
+#custom-notification.inhibited-notification {
+    color: @mauve;
+}
+
+#custom-notification.dnd-none,
+#custom-notification.dnd-notification,
+#custom-notification.dnd-inhibited-none,
+#custom-notification.dnd-inhibited-notification {
+    color: @yellow;
 }
 
 /* Aus (oder kein Adapter) ist kein Fehler — nur gedämpft, nicht rot. */

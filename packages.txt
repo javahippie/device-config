@@ -1,42 +1,41 @@
 # ACHTUNG dnf5: EIN unbekannter Paketname bricht die komplette Transaktion ab.
 # Neue Einträge daher immer erst mit `dnf info <name>` gegenprüfen.
 
-# --- Compositor & Session (aus COPR ashbuk/Hyprland-Fedora — seit F43 nicht mehr in Fedora) ---
-hyprland
-hyprlock
-hypridle
-xdg-desktop-portal-hyprland # Screencast/Screenshot — ebenfalls COPR
-
-# --- Zweitcompositor Sway (regulaer aus Fedora, KEINE COPR) ---
-# Parallel installiert zum Ausprobieren, s. README "Sway als Zweitcompositor".
-# Beide Sessions stehen im SDDM nebeneinander; sway bringt seine
-# wayland-sessions/sway.desktop selbst mit, es braucht keine eigene
+# --- Compositor & Session (regulaer aus Fedora, KEINE COPR) ---
+# Sway ist seit 10.09.2026 der einzige Compositor. Davor lief hier Hyprland aus
+# der COPR ashbuk/Hyprland-Fedora; das ist samt Konfiguration, Portal, Session
+# und dem Mac-Thin-Client entfernt worden. sway bringt seine
+# wayland-sessions/sway.desktop selbst mit, es braucht also keine eigene
 # Session-Datei im Repo. Konfiguration: home/dot_config/sway/.
 sway
-swayidle                    # Idle-Kette (Lock/Suspend) in der Sway-Session.
-                            # Ersetzt dort hypridle, weil das neben
-                            # ext-idle-notify-v1 auch hyprland-lock-notify-v1
-                            # spricht — ein Hyprland-eigenes Protokoll, das
-                            # Sway nicht hat (mit `strings /usr/bin/hypridle`
-                            # nachgesehen). hyprlock BLEIBT dagegen unter beiden
-                            # der Sperrbildschirm: es kommt laut derselben
-                            # Pruefung mit reinen Standardprotokollen aus.
-                            # KEIN swaylock — sonst haette man zwei
-                            # Lockscreens zu pflegen und zu themen.
-xdg-desktop-portal-wlr      # Screencast/Screenshot in der Sway-Session, das
-                            # wlroots-Gegenstueck zum hyprland-Portal darueber.
-                            # Beide sind installiert; welches genommen wird,
-                            # entscheidet xdg-desktop-portal anhand von
+swayidle                    # Idle-Kette: 5 min sperren, 15 min Suspend.
+                            # Spricht ext-idle-notify-v1, das Standardprotokoll,
+                            # das Sway kann.
+swaylock                    # Sperrbildschirm (home/dot_config/swaylock/config).
+                            # Bis 13.09.2026 stand hier hyprlock als "einziges
+                            # hypr*-Paket, das bleibt", mit dem Argument, es
+                            # brauche nur Standardprotokolle. Stimmte auch —
+                            # nur kommt hyprlock nicht aus Fedora, sondern aus
+                            # der Hyprland-COPR, und beim Entfernen der COPR
+                            # hat dnf es als Dependency mitgenommen. Der
+                            # Rechner hat danach ungesperrt suspendiert
+                            # (README, "Nachlese 13.09.2026"). swaylock ist
+                            # Fedora-Paket, Recommends von sway-config-upstream,
+                            # kann `-f` und SIGUSR1-Unlock — genau das, was die
+                            # swayidle-Kette in sway/base braucht.
+xdg-desktop-portal-wlr      # Screencast/Screenshot. Das wlroots-Portal; welches
+                            # greift, entscheidet xdg-desktop-portal anhand von
                             # XDG_CURRENT_DESKTOP und der passenden
                             # *-portals.conf (home/dot_config/xdg-desktop-portal/).
 
 # --- Session-Plumbing ---
-mate-polkit                 # Polkit-Agent (hyprpolkitagent existiert in F44 nicht)
+mate-polkit                 # Polkit-Agent — Sway bringt keinen mit
 xdg-desktop-portal-gtk      # Datei-Dialoge, Settings — ohne den brechen Flatpak-Apps
-xsettingsd                  # XSettings-Manager. Hyprland hat keinen, dadurch bekommen
-                            # XWayland-Clients keine Xft-Einstellungen: Java/Swing
-                            # rendert Text ohne Antialiasing, GTK2-Reste ebenso.
-                            # Config: home/dot_config/xsettingsd/, Start in base.conf.
+xsettingsd                  # XSettings-Manager. Sway bringt keinen mit, dadurch
+                            # bekommen XWayland-Clients keine Xft-Einstellungen:
+                            # Java/Swing rendert Text ohne Antialiasing, GTK2-Reste
+                            # ebenso. Config: home/dot_config/xsettingsd/,
+                            # Start in sway/base.
 
 # --- Netzwerk: Konnektivitaet (WLAN) ---
 # @core liefert NUR NetworkManager. Alles Weitere ist ein eigenes Paket, und
@@ -74,7 +73,18 @@ sddm-wayland-generic        # Explizit gelistet, damit die Wahl feststeht: sddm 
 
 # --- Desktop ---
 waybar
-mako
+SwayNotificationCenter      # Benachrichtigungs-Daemon UND Notification-Center in
+                            # einem (Binaries: swaync, swaync-client). Loeste am
+                            # 10.09.2026 mako ab, weil mako zwei Dinge prinzipiell
+                            # nicht kann: einen Schliessen-Knopf ans Popup zeichnen
+                            # (es rendert Text, keine klickbaren Flaechen) und eine
+                            # dauerhafte Liste vergangener Meldungen fuehren
+                            # (`makoctl history` ist ein Ringpuffer im Prozess und
+                            # nach jedem Neustart leer). Regulaeres Fedora-Paket
+                            # (0.12.6/F44, updates) — keine COPR, dieselbe
+                            # Ueberlegung wie bei swaybg statt hyprpaper.
+                            # mako darf weg: `sudo dnf remove mako`. Passiert das
+                            # nicht, meldet drift-check.sh es als ueberzaehlig.
 fuzzel                      # Launcher; Alternative: rofi-wayland
 pipx                        # nur für ite8291r3-ctl (RGB-Tastaturbeleuchtung im
                             # book). Bewusst pipx statt 'pip install --user':
@@ -84,9 +94,9 @@ usbutils                    # lsusb — Bootstrap prüft damit, ob der ITE-Contr
                             # überhaupt steckt; war auf dem book nicht installiert
 wl-clipboard
 cliphist
-swaybg                      # Wallpaper. NICHT hyprpaper: das ist wie hyprland selbst
-                            # aus Fedora raus (letzte Version F41), swaybg ist regulär
-                            # paketiert. Switcher: dot_local/bin/wallpaper.
+swaybg                      # Wallpaper. NICHT hyprpaper: das lag zuletzt in F41 und
+                            # kam wie hyprland selbst nur aus einer COPR, swaybg ist
+                            # regulär paketiert. Switcher: dot_local/bin/wallpaper.
 grim                        # Screenshots, zusammen mit slurp+jq — s. dot_local/bin/screenshot
 slurp
 wf-recorder                 # Bildschirmaufnahme als Video — s. dot_local/bin/record.
@@ -98,12 +108,19 @@ wf-recorder                 # Bildschirmaufnahme als Video — s. dot_local/bin/
                             # (0.6.0/F44) und ist EIN Prozess, den ein Toggle-Keybind
                             # per SIGINT sauber beendet — dieselbe Überlegung wie
                             # swaybg statt hyprpaper und grim statt grimblast.
+fzf                         # Fuzzy-Finder fuers Terminal. Gebraucht von
+                            # `./drift-check.sh pick`: Drift markieren (TAB) und
+                            # in einem Rutsch entfernen/uebernehmen/abhaken.
+                            # Das Terminal-Gegenstueck zu fuzzel, das im Repo
+                            # schon jeden GUI-Picker macht — beides Filter-und-
+                            # Auswahl, nur die eine Sorte fuer die Bar und die
+                            # andere fuer die Wartung. Regulaeres Fedora-Paket.
 wev                         # Wayland-Ersatz für xev: zeigt zu einer gedrückten Taste das
                             # Keysym. Erstes Werkzeug bei "welchen Namen hat diese Taste,
                             # damit ich sie in binds.conf binden kann". Zeigt NICHTS für
                             # Tasten ohne xkb-Zuordnung — dafür dann die Ebene darunter:
                             # `libinput debug-events` aus libinput-utils (nicht installiert).
-libnotify                   # liefert notify-send. mako ist nur der Anzeige-Daemon,
+libnotify                   # liefert notify-send. swaync ist nur der Anzeige-Daemon,
                             # der Client fehlt auf einem Minimal Install komplett —
                             # ohne das hier kann KEIN Skript eine Notification schicken.
 qt5-qtwayland
@@ -214,9 +231,9 @@ doublecmd-qt6               # ACHTUNG Paketname: es MUSS die -qt6-Variante sein,
                             #                    also Wayland-nativer Client.
                             # Das ist hier KEINE Geschmacksfrage, sondern die Bedingung fuer
                             # Drag & Drop in Firefox: Firefox laeuft nativ auf Wayland
-                            # (`hyprctl clients` → xwayland: false), und ein Drop von einem
-                            # XWayland-Client dorthin muss durch Hyprlands XDND-Bruecke im
-                            # XWM. Die existiert, ist aber der bekannt fragile Weg — die
+                            # (`swaymsg -t get_tree` → shell: xdg_shell, nicht xwayland),
+                            # und ein Drop von einem XWayland-Client dorthin muss durch
+                            # die XDND-Bruecke des XWayland-Managers. Die existiert, ist aber der bekannt fragile Weg — die
                             # Qt6-Variante umgeht sie komplett. Details/Verifikation: README.
                             # Kosten: 3 Pakete, 48 MB (doublecmd-common + qt6pas).
                             # BEWUSST nicht krusader: gleiche Gattung, aber 76 Pakete, weil
@@ -230,7 +247,7 @@ doublecmd-qt6               # ACHTUNG Paketname: es MUSS die -qt6-Variante sein,
                             # die dunkle Palette kommt ueber das Qt6-Platformtheme libqgtk3
                             # aus qt6-qtbase-gui — das haengt ohnehin an doublecmd-qt6.
                             # Also bewusst KEIN qt6ct und KEIN adwaita-qt6. Geschaltet wird
-                            # es mit QT_QPA_PLATFORMTHEME in hypr/base.conf plus
+                            # es mit QT_QPA_PLATFORMTHEME in sway/base plus
                             # dot_config/gtk-3.0/settings.ini, Feinfarben in
                             # dot_config/doublecmd/colors.json. Details: README.
 
@@ -241,7 +258,7 @@ gnome-calculator            # Pendant zum Windows-Rechner, bis hin zu den Modi: 
                             # GTK4, also Wayland-nativ — gleiche Ueberlegung wie bei
                             # doublecmd-qt6. Und die Einstellungen sind seit libadwaita
                             # ein In-Window-Dialog: es entsteht KEIN zweites Toplevel,
-                            # das Hyprland mitkacheln wuerde. Genau der Einwand, an dem
+                            # das der Tiler mitkacheln wuerde. Genau der Einwand, an dem
                             # LibreOffice in flatpaks.txt scheitert.
                             # Gemessen (dnf download --resolve --url, x86_64 ohne die
                             # i686-Multilib-Zeilen, die --resolve mitschleppt):
@@ -269,8 +286,8 @@ gnome-calculator            # Pendant zum Windows-Rechner, bis hin zu den Modi: 
                             #   speedcrunch   — dasselbe Bedienmodell, nur schlanker.
                             #   galculator    — mit 1 Paket das billigste (GTK3 ist da),
                             #                   aber upstream seit Version 2.1.4 still.
-                            # Taste XF86Calculator und Float-Regel: s. hypr/binds.conf
-                            # und hypr/rules.conf.
+                            # Taste XF86Calculator und Float-Regel: s. sway/binds
+                            # und sway/rules.tmpl.
 
 # --- Fonts (waybar-Icons brauchen fontawesome) ---
 fira-code-fonts                # Terminal-Font (foot, s. dot_config/foot/foot.ini) und damit
@@ -335,19 +352,6 @@ fuse3                         # liefert /usr/bin/fusermount3 — den setuid-Helf
                                # cups-filters oder nss-mdns: eine Abhaengigkeit, die man erst
                                # bemerkt, wenn ein anderes Installationsprofil sie weglaesst.
                                # Ausserdem ruft das ExecStop der Unit fusermount3 direkt auf.
-
-# --- Remote-Zugriff: Mac als Thin Client (Nutzung nur cube, s. README) ---
-wayvnc                        # VNC-Server fuer wlroots-artige Compositoren; redet mit
-                               # Hyprland ueber ext-image-copy-capture plus virtuelle
-                               # Tastatur und Maus. Paket hostunabhaengig (klein, startet
-                               # ab Werk nichts) — Unit, Script, Monitor-Regel und
-                               # Firewall sind cube-only (chezmoiignore,
-                               # monitors.conf.tmpl, bootstrap.sh). Fedoras neatvnc
-                               # (seine Encoder-Bibliothek) ist MIT libavcodec, TurboJPEG
-                               # und VAAPI gebaut — H.264 gibt es also, aber nur mit
-                               # `--gpu` (DMA-BUF-Capture) und nur, wenn der Client es
-                               # anbietet; steht so in der Unit. neatvnc und aml liegen
-                               # hier schon, dnf zieht sie sonst selbst mit.
 
 # --- Drucken & Scannen (Netzwerkgerät, treiberlos — s. README) ---
 cups                          # Print-Server + lp/lpstat/lpadmin. Zieht cups-filters HART

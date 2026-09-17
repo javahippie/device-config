@@ -1,0 +1,62 @@
+# Sperrbildschirm: swaylock, Catppuccin Mocha.
+#
+# Ersetzt hyprlock seit 13.09.2026. Nicht aus Ueberzeugung, sondern weil
+# hyprlock in Fedora kein Paket hat: es kam aus derselben COPR wie Hyprland
+# (ashbuk/Hyprland-Fedora), und mit der COPR ist es beim Paket-Aufraeumen als
+# "Dependency" mitgegangen — der Rechner hat danach einen Nachmittag lang
+# ungesperrt suspendiert (README, "Nachlese 13.09.2026"). swaylock kommt aus
+# dem Fedora-Repo, haengt als Recommends an sway-config-upstream und war
+# deshalb schon da. Gegenueber hyprlock fehlen Uhr und Datum; dafuer hat es
+# `-f` (kehrt erst zurueck, wenn die Session wirklich gesperrt ist) und
+# entsperrt auf SIGUSR1 — beides braucht die swayidle-Kette in sway/base.
+#
+# Format: long-option=wert, Flags ohne Wert stehen allein. Farben OHNE Raute,
+# swaylock will rrggbb[aa]. Werte identisch zu sway/mocha (Catppuccin Mocha,
+# github.com/catppuccin, MIT) — damit ist das die vierte Stelle der Palette
+# neben sway/mocha, waybar/style.css und swaync/style.css.
+#
+# KEIN `daemonize` hier: das `-f` steht im swayidle-Aufruf in sway/base, damit
+# dort sichtbar bleibt, warum swayidle nicht blockiert. KEIN `image=`: die
+# flache Farbe ist Absicht, ein Bild waere ein zweiter, manuell gepflegter
+# Pfad neben dem Wallpaper-Switcher (README, "Wallpaper").
+
+ignore-empty-password
+show-failed-attempts
+indicator-caps-lock
+font=JetBrains Mono
+font-size=26
+indicator-radius=110
+indicator-thickness=8
+
+# Hintergrund und Ring: base / surface0 / mauve — dieselbe Aufteilung wie das
+# hyprlock-Eingabefeld (inner surface0, outer mauve) davor.
+color=1e1e2e
+inside-color=313244
+inside-clear-color=313244
+inside-ver-color=313244
+inside-wrong-color=313244
+inside-caps-lock-color=313244
+ring-color=cba6f7
+ring-clear-color=f9e2af
+ring-ver-color=89b4fa
+ring-wrong-color=f38ba8
+ring-caps-lock-color=f9e2af
+line-uses-inside
+separator-color=1e1e2e
+
+# Tastendruck gruen, Backspace rot — unter Caps Lock genauso.
+key-hl-color=a6e3a1
+bs-hl-color=f38ba8
+caps-lock-key-hl-color=a6e3a1
+caps-lock-bs-hl-color=f38ba8
+
+text-color=cdd6f4
+text-clear-color=cdd6f4
+text-ver-color=cdd6f4
+text-wrong-color=f38ba8
+text-caps-lock-color=f9e2af
+
+# Layout-Anzeige (erscheint nur bei mehr als einem Layout, s. -k/-K).
+layout-bg-color=313244
+layout-border-color=cba6f7
+layout-text-color=cdd6f4

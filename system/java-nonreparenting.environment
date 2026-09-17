@@ -1,0 +1,55 @@
+# Wird nach /etc/environment installiert (s. bootstrap.sh).
+#
+# Zweck: Java/AWT beibringen, dass der Fenstermanager NICHT reparentiert.
+# Ohne diese Zeile rendert NetBeans auf Sway GAR NICHTS — das Fenster ist da,
+# Sway malt seinen Fokusrahmen drum, und innendrin sieht man das Wallpaper
+# durch. Dieselbe Ursache hatte SweetHome3D (graue Flaechen, versetzte Menues,
+# Dialoge mit Groesse 0); dort haengt der Fix als `flatpak override`.
+#
+# Die Herleitung, weil sie sonst niemand wiederfindet:
+#
+#   AWT bestimmt beim Start den WM ueber _NET_SUPPORTING_WM_CHECK und liest von
+#   dort _NET_WM_NAME. Sway meldet sich als "wlroots wm". Die Tabelle bekannter
+#   WMs im java.desktop-Modul kennt aber nur compiz, Enlightenment, IceWM, KWin,
+#   LG3D, Marco, Metacity, Mutter und Sawfish — nachpruefbar mit
+#       strings /usr/lib/apache-netbeans/jdk/lib/modules | grep -owE 'Mutter|sway'
+#   Weder "sway" noch "wlroots" noch "Hyprland" steht da drin, in KEINER
+#   JDK-Version bis einschliesslich 26.
+#
+#   Faellt die Erkennung durch, landet AWT bei OTHER_WM und nimmt an, der WM
+#   REPARENTIERE — haenge also einen Dekorationsrahmen um das Fenster, aus
+#   dessen Groesse sich die Insets ergeben. Sway tut das nicht und setzt
+#   folgerichtig auch kein _NET_FRAME_EXTENTS (`xprop -id <win>` zeigt dort
+#   "not found"). AWT rechnet die Content-Flaeche damit gegen einen Rahmen, den
+#   es nicht gibt, und committet am Ende keinen Buffer.
+#
+# WICHTIG, damit die Suche beim naechsten Mal kuerzer wird: das ist KEIN
+# Java-8-Problem und auch keine generelle Unvertraeglichkeit von Tiling-WMs mit
+# Swing. Das gebuendelte JDK von NetBeans 31 ist Temurin 26.0.2 und faellt
+# genauso herein. Bei aehnlichen Symptomen also nicht die Java-Version
+# verdaechtigen, sondern _NET_WM_NAME und _NET_FRAME_EXTENTS nachsehen.
+#
+# Warum /etc/environment und nicht environment.d oder ein .desktop-Exec:
+#
+#   Die Variable muss in SWAYS EIGENEM Environment stehen, denn geerbt wird sie
+#   von dort — von fuzzel gestartete Programme, Keybinds und alles aus einem
+#   Terminal haengen an diesem einen Prozess. dot_config/environment.d und die
+#   dbus-update-activation-environment-Zeile in sway/base erreichen NUR, was
+#   systemd --user oder D-Bus startet; NetBeans aus fuzzel faellt da heraus.
+#   Sway selbst kennt kein `env` (s. den Absatz dazu in sway/base), und eine
+#   eigene Session-Datei als Wrapper ist in diesem Repo bewusst nicht vorhanden
+#   — die Begruendung (Login-Loop) steht im SDDM-Block weiter unten.
+#
+#   Bleibt PAM: /etc/pam.d/system-auth ruft pam_env.so auf, SDDM bindet
+#   system-auth ein, und pam_env liest /etc/environment. Damit steht die
+#   Variable im Environment der Session, bevor Sway ueberhaupt startet.
+#   Gegenpruefen nach dem naechsten Login: `grep -z NONREPARENTING /proc/$(pgrep -x sway)/environ`
+#
+# Diese Datei ist KEIN Shell-Skript. pam_env liest sie zeilenweise als
+# schlichtes KEY=WERT, ohne Expansion und ohne Quoting-Regeln; Zeilen mit # am
+# Anfang ueberspringt es. Ein `export` davor waere zwar erlaubt, aber irrefuehrend.
+#
+# Fedora liefert /etc/environment LEER aus. Diese Datei ersetzt sie deshalb
+# vollstaendig, statt anzuhaengen — wer dort spaeter von Hand etwas eintraegt,
+# verliert es beim naechsten bootstrap.sh. Dann gehoert es hier herein.
+_JAVA_AWT_WM_NONREPARENTING=1

@@ -16,11 +16,4 @@
 # Die passende Waybar-Weiche steht in dot_config/waybar/config.jsonc.tmpl,
 # die Systemschicht in bootstrap.sh; beide gaten auf denselben Hostnamen.
 .local/bin/recording-mode
-# Mac als Thin Client (wayvnc): haengt am virtuellen Monitor "mac" im
-# cube-Zweig von dot_config/hypr/monitors.conf.tmpl, an Schluessel/Zugangsdaten
-# und der Firewall-Regel aus bootstrap.sh — alles cube-only. Auf dem book
-# waere `remote on` ein Script, das auf einen Monitor zeigt, den es nicht gibt.
-.local/bin/remote
-.config/wayvnc
-.config/systemd/user/wayvnc.service
 {{ end -}}

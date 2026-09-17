@@ -1,28 +1,17 @@
-# Gegenstueck zu dot_config/hypr/binds.conf. Gleiche Tasten, gleiche
-# Abschnitte, gleiche Reihenfolge — wer zwischen den Sessions wechselt, soll
-# nichts umlernen.
+# Tastenbelegung der Sway-Session.
 #
 # Die "# --- Abschnitt ---"-Zeilen sind hier nicht nur Gliederung, sondern
 # Datenformat: dot_local/bin/keybinds parst DIESE Datei und baut daraus das
-# fuzzel-Popup (unter Hyprland entsprechend die dortige). Neue Bindings tauchen
-# also von selbst auf; die Abschnittsnamen bitte identisch zu drueben halten,
-# damit beide Uebersichten gleich aussehen.
+# fuzzel-Popup hinter SUPER+F1. Neue Bindings tauchen also von selbst auf,
+# eine zweite gepflegte Liste gibt es nicht.
 #
-# Uebersetzungstabelle Hyprland -> Sway, falls hier etwas nachgezogen wird:
-#   bind   -> bindsym                 killactive     -> kill
-#   bindl  -> bindsym --locked        fullscreen, 0  -> fullscreen
-#   bindel -> bindsym --locked        togglefloating -> floating toggle
-#   $mod, X, dispatcher, arg          movefocus, l   -> focus left
-#     -> bindsym $mod+X <cmd>         workspace, 1   -> workspace number 1
-#
-# `bindel` braucht kein Gegenstueck: Sway wiederholt gehaltene Bindings von
-# Haus aus, das Abschalten hiesse hier `--no-repeat`.
+# Gehaltene Tasten wiederholt Sway von Haus aus; abschalten waere
+# `bindsym --no-repeat`.
 set $mod Mod4
 
 # Schwebende Fenster mit der Maus verschieben/groesser ziehen, ohne den 3 px
 # schmalen Rahmen treffen zu muessen: SUPER halten und links bzw. rechts
-# ziehen. Hyprland hat dafuer eigene Bindings (bindm), die in hypr/binds.conf
-# gar nicht auftauchen — dort greift Hyprlands Vorgabe. Sway hat keine Vorgabe.
+# ziehen. Sway hat dafuer keine Vorgabe, die zwei Zeilen muessen also stehen.
 #
 # Steht BEWUSST vor dem ersten "# --- Abschnitt ---": es ist kein Tastenkuerzel,
 # und dot_local/bin/keybinds soll dafuer keinen Eintrag in der Uebersicht bauen.
@@ -39,7 +28,14 @@ bindsym $mod+d exec fuzzel
 bindsym $mod+q kill
 bindsym $mod+f fullscreen
 bindsym $mod+v floating toggle
-bindsym $mod+l exec hyprlock
+# Ueber logind, nicht `exec swaylock` direkt: so laeuft das manuelle Sperren
+# durch dieselbe Kette wie das automatische (swayidle `lock` in base mit
+# pidof-Schutz gegen eine zweite Instanz), und logind weiss per LockedHint,
+# dass die Session gesperrt ist. Bis 13.09.2026 stand hier `exec hyprlock`;
+# zwei Wege zum selben Ziel, und nur einer davon geprueft. Kehrseite, am
+# selben Tag erlebt: fehlt das Lock-Programm, tut dieser Bind gar nichts —
+# der Fehler steht dann nur in ~/.cache/wayland-errors.
+bindsym $mod+l exec loginctl lock-session
 
 # --- Fokus (vim-Style) ---
 # ACHTUNG semicolon: auf de-Layout liegt das Semikolon hinter SHIFT+Komma, die
@@ -48,7 +44,7 @@ bindsym $mod+l exec hyprlock
 # PHYSISCHE Taste an US-";"-Position will (also "oe"), nimmt eine der beiden:
 #   bindsym $mod+odiaeresis focus right
 #   bindsym --to-code $mod+semicolon focus right
-# `--to-code` gibt es nur in Sway; Hyprland kennt es nicht. Wer es benutzt,
+# `--to-code` bindet an die Tastenposition statt an das Symbol. Wer es benutzt,
 # handelt sich also einen echten Unterschied zwischen den Sessions ein — genau
 # deshalb steht es hier auskommentiert und nicht als Vorgabe.
 bindsym $mod+h focus left
@@ -82,23 +78,22 @@ bindsym $mod+Shift+8 move container to workspace number 8
 bindsym $mod+Shift+9 move container to workspace number 9
 
 # --- Konfiguration neu laden ---
-# Der EINZIGE Bind ohne Gegenstueck in hypr/binds.conf, und das mit Absicht:
-# Hyprland liest seine .conf bei jeder Aenderung von selbst neu ein, Sway NICHT.
-# Ohne diese Taste heisst jede Anpassung an den Dateien hier: abmelden und neu
-# anmelden — beim Ausprobieren also alle paar Minuten.
-# $mod+SHIFT+C ist Sways eigene Vorgabe fuer den Reload und war unter Hyprland
-# frei ($mod+C ist dort die Clipboard-History, s. u., $mod+SHIFT+C nicht belegt).
+# Sway liest seine Konfiguration NICHT von selbst neu ein. Ohne diese Taste
+# heisst jede Anpassung an den Dateien hier: abmelden und neu anmelden — beim
+# Ausprobieren also alle paar Minuten.
+# $mod+SHIFT+C ist Sways eigene Vorgabe dafuer ($mod+C ist die
+# Clipboard-History, s. u.).
 #
 # Was ein Reload NICHT tut: die `exec`-Zeilen aus base noch einmal starten
-# (dafuer waere `exec_always` noetig, s. Begruendung dort). waybar, mako und
+# (dafuer waere `exec_always` noetig, s. Begruendung dort). waybar, swaync und
 # swayidle laufen also weiter wie sie sind; wer an DEREN Konfiguration etwas
-# aendert, startet sie von Hand neu.
+# aendert, startet sie von Hand neu — bei swaync reicht dafuer aber
+# `swaync-client -rs` (Style) bzw. `-R` (Config), ohne den Daemon zu toeten.
 bindsym $mod+Shift+c reload
 
 # --- Screenshots --- (s. dot_local/bin/screenshot; speichert UND kopiert)
-# Das Skript kann beide Compositoren und merkt selbst, in welcher Session es
-# laeuft — die Fenster- und Monitorabfrage geht unter Sway ueber `swaymsg`
-# statt `hyprctl`. Aufrufe und Modi sind identisch.
+# Die Fenster- und Monitorabfrage geht ueber `swaymsg`; der fruehere
+# hyprctl-Zweig ist mit Hyprland am 10.09.2026 weggefallen.
 bindsym Print exec ~/.local/bin/screenshot region
 bindsym Shift+Print exec ~/.local/bin/screenshot screen
 bindsym $mod+Print exec ~/.local/bin/screenshot window
@@ -134,14 +129,31 @@ bindsym $mod+c exec cliphist list | fuzzel --dmenu | cliphist decode | wl-copy
 bindsym $mod+t exec ~/.local/bin/todo
 bindsym $mod+Shift+t exec ~/.local/bin/todo list
 
+# --- Benachrichtigungen --- (swaync; identisch zu Links-/Rechtsklick auf das
+# Msg-Modul der Waybar)
+#
+# SUPER+N klappt das Panel auf: dort stehen die vergangenen Meldungen, auch die,
+# deren Popup man weggeklickt oder verpasst hat. Zweites Druecken schliesst es
+# wieder, Escape genauso (keyboard-shortcuts in swaync/config.json).
+#
+# SUPER+SHIFT+N ist "Nicht stoeren". Bewusst auf einer Taste und nicht nur im
+# Panel versteckt: der Zustand ist genau dann gefragt, wenn man gerade den
+# Bildschirm teilt — und dann will man nicht erst ein Panel aufmachen, in dem
+# waehrenddessen alle Meldungen im Klartext stehen.
+#
+# -sw ("skip wait") kehrt sofort zurueck, statt auf einen erst noch startenden
+# Daemon zu warten. Ohne das haengt der Tastendruck im Zweifel sekundenlang.
+bindsym $mod+n exec swaync-client -t -sw
+bindsym $mod+Shift+n exec swaync-client -d -sw
+
 # --- Dateimanager ---
 # SUPER+E wie unter Windows. Binary heisst doublecmd-qt6, NICHT doublecmd.
 #
-# $qtenv (definiert in base) ist der einzige Unterschied zur Hyprland-Zeile und
-# der Preis dafuer, dass Sway kein `env` kennt: Double Commander hat unter Linux
+# $qtenv (definiert in base) ist der Preis dafuer, dass Sway kein `env` kennt:
+# Double Commander hat unter Linux
 # keinen eigenen Dark Mode und holt sich seine Palette ueber das Qt-Platform-
 # Theme aus GTK3. Ohne die Variable kaeme er hier hell hoch. Die lange
-# Herleitung steht in hypr/base.conf.
+# Herleitung steht in base.
 bindsym $mod+e exec $qtenv doublecmd-qt6
 
 # --- Rechner --- (gnome-calculator, s. packages.txt)
@@ -166,7 +178,7 @@ bindsym $mod+Alt+w exec ~/.local/bin/wallpaper next
 # --- Tastaturbeleuchtung --- (nur "book"; auf dem cube sagt das Skript, dass
 # kein Controller da ist, statt kommentarlos nichts zu tun)
 #
-# --locked wie drueben bindl: soll auch bei gesperrtem Bildschirm gehen — Licht
+# --locked (Hyprlands bindl): soll auch bei gesperrtem Bildschirm gehen — Licht
 # anmachen ist nichts, wofuer man erst das Passwort tippen will. Das 'e' aus
 # `bindel` hat kein Gegenstueck, weil Sway gehaltene Bindings ohnehin wiederholt.
 bindsym --locked XF86KbdLightOnOff exec ~/.local/bin/kbdlight toggle
@@ -180,14 +192,24 @@ bindsym $mod+Alt+k exec ~/.local/bin/kbdlight pick
 # --- Medien --- (playerctl, steuert mpv UND Cider; s. README "Musik")
 #
 # `-p mpv,%any` ist die Kollisionsaufloesung: lokaler Player zuerst, sonst
-# irgendeiner (also Cider). Anders als bei Hyprland ist das Komma hier kein
-# Thema — Sway splittet die Kommandozeile nicht an Kommas, hinter `exec` steht
-# der Rest der Zeile ohnehin komplett in der Shell.
+# irgendeiner (also Cider). Das Komma ist hier kein Thema — Sway splittet die
+# Kommandozeile nicht an Kommas, hinter `exec` steht der Rest der Zeile ohnehin
+# komplett in der Shell.
 #
-# --locked wie drueben bindl: Musik anhalten ist nichts, wofuer man erst das
+# --locked (Hyprlands bindl): Musik anhalten ist nichts, wofuer man erst das
 # Passwort tippt.
 bindsym --locked XF86AudioPlay exec playerctl -p mpv,%any play-pause
 bindsym --locked XF86AudioPause exec playerctl -p mpv,%any play-pause
 bindsym --locked XF86AudioNext exec playerctl -p mpv,%any next
 bindsym --locked XF86AudioPrev exec playerctl -p mpv,%any previous
 bindsym --locked XF86AudioStop exec playerctl -p mpv,%any stop
+
+# Lautstaerke. Sway bringt dafuer KEINE Defaults mit (nur die Beispiel-Config
+# hat welche, und die ist hier nicht geladen) — bis 13.09.2026 taten die
+# Tasten schlicht nichts. wpctl statt pactl: PipeWire ist ohnehin da, und
+# @DEFAULT_AUDIO_SINK@ folgt dem Wechsel per `audio-out`. `-l 1.0` deckelt bei
+# 100 %, sonst dreht die Taste ueber den Anschlag hinaus.
+bindsym --locked XF86AudioRaiseVolume exec wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+
+bindsym --locked XF86AudioLowerVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
+bindsym --locked XF86AudioMute exec wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+bindsym --locked XF86AudioMicMute exec wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle

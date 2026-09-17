@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Bildschirmaufnahme fuer Hyprland — das Video-Gegenstueck zu
+# Bildschirmaufnahme fuer die Sway-Session — das Video-Gegenstueck zu
 # dot_local/bin/screenshot. wf-recorder nimmt auf, slurp waehlt aus, jq liest
-# Hyprlands JSON. Die Modusnamen sind ABSICHTLICH dieselben wie beim Screenshot
+# Sways JSON. Die Modusnamen sind ABSICHTLICH dieselben wie beim Screenshot
 # (region/window/screen), damit es hier kein zweites Vokabular zu lernen gibt.
 #
 # wf-recorder und nicht OBS oder gpu-screen-recorder: es steht regulaer in den
@@ -34,7 +34,9 @@
 # ueberleben, ein tmpfs raeumt das von selbst weg.
 set -euo pipefail
 
-DIR="${RECORD_DIR:-$(xdg-user-dir VIDEOS 2>/dev/null || echo "$HOME/Videos")/Screenrecordings}"
+# Der Zielordner wird erst in start() aufgeloest, nicht hier: `status` laeuft
+# im Sekundentakt aus der Waybar, und xdg-user-dir plus Subshell waeren genau
+# die Forks, die der Kommentar ueber status() ausschliesst (Review 13.09.2026).
 
 # 30 statt der Monitorwiederholrate: der cube laeuft mit ~100 Hz auf 3440x1440,
 # und encodiert wird in Software (s. Codec-Absatz unten). Bei 30 fps kostet das
@@ -83,7 +85,7 @@ Umgebung:
 EOF
 }
 
-# mako laeuft, notify-send kommt aber aus libnotify. Fehlt es, bleibt es still —
+# swaync laeuft, notify-send kommt aber aus libnotify. Fehlt es, bleibt es still —
 # die Aufnahme laeuft trotzdem. Gleiche Bauart wie in screenshot.
 notify() {
     command -v notify-send >/dev/null 2>&1 && notify-send "$@" || true
@@ -93,9 +95,11 @@ fail() {
     echo "$1" >&2
     # Aus einem Keybind gestartet gibt es kein Terminal fuer stderr.
     #
-    # BEWUSST ohne -u critical, obwohl es sich anbietet: mako gibt [urgency=high]
-    # ein default-timeout=0 (mako/config), so eine Meldung bleibt also stehen,
-    # bis man sie wegklickt. Das ist fuer "es laeuft keine Aufnahme" die falsche
+    # BEWUSST ohne -u critical, obwohl es sich anbietet: swaync hat
+    # timeout-critical=0 (swaync/config.json), so eine Meldung bleibt also
+    # stehen, bis man sie wegklickt — unter mako war das vorher genauso.
+    # Seit swaync hat sie sogar ein eigenes ✕, ist also noch etwas
+    # aufdringlicher als frueher. Das ist fuer "es laeuft keine Aufnahme" die falsche
     # Lautstaerke — und dass eine Aufnahme NICHT angelaufen ist, sieht man
     # ohnehin sofort daran, dass in der Waybar kein REC steht. Gleiche
     # Zurueckhaltung wie im screenshot-Skript.
@@ -126,30 +130,20 @@ recorder_pid() {
     printf '%s' "$pid"
 }
 
-# Laeuft die Session unter Sway statt Hyprland? Wortgleich mit screenshot, und
-# wie dort betrifft die Weiche NUR die drei Abfragefunktionen — wf-recorder,
-# slurp und die ganze Prozessverwaltung darunter sind compositor-unabhaengig.
-is_sway() { [ -n "${SWAYSOCK:-}" ]; }
+# Nur die drei folgenden Abfragefunktionen reden mit dem Compositor —
+# wf-recorder, slurp und die ganze Prozessverwaltung darunter sind
+# compositor-unabhaengig. Bis 10.09.2026 hatte jede davon einen zweiten Zweig
+# ueber `hyprctl`, ausgewaehlt von einem `is_sway`-Test; mit Hyprland ist er weg.
 
 # Nur sichtbare Fenster der aktiven Workspace anbieten; `slurp -r` rastet die
 # Auswahl dann auf genau diese Rechtecke ein. Wortgleich mit screenshot —
 # bewusst kopiert statt in eine gemeinsame Bibliothek gezogen: zwei Skripte, die
 # man je in einem Rutsch lesen kann, sind hier mehr wert als eine dritte Datei.
 window_geometry() {
-    local ws
-    if is_sway; then
-        swaymsg -t get_tree | jq -r '
-            .. | objects
-            | select(.pid? != null and .visible? == true)
-            | "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)"' \
-            | slurp -r
-        return
-    fi
-    ws="$(hyprctl activeworkspace -j | jq -r '.id')"
-    hyprctl clients -j | jq -r --argjson ws "$ws" '
-        .[]
-        | select(.workspace.id == $ws and .mapped == true and .hidden == false)
-        | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"' \
+    swaymsg -t get_tree | jq -r '
+        .. | objects
+        | select(.pid? != null and .visible? == true)
+        | "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)"' \
         | slurp -r
 }
 
@@ -157,35 +151,22 @@ window_geometry() {
 # Auswahl mit der Maus auf, und die kann auf dem book auf dem anderen Monitor
 # landen als die aktive Workspace.
 #
-# Hyprland-Zweig: Groesse aus width/scale, weil hyprctl die Kantenlaengen in
-# PHYSISCHEN Pixeln meldet, x/y aber im logischen Raum — auf einem skalierten
-# Monitor faellt das auseinander.
-# Sway-Zweig: `.rect` ist bereits komplett logisch (x, y, width, height im
-# selben Raum), die Division entfaellt hier also. Das ist kein Vergessen,
-# sondern der Unterschied zwischen den beiden IPC-Formaten.
+# `.rect` ist bei Sway komplett logisch (x, y, width, height im selben Raum) —
+# hier wird also NICHT durch `.scale` geteilt. Das ist kein Vergessen: Hyprlands
+# IPC meldete die Kantenlaengen in physischen Pixeln, x/y aber logisch, und
+# genau deshalb stand im alten Zweig eine Division. Wer die hierher kopiert,
+# bekommt auf einem skalierten Monitor den falschen Bildschirm.
 monitor_at() {
-    if is_sway; then
-        swaymsg -t get_outputs | jq -r --argjson x "$1" --argjson y "$2" '
-            [ .[]
-              | select($x >= .rect.x and $x < (.rect.x + .rect.width)
-                   and $y >= .rect.y and $y < (.rect.y + .rect.height))
-            ] | first | .name // empty'
-        return
-    fi
-    hyprctl monitors -j | jq -r --argjson x "$1" --argjson y "$2" '
+    swaymsg -t get_outputs | jq -r --argjson x "$1" --argjson y "$2" '
         [ .[]
-          | select($x >= .x and $x < (.x + .width / .scale)
-               and $y >= .y and $y < (.y + .height / .scale))
+          | select($x >= .rect.x and $x < (.rect.x + .rect.width)
+               and $y >= .rect.y and $y < (.rect.y + .rect.height))
         ] | first | .name // empty'
 }
 
 # Name des Monitors, auf dem gerade gearbeitet wird.
 active_monitor() {
-    if is_sway; then
-        swaymsg -t get_outputs | jq -r '.[] | select(.focused) | .name'
-    else
-        hyprctl activeworkspace -j | jq -r '.monitor'
-    fi
+    swaymsg -t get_outputs | jq -r '.[] | select(.focused) | .name'
 }
 
 start() {
@@ -242,10 +223,14 @@ start() {
     # shellcheck disable=SC2206
     local -a extra=(${RECORD_ARGS:-})
 
+    local DIR="${RECORD_DIR:-$(xdg-user-dir VIDEOS 2>/dev/null || echo "$HOME/Videos")/Screenrecordings}"
     mkdir -p "$DIR" "$STATE_DIR"
     file="$DIR/recording_$(date +%Y-%m-%d_%H-%M-%S).webm"
 
-    wf-recorder -f "$file" -r "$FPS" "${args[@]}" "${extra[@]}" >"$LOGFILE" 2>&1 &
+    # 9>&-: das Lock aus take_lock darf nicht an den Recorder vererbt werden,
+    # sonst haelt die laufende Aufnahme es bis zum Stop und jeder weitere
+    # Aufruf (auch `toggle` zum Beenden!) liefe in "anderer Aufruf laeuft".
+    wf-recorder -f "$file" -r "$FPS" "${args[@]}" "${extra[@]}" >"$LOGFILE" 2>&1 9>&- &
     pid=$!
 
     # Mit Zeilenumbruch: `read` liefert sonst zwar den Wert, quittiert das EOF
@@ -333,8 +318,21 @@ done
 # aufnehmen, der bekommt naemlich keine Argumente mit.
 [ -n "$audio" ] || audio="${RECORD_AUDIO:-}"
 
+# Pruefen-dann-Starten ist ein Rennen: drei Keybinds rufen `toggle`, zwei
+# Druecke im selben Augenblick kamen beide an recorder_pid vorbei, starteten
+# zwei wf-recorder, und nur der zweite stand im PID-File — der erste lief
+# unerreichbar weiter (Review 13.09.2026). Deshalb ein flock um alles, was
+# startet oder stoppt; `-n` statt warten, der zweite Druck soll einfach
+# verpuffen. stop() braucht das Lock nicht, ist aber ueber toggle mit drin.
+take_lock() {
+    mkdir -p "$STATE_DIR"
+    exec 9>"$STATE_DIR/lock"
+    flock -n 9 || fail "record: anderer Aufruf laeuft gerade"
+}
+
 case "${positional[0]:-}" in
     region|window|screen)
+        take_lock
         if recorder_pid >/dev/null; then
             fail "record: es laeuft schon eine Aufnahme"
         fi
@@ -349,6 +347,7 @@ case "${positional[0]:-}" in
     toggle)
         # Jeder der drei Keybinds stoppt jede laufende Aufnahme — man soll nicht
         # nachhalten muessen, mit welchem man sie gestartet hat.
+        take_lock
         if recorder_pid >/dev/null; then
             stop
         else

@@ -4,9 +4,13 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-echo "==> COPR: Hyprland (seit Fedora 43 nicht mehr in den offiziellen Repos)"
+# dnf5-plugins liefert das `copr`-Unterkommando. Frueher stand hier zusaetzlich
+# `copr enable ashbuk/Hyprland-Fedora` — Hyprland ist am 10.09.2026 samt COPR
+# entfernt worden, Sway kommt regulaer aus Fedora. Wer die COPR noch aktiviert
+# hat, raeumt sie mit `sudo dnf copr remove ashbuk/Hyprland-Fedora` weg;
+# bootstrap.sh fasst sie nicht an, weil "einmal aktiviert" kein Zustand ist,
+# den dieses Skript angelegt hat.
 sudo dnf install -y dnf5-plugins
-sudo dnf copr enable -y ashbuk/Hyprland-Fedora   # Name strikt kleingeschrieben!
 
 echo "==> COPR: mise (offiziell empfohlener Weg für Fedora 41+, s. mise-Doku)"
 sudo dnf copr enable -y jdxcode/mise
@@ -122,48 +126,6 @@ if [ "$(hostname -s)" = cube ]; then
         echo "       und ob /etc/sudoers ein '@includedir /etc/sudoers.d' enthaelt."
     fi
 
-    echo "==> Mac als Thin Client: wayvnc-Schluessel, Zugangsdaten, Firewall (nur cube)"
-    # Gehoert zusammen mit: dot_config/wayvnc/config.tmpl, systemd/user/wayvnc.service,
-    # dot_local/bin/remote, dem Monitor "mac" in monitors.conf.tmpl. README-Abschnitt
-    # "Mac als Thin Client". Alles im Home ist chezmoi-unbekannt und wird von
-    # `chezmoi apply` weder angefasst noch geloescht.
-    WAYVNC_DIR="$HOME/.config/wayvnc"
-    mkdir -p "$WAYVNC_DIR"
-
-    # RSA-AES-Serverschluessel. Aufruf 1:1 aus der wayvnc-Doku; PEM-Format ist
-    # Pflicht, das OpenSSH-Default-Format liest wayvnc nicht. Nur der private
-    # Teil wird gebraucht, die .pub kann weg. Nie erneuern: der Client hat sich
-    # den Fingerprint gemerkt und wuerde sonst einen fremden Server vermuten.
-    if [ ! -f "$WAYVNC_DIR/rsa_key.pem" ]; then
-        ssh-keygen -q -m PEM -t rsa -b 4096 -N "" -f "$WAYVNC_DIR/rsa_key.pem"
-        rm -f "$WAYVNC_DIR/rsa_key.pem.pub"
-        echo "    Serverschluessel erzeugt"
-    fi
-
-    # Zugangsdaten. NICHT im Repo (oeffentlich!) und deshalb auch nicht in der
-    # chezmoi-verwalteten config — die Unit haengt diese Datei beim Start an.
-    # Einmal zufaellig erzeugt, danach nie wieder angefasst; anderes Passwort =
-    # Datei editieren. Kein openssl im Minimal Install, daher /dev/urandom.
-    if [ ! -f "$WAYVNC_DIR/config.secret" ]; then
-        (
-            umask 077
-            pw=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)
-            printf 'username=%s\npassword=%s\n' "$(id -un)" "$pw" > "$WAYVNC_DIR/config.secret"
-        )
-        echo "    Zugangsdaten angelegt: $WAYVNC_DIR/config.secret (Passwort dort nachlesen)"
-    fi
-
-    # Port 5900 in Zone public (= alle Interfaces, der cube hat nur LAN).
-    # "Nur LAN" heisst hier: der Router leitet 5900 nicht weiter, und wayvnc
-    # lauscht ueberhaupt nur, solange `remote on` aktiv ist. vnc-server ist
-    # ein vordefinierter firewalld-Service (5900-5903/tcp).
-    if sudo firewall-cmd --permanent --query-service=vnc-server >/dev/null 2>&1; then
-        echo "    Firewall: vnc-server schon offen"
-    else
-        sudo firewall-cmd --permanent --add-service=vnc-server >/dev/null
-        sudo firewall-cmd --reload >/dev/null
-        echo "    Firewall: vnc-server (5900/tcp) in Zone public geoeffnet"
-    fi
 fi
 
 # RGB-Tastaturbeleuchtung im "book". Nur wenn der Controller wirklich steckt —
@@ -286,6 +248,22 @@ else
     echo "    bereits installiert, übersprungen"
 fi
 
+echo "==> Java/AWT: Sway als non-reparenting WM bekanntmachen"
+# Gefunden am NetBeans (deshalb steht es direkt hier), gilt aber für JEDE
+# Swing-Anwendung auf dieser Session — die vollständige Herleitung steht in der
+# installierten Datei selbst.
+#
+# BEWUSST NICHT auf cube eingegrenzt, anders als der Aufnahmemodus weiter oben:
+# beide Hosts fahren Sway, und das Problem hängt am Compositor, nicht an der
+# Hardware.
+#
+# 0644 root:root wie ausgeliefert — /etc/environment wird von pam_env für JEDE
+# Anmeldung gelesen und muss deshalb für alle lesbar sein. Hier hängt, anders
+# als bei der sudoers-Regel oben, nichts an den Rechten: der Inhalt wird nicht
+# ausgeführt, sondern nur als KEY=WERT übernommen.
+sudo install -o root -g root -m 0644 \
+    system/java-nonreparenting.environment /etc/environment
+
 echo "==> RNNoise-LADSPA-Plugin (Mikrofon-Rauschunterdrückung für PipeWire)"
 # Kein Fedora-Paket: das Repo-Paket 'rnnoise' liefert NUR /usr/lib64/librnnoise.so,
 # also die Bibliothek ohne Plugin-Wrapper. Ein noise-suppression-for-voice gibt es
@@ -371,7 +349,8 @@ echo "==> Suspend: nur S3, kein s2idle-Fallback"
 # durch. Auf diesem Board ist das eine Falle, und sie hat den Rechner am
 # 24.08.2026 hart aufgehaengt (Journal Boot -1, ab 09:03:25):
 #
-#  1. hypridle loest nach 15 min `systemctl suspend` aus. Erster Versuch `mem`
+#  1. Der Idle-Daemon (damals hypridle, heute swayidle) loest nach 15 min
+#     `systemctl suspend` aus. Erster Versuch `mem`
 #     = S3. Der Kernel bricht beim Einfrieren der CPUs ab:
 #     "Wakeup pending. Abort CPU freeze" — ein Wakeup-Event lag schon an.
 #     Das allein ist harmlos, der Kernel rollt sauber zurueck.
@@ -435,29 +414,32 @@ echo "==> SDDM: Theme aktivieren"
 #    Displayserver-Wahl.
 #  - QT_WAYLAND_SHELL_INTEGRATION=layer-shell war der eigentliche Killer: der
 #    Greeter-Compositor ist weston, und weston kann kein wlr-layer-shell (das ist
-#    ein wlroots-Protokoll — Hyprland kann es, weston nicht). Qt kam hoch, bekam
+#    ein wlroots-Protokoll — Sway kann es, weston nicht). Qt kam hoch, bekam
 #    keine Surface und war nach einer Sekunde weg: schwarzer Bildschirm, kein
 #    Input, im journal NUR die PAM-Zeilen von sddm-helper.
-# Merksatz: Greeter-Umgebung ist NICHT die Session-Umgebung. Was für Hyprland
-# richtig ist, gilt hier nicht.
+# Merksatz: Greeter-Umgebung ist NICHT die Session-Umgebung. Was für die
+# Sway-Session richtig ist, gilt hier nicht.
 sudo mkdir -p /etc/sddm.conf.d
 sudo tee /etc/sddm.conf.d/10-device-config.conf >/dev/null <<EOF
 [Theme]
 Current=$SDDM_THEME
 EOF
 
-# KEINE eigene Session-Datei. Hier stand mal eine mit
+# KEINE eigene Session-Datei. sway bringt seine wayland-sessions/sway.desktop
+# selbst mit, die gilt unangetastet.
+#
+# Hier stand zu Hyprland-Zeiten mal eine eigene mit
 # `Exec=/bin/bash -lc "exec start-hyprland"` — die hat einen Login-Loop erzeugt
-# (Session startet, stirbt sofort, Greeter kommt wieder). Zwei Denkfehler drin:
-#  1. start-hyprland ist der Wrapper für den TTY-Start: er macht Session- und
+# (Session startet, stirbt sofort, Greeter kommt wieder). Zwei Denkfehler drin,
+# die auch fuer jeden kuenftigen Compositor gelten:
+#  1. Ein `start-*`-Wrapper ist fuer den TTY-Start gedacht: er macht Session- und
 #     D-Bus-Setup, das es ohne Display-Manager sonst nicht gibt. Unter SDDM macht
 #     das der Display-Manager schon — der Wrapper ist da falsch, nicht nötig.
 #  2. Anführungszeichen im Exec= einer .desktop-Datei folgen der
 #     Desktop-Entry-Spec, nicht Shell-Quoting.
-# Es gilt die Session-Datei aus dem COPR-Paket, unangetastet.
 #
 # Folge davon: SDDM startet die Session OHNE Login-Shell, ~/.local/bin ist also
-# nicht im PATH. Deshalb rufen binds.conf und base.conf 'keylight' und
+# nicht im PATH. Deshalb rufen sway/binds und sway/base 'keylight' und
 # 'wallpaper' mit vollem Pfad auf — robuster als eine Login-Shell-Krücke.
 
 # enable, NICHT --now: --now würde die gerade laufende TTY-Session abschießen.
@@ -469,11 +451,9 @@ mkdir -p "$HOME/.config/chezmoi"
 printf 'sourceDir = "%s"\n' "$(pwd)/home" > "$HOME/.config/chezmoi/chezmoi.toml"
 
 echo "==> Fertig. Weiter mit: chezmoi apply && reboot"
-echo "    Login danach:      SDDM statt TTY-Autostart — Session 'Hyprland' wählen"
-echo "    Sway danach:       zweite Session zum Ausprobieren, im SDDM als 'Sway'."
-echo "                       Vorher einmal 'sway -C' — prüft die Konfiguration,"
-echo "                       ohne die laufende Session anzufassen (s. README"
-echo "                       'Sway als Zweitcompositor'). Hyprland bleibt der Rückweg."
+echo "    Login danach:      SDDM statt TTY-Autostart — Session 'Sway' wählen"
+echo "    Konfig pruefen:    'sway -C' liest die Konfiguration und meldet Fehler,"
+echo "                       ohne eine laufende Session anzufassen."
 echo "    Wallpaper danach:  Bilder nach ~/Pictures/wallpapers legen, dann SUPER+SHIFT+W"
 echo "    lazydocker danach: export DOCKER_HOST=\"unix://\$XDG_RUNTIME_DIR/podman/podman.sock\" in ~/.bashrc"
 echo "    Toolchain danach:  source ~/.sdkman/bin/sdkman-init.sh && cd ~ && sdk env install"

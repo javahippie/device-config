@@ -1,35 +1,37 @@
 {{ if eq .chezmoi.hostname "cube" -}}
-# Cube: Samsung C34H89x (HDMI-A-2).
+# Cube: Samsung C34H89x. Angesprochen ueber die Monitor-Kennung
+# "Hersteller Modell Seriennummer" (aus `swaymsg -t get_outputs`), NICHT ueber den
+# Connector-Namen: an der iGPU heisst der Anschluss HDMI-A-2, an der RX 6400
+# HDMI-A-1 bzw. DP-1. Die Zeile soll beim Umstecken (s. README "Rueckweg zur
+# dGPU", 13.09.2026) nicht stumm ins Leere laufen — sonst nimmt Sway den
+# EDID-Vorzugsmodus mit 49.99 Hz, und es faellt erst auf, wenn alles ruckelt.
 #
-# Unterschied zu hypr/monitors.conf.tmpl: Sway kennt kein `highrr`. Drueben
-# reicht das Schluesselwort, weil Hyprland dann selbst den schnellsten Modus
+# Sway kennt kein `highrr`-Schluesselwort, das selbst den schnellsten Modus
 # sucht — hier muss der Modus ausgeschrieben werden, sonst nimmt Sway den
 # EDID-Vorzugsmodus, und der ist auf diesem Monitor 3440x1440@49.99Hz.
 # Genau die 50 Hz sind der Grund, warum drueben ueberhaupt `highrr` steht.
 #
-# 99.982 Hz ist der GEMESSENE Wert, nicht gerundet: die laufende
-# Hyprland-Session meldet fuer diesen Modus 99.98200 Hz
-# (`hyprctl monitors -j | jq -r '.[].refreshRate'`, 09.09.2026), waehrend die
-# Modusliste ihn auf "3440x1440@99.98Hz" kuerzt. Sway rechnet intern in mHz und
+# 99.982 Hz ist der GEMESSENE Wert, nicht gerundet: der Monitor meldet fuer
+# diesen Modus 99.98200 Hz (gemessen 09.09.2026, damals noch an der iGPU;
+# an der RX 6400 am 13.09.2026 identisch), waehrend die Modusliste ihn auf
+# "3440x1440@99.98Hz" kuerzt. Sway rechnet intern in mHz und
 # nimmt den Modus mit der geringsten Abweichung, ein paar Tausendstel daneben
 # waeren also unkritisch — der exakte Wert spart aber das Nachdenken darueber.
 # Der Monitor kann laut derselben Liste sonst nur 49.99 und 59.97 Hz bei dieser
 # Aufloesung; wenn nach dem Start eine davon anliegt, hat die Zeile nicht
 # gegriffen. Gegenpruefen: `swaymsg -t get_outputs` (Feld `current_mode`).
-output HDMI-A-2 mode 3440x1440@99.982Hz position 0 0 scale 1
+output "Samsung Electric Company C34H89x H1AK500000" mode 3440x1440@99.982Hz position 0 0 scale 1
 
-# KEIN Gegenstueck zum virtuellen Monitor "mac" aus dem Hyprland-Zweig.
-# Das ist eine bewusste Luecke, kein Vergessen: der ganze Thin-Client-Aufbau
-# haengt daran, dass der Output NICHT "HEADLESS-" heisst (wayvnc entscheidet
-# allein am Namenspraefix, ob es den Output auf Zuruf des Clients resized —
-# und stuerzt dabei ab). Sway vergibt die Namen fuer `create_output` selbst und
-# nummeriert sie zwangsweise als HEADLESS-1, HEADLESS-2, ... — der Trick aus
-# hypr/monitors.conf.tmpl laesst sich hier also nicht nachbauen.
-# `remote` bleibt deshalb Hyprland-only, s. README "Sway als Zweitcompositor".
+# KEIN virtueller Monitor fuer den Mac-Thin-Client mehr. Der ganze Aufbau
+# (wayvnc + `remote`) hing an `hyprctl output create headless "mac"` und ist am
+# 10.09.2026 mit Hyprland entfernt worden. Nachbauen laesst er sich hier nicht:
+# Sway 1.11 kennt kein `create_output`, und selbst wenn — wayvnc entscheidet
+# allein am Namenspraefix "HEADLESS-", ob es den Output auf Zuruf des Clients
+# resized, und stuerzt dabei ab. Genau deshalb hiess der Output drueben "mac".
 {{- else if eq .chezmoi.hostname "book" -}}
 # Book: Laptop offen links neben dem externen Monitor, WS1 aufs Panel.
 #
-# Unterschied zu Hyprland: es gibt kein `auto-right`. Sway ordnet Outputs ohne
+# Es gibt kein `auto-right`. Sway ordnet Outputs ohne
 # `position` zwar auch von links nach rechts an, aber in der Reihenfolge, in der
 # es sie findet — welcher Monitor links landet, ist damit nicht festgelegt.
 # Deshalb hier explizite Koordinaten.
@@ -51,11 +53,11 @@ workspace 2 output DP-1
 {{- end }}
 
 # Flache Mocha-Base-Farbe als Grundton — das Gegenstueck zu
-# `misc:background_color` in hypr/base.conf, und wie dort NUR der Fallback.
+# NUR der Fallback, solange kein Bild gesetzt ist.
 #
 # Sobald `wallpaper restore` (s. base) ein Bild gesetzt hat, startet es dafuer
 # eine eigene swaybg-Instanz, die sich vor diese Farbe legt. Ohne Bilder in
 # ~/Pictures/wallpapers startet swaybg gar nicht und diese Zeile bleibt sichtbar.
 # Das ist derselbe Fallback-Gedanke wie drueben, nur dass Sway die Farbe selbst
-# malen kann und Hyprland dafuer ein Konfigurationsfeld hat.
+# malen kann.
 output * bg $base solid_color

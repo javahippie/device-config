@@ -3,8 +3,8 @@
 #
 # Bilder liegen BEWUSST nicht im Repo (das ist public, dazu Bildrechte), sondern
 # in ~/Pictures/wallpapers. Der Ordner darf leer sein oder ganz fehlen: dann
-# passiert schlicht nichts und Hyprlands `background_color` (flaches Mocha-Base
-# aus base.conf) bleibt stehen. Das ist der Fallback, kein Fehlerfall.
+# passiert schlicht nichts und die flache Mocha-Base-Farbe aus `output * bg`
+# (sway/monitors.tmpl) bleibt stehen. Das ist der Fallback, kein Fehlerfall.
 #
 # swaybg statt hyprpaper: hyprpaper ist aus den Fedora-Repos raus (letzte
 # Version F41, hyprland selbst F42 — gleiche Retire-Welle wie im README), swaybg
@@ -25,7 +25,7 @@ Usage: wallpaper <pick|next|random|set PFAD|restore|clear|status>
   next          Nächstes Bild im Ordner (alphabetisch, wrap-around)
   random        Zufälliges Bild
   set PFAD      Konkretes Bild setzen
-  restore       Gemerktes Bild wieder setzen — für exec-once beim Session-Start
+  restore       Gemerktes Bild wieder setzen — für `exec` in sway/base beim Session-Start
   clear         swaybg beenden, zurück auf die flache Mocha-Base-Farbe
   status        Aktuell gesetztes Bild zeigen
 
@@ -45,11 +45,14 @@ current() {
     [ -f "$STATE" ] && cat "$STATE" || true
 }
 
-# Sichtbare Rückmeldung ohne notify-send: libnotify ist NICHT installiert (mako
-# ist nur der Daemon, der Client fehlt). Also die Meldung als einzigen
-# fuzzel-Eintrag zeigen — fuzzel ist ohnehin da.
+# Sichtbare Rückmeldung wie in den Nachbarskripten per notify-send (libnotify
+# steht in packages.txt). Bis 13.09.2026 stand hier ein fuzzel-Dmenu mit der
+# Begründung, libnotify fehle — das stimmte nicht, und fuzzel ist ein modales
+# Overlay: aus `exec wallpaper restore` beim Session-Start heraus hätte ein
+# fehlendes swaybg ein Popup auf den Login gelegt, und `restore` wäre erst
+# zurückgekehrt, wenn jemand es wegdrückt.
 notify() {
-    printf '%s\n' "$1" | fuzzel --dmenu --prompt 'wallpaper: ' >/dev/null 2>&1 || true
+    notify-send -a wallpaper "wallpaper" "$1" 2>/dev/null || true
 }
 
 # Aus einem Keybind gestartet gibt es kein Terminal für stderr — ohne die
@@ -72,7 +75,7 @@ apply() {
     command -v swaybg >/dev/null 2>&1 \
         || fail "wallpaper: swaybg fehlt — sudo dnf install swaybg"
     # Erst den neuen swaybg starten, dann die alten abräumen — andersherum
-    # blitzt für einen Frame die Hyprland-Hintergrundfarbe durch.
+    # blitzt für einen Frame die Hintergrundfarbe des Compositors durch.
     old="$(pgrep -x swaybg || true)"
     swaybg -m "$MODE" -i "$img" >/dev/null 2>&1 &
     disown
@@ -111,8 +114,8 @@ case "$cmd" in
         apply "${2:?Pfad zum Bild angeben}"
         ;;
     restore)
-        # Läuft aus exec-once. Darf NIE mit Fehler enden, sonst hängt eine
-        # rote Zeile im Hyprland-Log an einer Situation, die völlig normal ist
+        # Läuft aus einer `exec`-Zeile in sway/base. Darf NIE mit Fehler enden,
+        # sonst hängt eine rote Zeile im Sway-Log an einer Situation, die normal ist
         # (frische Maschine, Ordner noch leer).
         cur="$(current)"
         if [ -n "$cur" ] && [ -f "$cur" ]; then
@@ -131,7 +134,7 @@ case "$cmd" in
         if [ -n "$cur" ]; then
             echo "$cur"
         else
-            echo "kein Wallpaper gesetzt (flache Mocha-Base-Farbe aus base.conf)"
+            echo "kein Wallpaper gesetzt (flache Mocha-Base-Farbe aus sway/monitors)"
         fi
         ;;
     *)

@@ -12,7 +12,7 @@ me.amankhanna.opendeck  # Stream Deck, GPL, spielt Original-Elgato-Plugins ab.
 org.onlyoffice.desktopeditors  # Office-Suite. BEWUSST nicht LibreOffice, Grund ist
                         # der Tiling-WM: LibreOffice macht aus Start Center, jedem
                         # Dokument und JEDEM Dialog ein eigenes Wayland-Toplevel —
-                        # Hyprland kachelt die alle mit ein, und eine saubere
+                        # Der Tiler kachelt die alle mit ein, und eine saubere
                         # "Dialoge floaten"-Regel gibt es dafür nicht: match:modal
                         # greift nur bei xdg-dialog-v1, und LibreOffices
                         # GTK3-Backend meldet das nicht. Bliebe Titel-Raterei.

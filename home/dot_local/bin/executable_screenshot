@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Screenshots für Hyprland. grim schneidet, slurp wählt aus, wl-copy legt in die
-# Zwischenablage, jq liest Hyprlands JSON — alle vier stehen längst in
+# Screenshots für die Sway-Session. grim schneidet, slurp wählt aus, wl-copy legt
+# in die Zwischenablage, jq liest Sways JSON — alle vier stehen längst in
 # packages.txt, für diesen Weg kommt also KEIN neues Paket dazu.
 #
-# Bewusst kein grimblast (hyprland-contrib): das hängt an derselben COPR wie
-# hyprland selbst, deren Inhalt ich nicht kontrolliere. Ein Skript, das man in
+# Bewusst kein grimblast (hyprland-contrib): das hing an derselben COPR wie
+# hyprland selbst, deren Inhalt ich nicht kontrolliere — und ist mit Hyprland
+# ohnehin gegangen. Ein Skript, das man in
 # einem Rutsch lesen kann, ist hier die robustere Wahl.
 #
 # Jeder Modus tut BEIDES: Datei speichern UND in die Zwischenablage legen.
@@ -27,7 +28,7 @@ Ablage: \$SCREENSHOT_DIR oder <XDG-Bilderordner>/Screenshots
 EOF
 }
 
-# mako läuft, notify-send kommt aber aus libnotify. Fehlt es, bleibt es still —
+# swaync läuft, notify-send kommt aber aus libnotify. Fehlt es, bleibt es still —
 # der Screenshot ist dann trotzdem gemacht.
 notify() {
     command -v notify-send >/dev/null 2>&1 && notify-send "$@" || true
@@ -40,46 +41,30 @@ fail() {
     exit 1
 }
 
-# Läuft die Session unter Sway statt Hyprland? SWAYSOCK setzt Sway selbst für
-# jede Sitzung und ist damit verlässlicher als XDG_CURRENT_DESKTOP, das vom
-# Display-Manager kommt und bei einem TTY-Start fehlt.
 # Alles außerhalb der beiden folgenden Funktionen ist compositor-unabhängig:
-# grim, slurp und wl-copy sprechen reine wlroots-Protokolle.
-is_sway() { [ -n "${SWAYSOCK:-}" ]; }
+# grim, slurp und wl-copy sprechen reine wlroots-Protokolle. Nur die Frage
+# "welche Fenster liegen wo?" geht an den Compositor, und die beantwortet
+# swaymsg. Bis 10.09.2026 stand hier ein zweiter Zweig ueber `hyprctl`, den ein
+# `is_sway`-Test ausgewaehlt hat; mit Hyprland ist er weggefallen.
 
 # Nur sichtbare Fenster der aktiven Workspace anbieten. `slurp -r` rastet die
 # Auswahl dann auf genau diese Rechtecke ein.
 #
-# Sway-Zweig: `.visible` gibt es im Baum nur bei echten Fenstern, es ersetzt
-# Hyprlands mapped/hidden UND die Einschränkung auf die aktive Workspace in
-# einem — unsichtbar ist ein Fenster ja gerade dann, wenn seine Workspace nicht
+# `.visible` gibt es im Baum nur bei echten Fenstern und erledigt zwei Dinge auf
+# einmal: unsichtbar ist ein Fenster ja gerade dann, wenn seine Workspace nicht
 # vorne liegt. `.pid` als zweite Bedingung filtert die Container-Knoten heraus,
 # die keine Fenster sind (Splits, Workspaces, Outputs).
 window_geometry() {
-    local ws
-    if is_sway; then
-        swaymsg -t get_tree | jq -r '
-            .. | objects
-            | select(.pid? != null and .visible? == true)
-            | "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)"' \
-            | slurp -r
-        return
-    fi
-    ws="$(hyprctl activeworkspace -j | jq -r '.id')"
-    hyprctl clients -j | jq -r --argjson ws "$ws" '
-        .[]
-        | select(.workspace.id == $ws and .mapped == true and .hidden == false)
-        | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"' \
+    swaymsg -t get_tree | jq -r '
+        .. | objects
+        | select(.pid? != null and .visible? == true)
+        | "\(.rect.x),\(.rect.y) \(.rect.width)x\(.rect.height)"' \
         | slurp -r
 }
 
 # Name des Monitors, auf dem gerade gearbeitet wird.
 active_monitor() {
-    if is_sway; then
-        swaymsg -t get_outputs | jq -r '.[] | select(.focused) | .name'
-    else
-        hyprctl activeworkspace -j | jq -r '.monitor'
-    fi
+    swaymsg -t get_outputs | jq -r '.[] | select(.focused) | .name'
 }
 
 mode="${1:-}"

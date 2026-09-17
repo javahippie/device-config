@@ -1,16 +1,15 @@
-# Catppuccin Mocha, dieselben Farbwerte wie dot_config/hypr/mocha.conf — nur in
-# Sway-Schreibweise. Sway kennt kein `rgb()`, es will `#rrggbb`; und Variablen
-# heissen hier `set $name wert` statt `$name = wert`. Deshalb eine zweite Datei
-# statt eines geteilten Includes: das Format ist nicht kompatibel, ein `source`
-# ueber die Compositor-Grenze gibt es nicht.
+# Catppuccin Mocha in Sway-Schreibweise: `set $name #rrggbb`. Sway kennt kein
+# `rgb()`. Bis 13.09.2026 lag dieselbe Palette ein zweites Mal als
+# hypr/mocha.conf fuer hyprlock daneben; das ist mit hyprlock gegangen.
 #
 # Das `#` mitten in der Zeile ist KEIN Kommentar — Sway wertet nur ganze Zeilen
 # als Kommentar, die mit `#` beginnen. Farbwerte gehen also unquotiert durch.
 #
-# WICHTIG beim Aendern: die Palette steht damit an drei Stellen (hier,
-# hypr/mocha.conf, waybar/style.css). Die Werte kommen alle aus derselben
-# Quelle (github.com/catppuccin/hyprlock, MIT) und aendern sich praktisch nie —
-# wenn doch, muessen alle drei mit.
+# WICHTIG beim Aendern: die Palette steht damit an vier Stellen (hier,
+# swaylock/config, waybar/style.css, swaync/style.css), und dot_local/bin/kbdlight
+# liest DIESE Datei als fuenfter Abnehmer. Die Werte kommen alle aus
+# derselben Quelle (github.com/catppuccin/*, MIT) und aendern sich nie —
+# wenn doch, muessen alle mit.
 
 set $rosewater #f5e0dc
 set $flamingo  #f2cdcd

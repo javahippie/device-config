@@ -1,13 +1,13 @@
 # ============================================================
-# DEKO-NULLPUNKT, wie in hypr/effects.conf. Jeder Effekt, der
+# DEKO-NULLPUNKT. Jeder Effekt, der
 # je dazukommt, ist eine bewusste Zeile HIER.
 # Live testen:  swaymsg gaps inner all set 8
 # ============================================================
 #
-# Sway macht den Nullpunkt an zwei Stellen leichter als Hyprland und an einer
+# Sway macht den Nullpunkt an zwei Stellen von selbst und an einer
 # Stelle unmoeglich:
 #   - Blur, Schatten und dim_inactive gibt es hier gar nicht erst. Die
-#     entsprechenden Aus-Schalter aus hypr/effects.conf entfallen ersatzlos.
+#     entsprechende Aus-Schalter braucht es hier also gar nicht.
 #   - Titelleisten schaltet `default_border pixel N` mit ab (s. u.).
 #   - Fenster-RUNDUNG und ANIMATIONEN kann Sway nicht. Die beiden bewussten
 #     Ausnahmen vom Nullpunkt drueben (rounding = 4, kurze Slides) haben hier
@@ -36,7 +36,7 @@ default_floating_border pixel 3
 # Titelleiste, die es hier nicht gibt. Sie werden trotzdem gesetzt, weil Sway
 # alle fuenf verlangt und ein spaeteres `normal` sonst grell aufschlaegt.
 #
-# `indicator` ist der einzige Wert ohne Entsprechung in Hyprland: er markiert
+# `indicator` hat keine Entsprechung in anderen Tilern: er markiert
 # die Kante, an der ein neues Fenster aufgeht. Bewusst auf Mauve wie der Rahmen
 # statt auf eine zweite Akzentfarbe — es soll ein Rahmen bleiben, kein Ampelbild.
 client.focused          $mauve    $mauve    $base $mauve    $mauve

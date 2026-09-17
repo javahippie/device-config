@@ -1,27 +1,29 @@
-# Gegenstueck zu dot_config/hypr/base.conf: Input, Autostart, Umgebung.
+# Input, Autostart, Umgebung.
 
 # --- Input ---
 # Sway adressiert Eingabegeraete ueber Typen oder konkrete Identifier;
-# `type:keyboard` trifft alle Tastaturen und ist damit das Gegenstueck zu
-# Hyprlands globalem input-Block. Konkrete Geraete listet `swaymsg -t get_inputs`.
+# `type:keyboard` trifft alle Tastaturen. Konkrete Geraete listet
+# `swaymsg -t get_inputs`.
 input type:keyboard {
     xkb_layout de
     xkb_numlock enabled
 }
 
-# Hyprland: follow_mouse = 1. Gleicher Effekt, anderer Name.
 focus_follows_mouse yes
 
 # --- Umgebung ---
-# ACHTUNG, echter Unterschied zu Hyprland: Sway hat KEIN `env`. Die beiden
-# Variablen aus hypr/base.conf muessen deshalb auf anderem Weg kommen, und der
-# Weg haengt davon ab, WER das Programm startet:
+# ACHTUNG, haeufige Stolperstelle: Sway hat KEIN `env`. Die beiden Variablen
+# muessen deshalb auf anderem Weg gesetzt werden, und der haengt davon ab,
+# WER das Programm startet:
 #
 #  1. Startet es systemd --user oder D-Bus (Portal, Flatpak-Handler, alles was
-#     ueber OpenURI kommt), zieht dot_config/environment.d/10-device-config.conf
-#     plus die Zeile unten. `dbus-update-activation-environment` nimmt hier
-#     BEWUSST literale VAR=WERT-Paare statt blosser Namen: so ist es egal, ob
-#     Sway die Variablen selbst im Environment hat oder nicht.
+#     ueber OpenURI kommt), bekommt es die Werte aus der Zeile unten — und NUR
+#     daraus. (Bis 13.09.2026 stand hier zusaetzlich eine
+#     environment.d/10-device-config.conf; die hat nie existiert, weder im Repo
+#     noch live.) `dbus-update-activation-environment` nimmt deshalb BEWUSST
+#     literale VAR=WERT-Paare statt blosser Namen: so ist es egal, ob Sway die
+#     Variablen selbst im Environment hat oder nicht. Wer die Paare auf blosse
+#     Namen kuerzt, verliert sie fuer alles D-Bus-Aktivierte, lautlos.
 #  2. Startet es Sway direkt (Keybind, fuzzel), erbt es Sways Environment — und
 #     da stehen sie eben NICHT drin. Fuer den einen Fall, in dem das sichtbar
 #     wird (Double Commander, s. $qtenv weiter unten und in binds), steht ein
@@ -34,86 +36,131 @@ focus_follows_mouse yes
 set $qtenv env QT_QPA_PLATFORMTHEME=gtk3
 
 # --- Autostart ---
-# Reihenfolge und Begruendungen 1:1 aus hypr/base.conf — dort stehen die langen
-# Herleitungen (Portale finden die Session nur ueber die Activation-Environment,
-# XDG_DATA_DIRS muss wegen --user-Flatpaks mit durch, usw.). Hier nur die
-# Abweichungen.
+# Die langen Herleitungen zur Reihenfolge stehen im README (Portale finden die
+# Session nur ueber die Activation-Environment, XDG_DATA_DIRS muss wegen
+# --user-Flatpaks mit durch, usw.).
 #
-# `exec` statt `exec-once`: Sways `exec` laeuft genau einmal beim Session-Start,
-# `exec_always` zusaetzlich bei jedem `swaymsg reload`. Das Hyprland-Gegenstueck
-# zu `exec-once` ist also `exec`, NICHT `exec_always` — sonst haette man nach
-# jedem Reload eine zweite waybar und ein zweites mako.
+# `exec`, NICHT `exec_always`: `exec` laeuft genau einmal beim Session-Start,
+# `exec_always` zusaetzlich bei jedem `swaymsg reload` — sonst haette man nach
+# jedem Reload eine zweite waybar und ein zweites swaync.
 #
 # Die Zeile ist mit Absicht EINE Zeile, so unhandlich sie ist: Sways
 # Konfigurationsparser liest zeilenweise und kennt KEINE Fortsetzung mit
 # Backslash. Ein umbrochenes Kommando waere hier nicht etwa ein Fehler, sondern
 # zwei halbe Zeilen, von denen die zweite als unbekannter Befehl durchfaellt.
 # Gilt genauso fuer den swayidle-Aufruf weiter unten.
-exec dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_DATA_DIRS PATH QT_QPA_PLATFORMTHEME=gtk3 ELECTRON_OZONE_PLATFORM_HINT=auto
-
-# Gleiche Rolle wie hyprland-session.target drueben: irgendetwas muss
-# graphical-session.target binden, sonst bleibt xdg-desktop-portal.service
-# dauerhaft "Dependency failed" und kein Portal-Call geht durch.
+#
+# Umgebung setzen UND das Session-Target starten stehen in EINER Zeile mit `&&`,
+# weil Sway seine exec-Zeilen parallel abfeuert und nicht aufeinander wartet.
+# sway-session.target zieht ueber graphical-session.target die Portale hoch;
+# gewinnt das Target das Rennen, startet xdg-desktop-portal ohne
+# WAYLAND_DISPLAY/XDG_CURRENT_DESKTOP in der systemd-Umgebung — genau der
+# "kein Portal-Call geht durch"-Zustand aus dem Unit-Kommentar, nur
+# sporadisch und nur beim Login. Nie beobachtet, aber ein Rennen bleibt ein
+# Rennen (Review 13.09.2026).
+#
+# Irgendetwas muss graphical-session.target binden, sonst bleibt
+# xdg-desktop-portal.service dauerhaft "Dependency failed".
 # Unit: dot_config/systemd/user/sway-session.target.
-exec systemctl --user start sway-session.target
+exec sh -c 'dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_DATA_DIRS PATH QT_QPA_PLATFORMTHEME=gtk3 ELECTRON_OZONE_PLATFORM_HINT=auto && systemctl --user start sway-session.target'
 
-# XSettings-Manager fuer XWayland-Clients — Sway bringt genauso wenig einen mit
-# wie Hyprland. Ohne ihn rendert Java/Swing komplett ohne Antialiasing.
+# XSettings-Manager fuer XWayland-Clients — Sway bringt keinen mit.
+# Ohne ihn rendert Java/Swing komplett ohne Antialiasing.
 exec xsettingsd
 exec /usr/libexec/polkit-mate-authentication-agent-1
 
-# Waybar mit der Sway-Variante der Konfiguration. Das ist der EINZIGE Grund fuer
-# den langen Aufruf: die Bar selbst ist dieselbe (gleiche Module, gleiches CSS),
-# nur der Workspace- und Fenster-Baustein muss compositor-spezifisch sein.
-# Details in waybar/config-sway.jsonc.tmpl und waybar/common.jsonc.tmpl.
-exec waybar -c ~/.config/waybar/config-sway.jsonc -s ~/.config/waybar/style.css
+# Waybar ohne -c: die Konfiguration heisst seit 10.09.2026 wieder schlicht
+# config.jsonc, und genau die sucht Waybar von sich aus. Der lange Aufruf mit
+# -c war noetig, solange zwei Compositoren zwei Bar-Varianten brauchten.
+# Details in waybar/config.jsonc.tmpl.
+exec waybar -s ~/.config/waybar/style.css
 
-exec mako
+# Benachrichtigungs-Daemon. War bis 10.09.2026 mako, ist jetzt swaync
+# (SwayNotificationCenter) — der Grund steht ausfuehrlich im README-Abschnitt
+# "Benachrichtigungen": mako kann prinzipbedingt keinen Schliessen-Knopf am
+# Popup zeichnen (es rendert Text, keine klickbaren Flaechen) und haelt nur
+# einen fluechtigen Ringpuffer statt einer Liste vergangener Meldungen.
+#
+# Ein Daemon, nicht zwei: beide belegen denselben DBus-Namen
+# org.freedesktop.Notifications. Laeuft mako noch, bekommt swaync ihn nicht und
+# beendet sich still — nach dem Umstieg also einmal abmelden, nicht nur
+# `swaymsg reload` (das startet exec-Zeilen ohnehin nicht neu).
+exec swaync
 exec wl-paste --watch cliphist store
 
-# Wallpaper: identisch zu Hyprland. swaybg ist compositor-unabhaengig, das
-# Skript laeuft hier unveraendert. Ohne Bilder in ~/Pictures/wallpapers tut der
+# Wallpaper ueber swaybg (dot_local/bin/wallpaper).
+# Ohne Bilder in ~/Pictures/wallpapers tut der
 # Aufruf absichtlich nichts und die flache Mocha-Farbe aus `output * bg`
 # (s. monitors) bleibt stehen.
 exec ~/.local/bin/wallpaper restore
 
 # --- Idle-Kette ---
-# Gegenstueck zu hypr/hypridle.conf, aber mit swayidle statt hypridle.
+# swayidle sperrt und suspendiert, swaylock ist der Sperrbildschirm
+# (Konfiguration: swaylock/config).
 #
-# WARUM NICHT hypridle: es spricht neben ext-idle-notify-v1 (kann Sway) auch
-# hyprland-lock-notify-v1 (kann Sway nicht) — mit `strings /usr/bin/hypridle`
-# nachgesehen. Ob es ohne das Protokoll sauber degradiert oder aussteigt, ist
-# nichts, was man am Sperrbildschirm ausprobieren will. swayidle ist das
-# native Werkzeug und macht dieselbe zweistufige Kette.
+# Bis 13.09.2026 abends stand hier hyprlock, mit der Begruendung, es komme mit
+# reinen Standardprotokollen aus und sei deshalb der einzige Hyprland-Rest,
+# der bleiben duerfe. Das Protokoll-Argument stimmte, das Paket-Argument nicht:
+# hyprlock gibt es in Fedora nicht, es kam aus der Hyprland-COPR, und als die
+# beim Paket-Aufraeumen wegfiel, nahm dnf hyprlock als "Dependency" mit. Das
+# lock-Kommando unten lief danach in "hyprlock: Kommando nicht gefunden" —
+# lautlos, im Session-Log, und der Rechner ist ungesperrt in den Standby
+# gegangen (README, "Nachlese 13.09.2026"). swaylock kommt aus dem
+# Fedora-Repo und haengt als Recommends an sway-config-upstream.
 #
-# hyprlock BLEIBT dagegen der Sperrbildschirm, auch hier. Es braucht laut
-# `strings /usr/bin/hyprlock` nur Standardprotokolle (ext-session-lock-v1,
-# wp-cursor-shape, wp-fractional-scale, wp-viewporter, wlr-screencopy) — alles
-# Dinge, die Sway kann. Damit sieht der Lockscreen unter beiden Compositoren
-# gleich aus und hypr/hyprlock.conf bleibt die einzige Quelle dafuer.
-#
-# Zeiten und Begruendungen wie drueben: 5 min sperren, 15 min Suspend.
-# Und wie drueben BEWUSST KEINE dpms-off-Stufe dazwischen — der Monitor laesst
+# 5 min sperren, 15 min Suspend. BEWUSST KEINE dpms-off-Stufe dazwischen — der Monitor laesst
 # im Standby die HPD-Leitung fallen, der Connector gilt dem Kernel danach als
 # abgezogen, und Thunderbird (Gecko 140) ueberlebt das Neuanlegen des wl_output
-# nicht. Die vollstaendige Herleitung samt Log-Auszuegen steht in
-# hypr/hypridle.conf und im README; sie haengt am Monitor, nicht am Compositor,
-# gilt hier also unveraendert.
+# nicht. Die vollstaendige Herleitung samt Log-Auszuegen steht im README;
+# sie haengt am Monitor, nicht am Compositor.
 #
-# `-w` (wait) ist bei before-sleep nicht optional: ohne das suspendiert der
-# Rechner, bevor hyprlock oben ist, und man kommt auf einen entsperrten
-# Bildschirm zurueck.
+# `-w` (wait) steht wegen before-sleep: swayidle gibt seinen Sleep-Inhibitor
+# erst frei, wenn `loginctl lock-session` zurueck ist. Mehr garantiert es
+# NICHT — der Sperrbildschirm startet danach asynchron ueber das Lock-Signal
+# von logind und gewinnt das Rennen gegen den Freezer von systemd-sleep bisher
+# immer (11.09. und 13.09. stand nach dem Resume der Sperrbildschirm). Wer die
+# Garantie wirklich braucht, muss swaylock in before-sleep SELBST starten;
+# warum eine Warteschleife auf pidof dort in den Deadlock laeuft, steht im
+# README unter "Standby eine Sekunde nach dem Entsperren".
 #
-# `pidof hyprlock || hyprlock` verhindert eine zweite Instanz — wortgleich zum
-# lock_cmd in hypridle.conf.
+# ABER: `-w` gilt fuer JEDES Kommando dieser Zeile, nicht nur fuer before-sleep
+# (man swayidle: "causes swayidle to block until the command finishes").
+# Deshalb `swaylock -f` im lock-Kommando (bei hyprlock, das kein -f hat, war
+# es ein Shell-`&`). Ohne das haengt swayidle im
+# waitpid, solange der Sperrbildschirm steht, und verarbeitet KEINE
+# Wayland-Events mehr; die stauen sich im Socket: nach 15 min schickt Sway das
+# "idled" fuer den 900er-Timer, beim Tippen des Passworts das "resumed". Kaum
+# ist der Lock-Client weg, arbeitet swayidle die Warteschlange der Reihe nach ab, und
+# das erste Ereignis darin ist das "idled" -> `systemctl suspend`. Ergebnis:
+# Passwort eingeben, eine Sekunde spaeter Standby. Zweimal passiert, beide Male
+# mit unix_chkpwd-Erfolg und "The system will suspend now!" im Journal:
+# 11.09. 09:01:04 -> 09:01:05 und 13.09. 11:02:51 -> 11:02:52. Kehrseite
+# desselben Fehlers: seit dem Wechsel auf Sway (10.09.) hat die 15-min-Stufe bei
+# gesperrtem Bildschirm kein einziges Mal von selbst gefeuert, die einzigen
+# beiden Suspends waren die nach dem Entsperren. Herleitung im README unter
+# "Idle-Verhalten".
+#
+# `pidof swaylock >/dev/null || swaylock -f`: pidof verhindert eine zweite
+# Instanz (logind schickt das Lock-Signal auch dann, wenn schon gesperrt ist,
+# etwa bei before-sleep am gesperrten Rechner). `-f` ist besser als das
+# fruehere `&`: swaylock forkt laut Manpage erst "after locking", der Aufruf
+# kehrt also erst zurueck, wenn die Session wirklich gesperrt ist — und
+# swayidle ist trotzdem sofort wieder im Event-Loop. `>/dev/null`, weil pidof
+# sonst bei jedem Lock eine PID in den Session-Log schreibt.
 #
 # Auch das eine einzige Zeile, siehe die Begruendung beim
 # dbus-update-activation-environment weiter oben. Der Reihe nach:
 #   timeout 300   nach 5 min sperren
 #   timeout 900   nach 15 min suspendieren
 #   before-sleep  vor jedem Suspend sperren (auch bei Deckel zu / systemctl)
-#   after-resume  Displays wieder anschalten -- Gegenstueck zu
-#                 `hyprctl dispatch dpms on` im after_sleep_cmd drueben
+#   after-resume  Displays wieder anschalten (`power`, nicht `dpms`: dpms ist
+#                 in Sway 1.11 laut sway-output(5) nur noch ein deprecated
+#                 Alias)
 #   lock/unlock   auf das Lock-Signal von logind reagieren; das ist der Weg,
-#                 ueber den `loginctl lock-session` oben ueberhaupt wirkt
-exec swayidle -w timeout 300 'loginctl lock-session' timeout 900 'systemctl suspend' before-sleep 'loginctl lock-session' after-resume 'swaymsg "output * dpms on"' lock 'pidof hyprlock || hyprlock' unlock 'pkill -x hyprlock'
+#                 ueber den `loginctl lock-session` oben ueberhaupt wirkt.
+#                 unlock schickt SIGUSR1, nicht SIGTERM: swaylock entsperrt auf
+#                 USR1 sauber (swaylock(1), SIGNALS; hyprlock tat dasselbe). Stirbt
+#                 der Lock-Client ohne unlock, bleibt die Session laut
+#                 ext-session-lock-v1 gesperrt und Sway zeigt eine Farbflaeche —
+#                 dieselbe Fehlerklasse wie das `&` oben (Review 13.09.2026).
+exec swayidle -w timeout 300 'loginctl lock-session' timeout 900 'systemctl suspend' before-sleep 'loginctl lock-session' after-resume 'swaymsg "output * power on"' lock 'pidof swaylock >/dev/null || swaylock -f' unlock 'pkill -USR1 -x swaylock'

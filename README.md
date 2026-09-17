@@ -1,7 +1,8 @@
 # device-config
 
-Reproduzierbares Setup: Fedora Minimal + Hyprland.
-Erprobt auf dem Cube (Fedora 44, Hyprland 0.56 aus COPR), Book folgt später.
+Reproduzierbares Setup: Fedora Minimal + Sway.
+Erprobt auf dem Cube (Fedora 44, Sway 1.11), Book folgt später.
+Bis 10.09.2026 lief hier Hyprland — s. „Compositor: Sway".
 `bootstrap.sh` + `packages.txt` = Systemschicht, `home/` = chezmoi-Source.
 
 ## 0. Vorbereitung (ohne Zielhardware)
@@ -31,20 +32,21 @@ reboot
 ```
 
 Nach dem Reboot kommt SDDM (s. "Login-Screen"). Dort einmalig die Session
-**"Hyprland"** wählen — SDDM merkt sie sich danach, zusammen mit dem Benutzer.
-TTY2 (Strg+Alt+F2) startet KEIN Hyprland — das ist der Debug-Ausgang.
+**"Sway"** wählen — SDDM merkt sie sich danach, zusammen mit dem Benutzer.
+TTY2 (Strg+Alt+F2) startet KEINEN Compositor — das ist der Debug-Ausgang.
 Fällt SDDM aus, greift der Notfallpfad in `.bash_profile`: TTY1-Login startet
-Hyprland dann wie früher direkt über den `start-hyprland`-Wrapper (0.53+
-verlangt den — nackter `Hyprland`-Start lässt Session-Setup aus).
+dann direkt `sway`. Kein Wrapper nötig — Sway macht sein Session- und
+D-Bus-Setup selbst.
 
 ## 3. Verifikation
 
-- `hyprctl configerrors` — sollte leer sein
-- `systemctl --user status xdg-desktop-portal xdg-desktop-portal-hyprland xdg-desktop-portal-gtk`
+- `sway -C` — prüft die Konfiguration, ohne die Session anzufassen; sollte
+  nichts melden
+- `systemctl --user status xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk`
   — alle drei `active`, keins `Dependency failed`
 - Flatpak-Probe: eines installieren, Datei-Dialog öffnen
-- `hyprctl monitors` — echte Namen in `monitors.conf.tmpl` eintragen, apply
-- `pidof hypridle` — sollte laufen; nach 5 min Idle sperrt hyprlock automatisch
+- `swaymsg -t get_outputs` — echte Namen in `sway/monitors.tmpl` eintragen, apply
+- `pidof swayidle` — sollte laufen; nach 5 min Idle sperrt swaylock automatisch
   (Ausnahme: Waybar-Modul **`Wach`** aktiv, s. "Idle-Verhalten")
 - `systemctl status sddm` — `active`, und der Greeter zeigt Catppuccin statt
   des grauen Werks-Themes
@@ -53,38 +55,36 @@ verlangt den — nackter `Hyprland`-Start lässt Session-Setup aus).
 
 ## Gelernt auf echter Hardware (Fedora 44, August 2026)
 
-- **Hyprland ist seit Fedora 43 aus den offiziellen Repos retired.**
-  Quelle ist die COPR `ashbuk/Hyprland-Fedora` (Name strikt kleingeschrieben,
-  falsche Schreibweise schlägt STILL fehl). bootstrap.sh richtet sie ein.
-- **uwsm und hyprpolkitagent gibt es in F44 nicht.** Ersatz: Start über
-  start-hyprland (bringt Session-/D-Bus-Setup mit) + mate-polkit als Agent.
-  ABER: start-hyprland aktiviert NICHT `graphical-session.target`, wovon
-  xdg-desktop-portal hart abhängt — siehe "Portale & Standardbrowser".
 - **dnf5 bricht bei EINEM unbekannten Paketnamen die GANZE Transaktion ab** —
   ein toter Eintrag in packages.txt verhindert alle anderen Installationen.
 - **Minimal Install hat weder flatpak noch tar** (SDKMAN braucht tar).
   Beides steht deshalb in packages.txt.
-- **windowrule-Grammatik ist seit 0.53 komplett neu:** `match:class <regex>`
-  plus Effekte mit Werten (`no_blur on`). windowrulev2 existiert nicht mehr.
-- **.conf-Config wird mit Hyprland 0.57 entfernt** (Lua-Migration).
-  Offenes TODO — Konverter: Hyprland-Repo Discussion #13115.
-- Die ashbuk-COPR lässt Qt-GUI-Helfer (hyprland-qtutils/guiutils) bewusst
-  weg — die Startup-Notiz dazu ist ignorierbar.
+- **Nichts aktiviert `graphical-session.target` von selbst**, und
+  xdg-desktop-portal hängt hart davon ab. Deshalb gibt es
+  `systemd/user/sway-session.target` — siehe "Portale & Standardbrowser".
+- **Es gibt keinen schlanken Polkit-Agenten für wlroots-Sessions in F44.**
+  Genommen: mate-polkit.
+- Eine Handvoll Lektionen aus dieser Zeit betraf Hyprland selbst (die
+  retirete COPR, die 0.53er windowrule-Grammatik, die anstehende
+  Lua-Migration). Sie sind am 10.09.2026 mit Hyprland aus dem Repo
+  gefallen — s. "Compositor: Sway".
 
 ## Theming (Catppuccin Mocha)
 
-- `hypr/mocha.conf` ist die einzige Quelle der Palette (Farbwerte aus dem
-  offiziellen `catppuccin/hyprlock`-Theme) — gesourct von `hyprland.conf`
-  UND direkt von `hyprlock.conf`, damit beide nie auseinanderlaufen.
-  Sourcing-Reihenfolge in `hyprland.conf` ist wichtig: `mocha.conf` muss vor
-  `base.conf`/`effects.conf` stehen, die seine Variablen referenzieren.
-- Wallpaper: siehe eigenen Abschnitt weiter unten. `background_color` im
-  `misc`-Block (base.conf) ist seitdem nicht mehr *das* Wallpaper, sondern der
+- Die Palette liegt in `sway/mocha` (als `set $name #rrggbb`) und noch einmal
+  ausgeschrieben in `swaylock/config` (als `option=rrggbb`, ohne Raute — swaylock
+  kennt keine Variablen und kein Include). Bis 13.09.2026 gab es dazu
+  `hypr/mocha.conf` für hyprlock; die ist mit hyprlock gegangen, `kbdlight` liest
+  seitdem `sway/mocha`. Farbwerte alle aus dem offiziellen `catppuccin/*`-Theme.
+  Sourcing-Reihenfolge in `sway/config` ist wichtig: `mocha` muss vor `base`
+  und `effects` stehen, die seine Variablen referenzieren.
+- Wallpaper: siehe eigenen Abschnitt weiter unten. Die flache Farbe aus
+  `output * bg` (`sway/monitors.tmpl`) ist nicht *das* Wallpaper, sondern der
   Fallback, wenn kein Bild gesetzt ist.
-- Border-Farben (`col.active_border`/`col.inactive_border` in effects.conf)
-  sind die einzige bewusste Ausnahme von "Deko ausschließlich in effects.conf
+- Border-Farben (`client.focused`/`client.unfocused` in `sway/effects`)
+  sind die einzige bewusste Ausnahme von "Deko ausschließlich in effects
   via explizite Zeilen" — der Border ist so oder so da, nur die Farbe ändert sich.
-- Waybar/mako/foot/fuzzel/btop: Farben aus den jeweiligen offiziellen
+- Waybar/swaync/foot/fuzzel/btop: Farben aus den jeweiligen offiziellen
   `catppuccin/*`-Themes (Mauve-Akzent), Font ist überall `JetBrains Mono`
   (aus packages.txt) — **kein Nerd Font installiert**, deshalb bei
   Waybar-Icons/Glyphen aufpassen (aktuell text-only, siehe config.jsonc).
@@ -102,14 +102,13 @@ verlangt den — nackter `Hyprland`-Start lässt Session-Setup aus).
   üblichen Nerd-Font-Glyphen (kein Nerd Font installiert, siehe oben).
   Die `class<...>`-Regeln in `window-rewrite` sind Vermutungen basierend auf
   den üblichen WM_CLASS-Werten — vor dem ersten Vertrauen mit
-  `hyprctl clients` gegenprüfen und ggf. anpassen. Ausnahme: `ONLYOFFICE` ist
-  auf dem cube live abgelesen und stimmt. Auf "book" (2 Monitore,
+  `swaymsg -t get_tree` gegenprüfen und ggf. anpassen. Ausnahme: `ONLYOFFICE`
+  ist auf dem cube live abgelesen und stimmt. Auf "book" (2 Monitore,
   `all-outputs:true`) zeigen aktuell BEIDE Bars dieselben 6 Buttons — falls
-  unerwünscht, `persistent-workspaces` in `waybar/config.jsonc` auf
-  Output-Namen aufteilen (siehe Waybar-Doku für `hyprland/workspaces`).
-  Damit Waybars `persistent-workspaces` überhaupt greift, deklariert
-  `rules.conf` die Workspaces 1-6 zusätzlich als `persistent:true` in
-  Hyprland selbst.
+  unerwünscht, `persistent-workspaces` in `waybar/config.jsonc.tmpl` auf
+  Output-Namen aufteilen (siehe Waybar-Doku für `sway/workspaces`).
+  Ein Gegenstück in der Compositor-Konfiguration braucht es dafür nicht: das
+  `sway/workspaces`-Modul erzeugt die leeren Buttons selbst.
 
 ## Wallpaper
 
@@ -119,10 +118,10 @@ Lizenz dran. Preis dieser Entscheidung: auf einer frisch aufgesetzten Maschine
 ist der Ordner leer, das ist der einzige Teil des Setups, der nicht
 reproduzierbar ist. Bilder also selbst rüberkopieren (`rsync`, s. packages.txt).
 
-**swaybg statt hyprpaper**, obwohl hyprpaper der "native" Weg wäre: hyprpaper
-ist aus den Fedora-Repos raus (letzte Version F41), hyprland selbst F42 —
-dieselbe Retire-Welle. swaybg ist regulär paketiert und damit
-`dnf upgrade`-fähig, statt an der COPR zu hängen. swaybg hat kein IPC,
+**swaybg**, und das war schon zu Hyprland-Zeiten die Wahl: hyprpaper wäre dort
+der "native" Weg gewesen, ist aber aus den Fedora-Repos raus (letzte Version
+F41, hyprland selbst F42 — dieselbe Retire-Welle). swaybg ist regulär paketiert
+und damit `dnf upgrade`-fähig, statt an einer COPR zu hängen. swaybg hat kein IPC,
 gewechselt wird per Prozess-Neustart; der Switcher startet den neuen Prozess vor
 dem Abräumen des alten, sonst blitzt kurz die Hintergrundfarbe durch.
 
@@ -137,15 +136,15 @@ wallpaper status
 ```
 
 Die Auswahl wird in `~/.local/state/wallpaper` gemerkt und beim Session-Start
-per `exec-once = wallpaper restore` (base.conf) wieder gesetzt. Ist kein Bild
+per `exec ~/.local/bin/wallpaper restore` (`sway/base`) wieder gesetzt. Ist kein Bild
 gemerkt, nimmt `restore` das erste im Ordner; ist der Ordner leer oder fehlt,
 endet der Aufruf **still mit 0** — dann bleibt `background_color` stehen. Das
 ist Absicht: eine frische Maschine soll deswegen keine Fehlerzeile im Log haben.
 
-Für den Lockscreen gilt das NICHT — `hyprlock.conf` bleibt bei der flachen
-Farbe. Wer dort auch ein Bild will, setzt in `background {}` einen
-`path = ...` statt `color`; hyprlock kann sich das Bild aber nicht vom Switcher
-holen, das wäre ein zweiter, manuell gepflegter Pfad.
+Für den Lockscreen gilt das NICHT — `swaylock/config` bleibt bei der flachen
+Farbe (`color=1e1e2e`). Wer dort auch ein Bild will, setzt `image=...` dazu;
+swaylock kann sich das Bild aber nicht vom Switcher holen, das wäre ein
+zweiter, manuell gepflegter Pfad.
 
 ## Bluetooth
 
@@ -442,7 +441,7 @@ kein `libmad`, kein `flac`-Paket und keine Codec-Nachinstallation.
 
 Das ist der Fallstrick: Cover-Art in MP3/FLAC ist für mpv **Video** (Default
 `--audio-display=embedded-first`). Unbehandelt macht mpv dafür ein Fenster auf,
-und Hyprland kachelt es in die aktive Workspace ein — dasselbe
+und der Tiler kachelt es in die aktive Workspace ein — dasselbe
 Fenstermodell-Problem wie bei LibreOffice (s. Office-Kapitel).
 
 Zwei Stellen, mit Absicht getrennt:
@@ -502,26 +501,27 @@ Das JSON baut `jq` (steht schon in packages.txt), gesendet wird mit **`socat`**
 — beides in *einer* Verbindung, sonst kostet jede Datei eines Albums die
 Wartezeit erneut. Fokus holt das Skript bewusst nicht: ein Doppelklick im
 Dateimanager soll nicht die Workspace wechseln. Wer es anders will, hängt
-`hyprctl dispatch focuswindow class:mpv-audio` an — die Zeile steht auskommentiert
+`swaymsg '[app_id="mpv-audio"] focus'` an — die Zeile steht auskommentiert
 im Skript.
 
 Der Handler ist deshalb jetzt ein **chezmoi-Template**
 (`mpv-audio.desktop.tmpl`): `Exec=` sieht keine Shell, ein `~` wird nicht
 expandiert, und ob `~/.local/bin` im PATH des Aufrufers steht, ist nicht
 garantiert — bei Double Commander gemessen ja, aber genau diese Annahme war bei
-den Hyprland-Bindings schon einmal falsch. `{{ .chezmoi.homeDir }}` schreibt den
+den Compositor-Bindings schon einmal falsch. `{{ .chezmoi.homeDir }}` schreibt den
 echten Pfad hinein.
 
 ### Das Player-Fenster
 
 Erster Anlauf war ein `foot -e mpv …` ohne weitere Zutaten. Ergebnis: ein
-**gekacheltes** Terminal über den halben Bildschirm (`hyprctl clients`:
-`class=foot … size=[1702,1388]`), gefüllt mit `AO: [pipewire] 48000Hz stereo`.
+**gekacheltes** Terminal über den halben Bildschirm (damals abgelesen mit
+`hyprctl clients`: `class=foot … size=[1702,1388]`), gefüllt mit
+`AO: [pipewire] 48000Hz stereo`.
 Für eine Laufzeitanzeige zu viel Bildschirm und zu viel Text. Drei Griffe:
 
 - **`foot --app-id=mpv-audio`.** Ohne eigene app-id heißt die Klasse schlicht
   `foot`, und jede Fensterregel dafür träfe auch jedes Arbeitsterminal. Die
-  Regel in `rules.conf` lässt das Fenster schweben, 700×260, zentriert —
+  Regel in `sway/rules` lässt das Fenster schweben, 700×260, zentriert —
   gleiche Überlegung wie beim Rechner, `$mod+V` holt es in die Kachelung.
 - **`--msg-level=all=warn,statusline=status`.** Die Startzeilen kommen aus
   mpvs Modul `cplayer`, die Laufzeit aus `statusline` (`mpv --msg-module` zeigt
@@ -532,9 +532,11 @@ Für eine Laufzeitanzeige zu viel Bildschirm und zu viel Text. Drei Griffe:
 - **`--term-osd-bar`** für den Fortschrittsbalken. Im kleinen Fenster ist das
   die halbe Information.
 
-**Nebenbei gemessen: `move` kann in der 0.56-Grammatik nur absolute Pixel.**
-Erst sollte das Fenster unten rechts sitzen. Live gegen das laufende Hyprland
-geprüft (`hyprctl keyword windowrule` + `hyprctl clients`, Monitor 3440×1440):
+**Warum das Fenster zentriert steht und nicht unten rechts.** Ursprünglich
+sollte es in die Ecke. Der Versuch scheiterte damals unter Hyprland 0.56 an
+dessen `move`-Grammatik, die nur absolute Pixel akzeptierte; live geprüft mit
+`hyprctl keyword windowrule` auf einem 3440×1440-Monitor, fielen alle relativen
+Schreibweisen **still** auf die Standardplatzierung zurück:
 
 | Regel | Ergebnis |
 |---|---|
@@ -544,13 +546,16 @@ geprüft (`hyprctl keyword windowrule` + `hyprctl clients`, Monitor 3440×1440):
 | `move onscreen 100%-740 100%-300` | `at=[1370,605]` |
 | `move cursor -50% -50%` | `at=[1370,605]` |
 
-Kein Fehler, kein Eintrag in `hyprctl configerrors` — die Regel fällt still auf
-die Standardplatzierung zurück. Absolute Pixel wären auf dem cube richtig und
-auf dem book (andere Auflösung) daneben. Deshalb `center on`: das rechnet
-Hyprland selbst, und es gilt auf beiden Hosts.
+Absolute Pixel wären auf dem cube richtig und auf dem book (andere Auflösung)
+daneben gewesen — also zentriert.
+
+Unter Sway steht in `sway/rules.tmpl` heute `resize set 700 260, move position
+center`. Sway *könnte* die Ecke (`move position 78 ppt 80 ppt`); es bleibt
+trotzdem bei zentriert, weil das auf beiden Hosts dasselbe vorhersagbare
+Ergebnis liefert.
 
 Den Titel liefert mpv selbst: es setzt den *Terminaltitel* auf das laufende
-Stück, das steht damit in der Fensterleiste und im `hyprland/window`-Modul.
+Stück, das steht damit in der Fensterleiste und im `sway/window`-Modul.
 Ein `--term-playing-msg` wäre der falsche Weg — das hängt an `cplayer` und
 fällt mit weg.
 
@@ -569,18 +574,18 @@ mit, mpv erst durch **`mpv-mpris`** — das Paket legt genau
 von jeder mpv-Instanz von allein geladen. Es gibt daran nichts zu
 konfigurieren, auch keine `mpv.conf`.
 
-Die Bindings in `binds.conf` benutzen `playerctl -p mpv,%any`:
+Die Bindings in `sway/binds` benutzen `playerctl -p mpv,%any`:
 
 - Ohne `-p` nimmt playerctl laut man-Page "den ersten verfügbaren Player" —
   bei laufendem Cider *und* laufendem mpv ist das nichts, worauf man sich
   verlassen will.
 - `mpv,%any` heißt: lokaler Player zuerst, sonst irgendeiner. Wer gerade etwas
   lokal abspielt, meint mit der Taste das. Laufende Namen: `playerctl -l`.
-- Das Komma überlebt Hyprlands Config-Parser — nachgemessen mit
-  `hyprctl keyword bind` + `hyprctl binds`: gesplittet wird nur bis zum
-  Dispatcher, der Rest bleibt ein Argument. Keine Anführungszeichen, kein
-  Wrapper-Skript nötig.
-- `bindl` statt `bind`, wie bei der Tastaturbeleuchtung: geht auch bei
+- Das Komma in `mpv,%any` ist unter Sway unkritisch: hinter `exec` steht der
+  Rest der Zeile ohnehin komplett in der Shell. (Unter Hyprland war das eine
+  echte Frage — dessen Parser splittet an Kommas; nachgemessen hatte es
+  damals ebenfalls gehalten.) Keine Anführungszeichen, kein Wrapper nötig.
+- `bindsym --locked`, wie bei der Tastaturbeleuchtung: geht auch bei
   gesperrtem Bildschirm.
 
 **Noch nicht auf dieser Hardware nachgemessen**, ob die Tasten wirklich
@@ -591,7 +596,8 @@ das trennt man mit `playerctl -p mpv,%any play-pause` direkt im Terminal.
 Nebenbefund beim Einbauen: `dot_local/bin/keybinds` matchte nur `bind` und
 `bindm`. `bindl`/`bindel` fielen durch — die Tastaturbeleuchtung stand also
 schon länger in `binds.conf` und fehlte trotzdem im `SUPER+F1`-Popup, lautlos.
-Muster ist jetzt `bind[a-z]*`.
+Muster war danach `bind[a-z]*`; seit Sway matcht das Skript `bindsym` (Flags
+wie `--locked` stehen dort hinter dem Schlüsselwort, nicht darin).
 
 ### Prüfen nach `chezmoi apply`
 
@@ -599,7 +605,7 @@ Muster ist jetzt `bind[a-z]*`.
 xdg-mime query default audio/flac     # -> mpv-audio.desktop
 xdg-open ~/Musik/irgendwas.flac       # -> foot mit mpv, KEIN zweites Fenster
 playerctl -l                          # bei laufendem mpv: mpv (evtl. mpv.instanceN)
-hyprctl clients | grep -A2 mpv-audio  # class=mpv-audio, floating=true
+swaymsg -t get_tree | grep -A2 mpv-audio   # app_id=mpv-audio, floating
 music a.flac; music b.flac            # zweiter Aufruf ersetzt, kein zweites Fenster
 ```
 
@@ -610,8 +616,8 @@ Implementierungen lesen den Cache.
 
 ## Idle-Verhalten und der `Wach`-Schalter
 
-`hypridle.conf` fährt eine **zweistufige** Kette: **5 min** sperren
-(`loginctl lock-session` → hyprlock), **15 min** Suspend. Eine Display-Aus-Stufe
+`swayidle` (Aufruf in `sway/base`) fährt eine **zweistufige** Kette: **5 min**
+sperren (`loginctl lock-session` → swaylock), **15 min** Suspend. Eine Display-Aus-Stufe
 bei 5:30 min gab es früher, sie ist raus — siehe "Display-Aus killt Thunderbird"
 weiter unten.
 
@@ -623,16 +629,16 @@ Dafür sitzt links in der rechten Modulgruppe der Waybar ein Schalter:
 
 | Anzeige | Farbe | Bedeutung |
 | --- | --- | --- |
-| `Idle` | gedämpft (`overlay1`) | Normalfall, volle Kette aus `hypridle.conf` |
+| `Idle` | gedämpft (`overlay1`) | Normalfall, volle swayidle-Kette |
 | `Wach` | gelb | kein Lock, kein Display-Aus, kein Suspend |
 
 Klick schaltet um, der Tooltip nennt den jeweils anderen Zustand.
 
 **Wie es wirkt.** Das ist Waybars eingebautes `idle_inhibitor`-Modul, kein
 eigenes Skript. Es hält einen `zwp_idle_inhibitor_v1` auf seiner eigenen
-Layer-Surface; Hyprland stoppt daraufhin die `ext-idle-notify-v1`-Timer, und
-aus genau denen speist hypridle seine drei Listener. hypridle wird also
-**nicht gestoppt** — ihm wird die Uhr angehalten. `pidof hypridle` sieht
+Layer-Surface; Sway stoppt daraufhin die `ext-idle-notify-v1`-Timer, und
+aus genau denen speist swayidle seine Listener. swayidle wird also
+**nicht gestoppt** — ihm wird die Uhr angehalten. `pidof swayidle` sieht
 weiterhin alles normal, und `systemctl --user` bleibt außen vor. Beim
 Zurückschalten laufen die Timer von vorn los, nicht an der Stelle weiter, an
 der sie standen.
@@ -643,11 +649,12 @@ Zwei Konsequenzen, die man kennen sollte:
   gesetzt: Waybar-Neustart, Relogin oder Reboot schalten zurück auf `Idle`.
   Ein vergessener Inhibit, der einen Reboot übersteht, fällt sonst erst auf,
   wenn der Akku von "book" leer ist.
-- **Manuelles Sperren geht weiter.** `SUPER+L` ruft hyprlock direkt auf und
-  fragt keinen Inhibitor. Der Schalter unterdrückt nur das *automatische*
-  Sperren.
+- **Manuelles Sperren geht weiter.** `SUPER+L` ruft `loginctl lock-session`
+  (seit 13.09.2026; davor `hyprlock` direkt, also ein zweiter, ungeprüfter
+  Weg) und fragt keinen Inhibitor — der hält nur die Idle-Timer an. Der
+  Schalter unterdrückt also nur das *automatische* Sperren.
 
-Nicht genommen: `systemctl --user stop hypridle` per Custom-Modul. Das wäre
+Nicht genommen: den Idle-Daemon per Custom-Modul anhalten. Das wäre
 ein Zustand außerhalb der Bar (Unit gestoppt), der einen Absturz von Waybar
 überlebt — und damit genau der vergessene Inhibit, den die Variante oben
 vermeidet.
@@ -656,7 +663,113 @@ vermeidet.
 Zwei-Zustands-Schalter ohne sichtbare Anzeige ist blind bedienbar, und
 verlassen kann man sich darauf nur, wenn man die Anzeige sowieso ansieht.
 
+### Standby eine Sekunde nach dem Entsperren (gelöst, 13.09.2026)
+
+> Seit dem Abend des 13.09.2026 ist der Sperrbildschirm **swaylock**, nicht
+> mehr hyprlock (Grund: „Nachlese 13.09.2026"). Die Analyse unten gilt
+> unverändert — `-w` blockiert weiterhin pro Kommando —, nur der Fix sieht
+> anders aus: statt `hyprlock &` steht `swaylock -f`, und das ist mehr als
+> eine Schreibweise. `-f` forkt laut swaylock(1) erst *nach* dem Sperren, der
+> lock-Aufruf kehrt also genau dann zurück, wenn die Session gesperrt ist.
+
+**Symptom.** Der Rechner ist gesperrt, aber wach — hyprlock steht, kein
+Standby. Passwort eingeben, Enter, Desktop ist kurz da, und eine Sekunde
+später geht die Kiste in den Suspend. Zweimal passiert, beide Male seit dem
+Wechsel auf Sway, und beide Male steht es so im Journal
+(`journalctl --since 2026-09-08 | grep -E 'unix_chkpwd.*success|will suspend now'`):
+
+```
+2026-09-11T09:01:04 audit: op=PAM:unix_chkpwd acct="zoellert" ... res=success
+2026-09-11T09:01:05 systemd-logind: The system will suspend now!
+2026-09-13T11:02:51 audit: op=PAM:unix_chkpwd acct="zoellert" ... res=success
+2026-09-13T11:02:52 systemd-logind: The system will suspend now!
+```
+
+**Ursache: `-w` gilt für jedes Kommando, und das lock-Kommando lief bis zum
+Entsperren.** `swayidle -w` ist wegen `before-sleep` gesetzt (s. Kommentar in
+`sway/base`). Die Manpage sagt aber ohne Einschränkung: *"using this option
+causes swayidle to block until the command finishes"* — das gilt für `timeout`,
+`lock`, `unlock`, alles. Das lock-Kommando war `pidof hyprlock || hyprlock`,
+und hyprlock läuft genau so lange, wie der Bildschirm gesperrt ist. swayidle
+saß also die ganze Sperrzeit in `waitpid` und hat **keine Wayland-Events
+verarbeitet**. Live nachgesehen am 13.09. bei gesperrtem Bildschirm:
+
+```console
+$ cat /proc/$(pidof swayidle)/wchan
+do_wait
+$ ps --ppid $(pidof swayidle) -o pid,etime,cmd
+ 245081    07:37 hyprlock
+```
+
+Die Events stauen sich derweil im Socket, in der Reihenfolge, in der Sway sie
+schickt: nach 15 min das `idled` für den 900er-Timer, beim Tippen des
+Passworts das `resumed` für beide Timer. Sobald hyprlock weg ist, kehrt
+`waitpid` zurück, swayidle arbeitet die Warteschlange ab — und das erste
+Ereignis darin ist das `idled` → `systemctl suspend`. Das `resumed` dahinter
+kommt zu spät. Daher die eine Sekunde.
+
+Die Kehrseite desselben Fehlers fällt weniger auf: solange swayidle blockiert
+war, konnte die 15-min-Stufe bei gesperrtem Bildschirm **nie** feuern. Seit
+dem 10.09. gab es genau zwei Suspends, und das waren die beiden nach dem
+Entsperren. Ein Rechner, der über Nacht gesperrt stehen bleibt, bleibt also
+wach — der Suspend kommt erst morgens, eine Sekunde nach dem Passwort.
+
+**Fix.** In `sway/base`:
+
+```
+lock 'pidof hyprlock >/dev/null || hyprlock &'
+```
+
+Das `&` hängt in POSIX sh an der ganzen `||`-Liste; die Shell kehrt sofort
+zurück, hyprlock läuft weiter, swayidle ist wieder im Event-Loop. swaylock hat
+für genau diesen Fall `-f` (die Manpage von swayidle benutzt es in ihrem
+Beispiel), hyprlock 0.9.6 hat keinen Daemonize-Schalter (`hyprlock --help`) —
+deshalb das Shell-`&`. `>/dev/null`, weil pidof sonst bei jedem Lock eine PID
+in den Session-Log schreibt.
+
+Greift nach `chezmoi apply` erst mit der nächsten Sway-Session (`exec` läuft
+nur beim Start, s. `binds`). Wer nicht neu anmelden will, startet swayidle
+von Hand neu (seit dem `&` ist hyprlock kein Kind von swayidle mehr, der
+Neustart nimmt es also nicht mit; bei entsperrtem Bildschirm ist es trotzdem
+übersichtlicher):
+
+```sh
+pkill -x swayidle && swaymsg exec "$(grep '^exec swayidle' ~/.config/sway/base | sed 's/^exec //')"
+```
+
+Prüfen: bei gesperrtem Bildschirm muss `cat /proc/$(pidof swayidle)/wchan`
+jetzt `do_sys_poll` oder `ep_poll` zeigen, nicht mehr `do_wait`.
+
+**Nicht genommen:**
+
+- `-w` weglassen. Dann wartet `before-sleep` nicht mehr auf
+  `loginctl lock-session`, und die Begründung in `sway/base` gilt weiter. Ehrlich
+  gesagt ist der Schutz kleiner, als der Kommentar klingt: `-w` wartet nur
+  darauf, dass der D-Bus-Aufruf durch ist. hyprlock selbst startet in beiden
+  Varianten erst danach, asynchron über das Lock-Signal von logind, und gewinnt
+  das Rennen gegen den Freezer von systemd-sleep bisher immer (11.09. und
+  13.09.: nach dem Resume stand der Sperrbildschirm, unix_chkpwd um 09:01:28
+  und 11:03:14).
+- In `before-sleep` auf `pidof hyprlock` warten, um das Rennen sicher zu
+  gewinnen. **Deadlock-Falle:** swayidle ist single-threaded und verarbeitet
+  das Lock-Signal erst, wenn das before-sleep-Kommando zurück ist. Eine solche
+  Schleife läuft immer in ihren Timeout, hyprlock startet danach trotzdem.
+  Wenn der Schutz je gebraucht wird, muss `before-sleep` hyprlock **selbst**
+  starten statt über `loginctl lock-session` zu gehen.
+
+**Konsequenz, die man kennen sollte:** ab jetzt suspendiert der Rechner bei
+gesperrtem Bildschirm nach 15 min tatsächlich, so wie es die Kette seit
+August vorsieht. Für lange Jobs bleibt der `Wach`-Schalter oben. Der Suspend
+selbst ist seit dem 26.08. unauffällig: 20 S3-Zyklen, null Fehler im Journal
+(s. "Suspend hängt sich auf").
+
 ### Display-Aus killt Thunderbird (deshalb keine DPMS-Stufe)
+
+> Diese Untersuchung ist im August/September 2026 **unter Hyprland** gemacht
+> worden; die Log-Auszüge und Pfade unten stammen von dort. Das Ergebnis gilt
+> unverändert weiter: die Ursache liegt beim Monitor und beim Kernel-Connector,
+> nicht beim Compositor. Deshalb hat auch die swayidle-Kette in `sway/base`
+> **keine** dpms-off-Stufe.
 
 **Symptom.** Nach jedem Idle-Zyklus ließ ein laufender Thunderbird keine
 Kontextmenüs mehr aufgehen. Kein Fehler, kein Absturz — das Menü kam einfach
@@ -671,8 +784,8 @@ das Display-Aus bei 5:30 min.
 
 **Was tatsächlich passiert.** `dpms off` schaltet den Monitor nicht bloß
 dunkel. Das Gerät lässt im Standby die HPD-Leitung fallen, der Kernel meldet
-den Connector daraufhin als *abgezogen*. Im Hyprland-Log
-(`$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/hyprland.log`) steht die
+den Connector daraufhin als *abgezogen*. Im damaligen Hyprland-Log
+(`$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/hyprland.log`) stand die
 Kette dreimal Wort für Wort gleich:
 
 ```
@@ -719,9 +832,9 @@ diese Kiste nicht zahlen muss:
 - **Thunderbird auf XWayland**
   (`flatpak override --user --nosocket=wayland org.mozilla.thunderbird_esr`).
   X11-Popups sind override-redirect und von dem Bug nicht betroffen. Preis:
-  Drag & Drop *aus* Thunderbird heraus liefe dann über Hyprlands XDND-Brücke
-  im XWM — genau der Weg, der in packages.txt bei Double Commander schon als
-  fragil ausgeschieden ist.
+  Drag & Drop *aus* Thunderbird heraus liefe dann über die XDND-Brücke des
+  XWayland-Managers — genau der Weg, der in packages.txt bei Double Commander
+  schon als fragil ausgeschieden ist.
 - **Wechsel auf den Release-Kanal** (`org.mozilla.thunderbird`, Flathub, aktuell
   154.0 — die *kleingeschriebene* App-ID, nicht das EOL `org.mozilla.Thunderbird`
   aus dem Kommentar in flatpaks.txt). Hat den Fix. Preis: monatliche
@@ -729,7 +842,7 @@ diese Kiste nicht zahlen muss:
   `~/.var/app/org.mozilla.thunderbird_esr/` — und das ist eine Einbahnstraße,
   ein von 154 geöffnetes Profil geht nicht zurück auf 140.
 
-**Wenn das Display-Aus zurück soll**, ist der Hebel nicht der hypridle-Listener,
+**Wenn das Display-Aus zurück soll**, ist der Hebel nicht der Idle-Listener,
 sondern der Connector: `video=HDMI-A-2:e` auf der Kernel-Cmdline zwingt ihn
 dauerhaft auf "verbunden", der HPD-Verlust im Standby wird dann ignoriert und
 der `wl_output` bleibt stehen. Hier nicht eingebaut, weil ungetestet und weil
@@ -738,14 +851,20 @@ der `wl_output` bleibt stehen. Hier nicht eingebaut, weil ungetestet und weil
 **Diagnose, wenn es wiederkommt:**
 
 ```sh
-grep -c "Connector .* disconnected" "$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/hyprland.log"
+journalctl --user -t sway | grep -c "disconnect"   # meldet Sway den Connector als weg?
 journalctl -u systemd-suspend.service --since today   # feuert der Suspend ueberhaupt?
 flatpak list --app --columns=application,version | grep -i thunderbird   # Gecko >= 152?
 ```
 
 ## Monitor gehört an die iGPU, nicht an die dedizierte Karte
 
-**Regel.** Das HDMI-Kabel steckt an der Onboard-Grafik des Mainboards
+**Stand 13.09.2026: Regel aufgehoben.** Das Kabel steckt seit dem Nachmittag
+wieder an der RX 6400 (HDMI-A-1), der S3-Test mit aktivem Display ist sauber
+durchgelaufen — s. „Ergebnis" am Ende dieses Abschnitts. Der Rest hier ist die
+Vorgeschichte und bleibt stehen, weil die Journal-Befunde die Rückfallebene
+begründen.
+
+**Regel (bis 13.09.2026).** Das HDMI-Kabel steckt an der Onboard-Grafik des Mainboards
 (`11:00.0`, Raphael), nicht an der Radeon RX 6400 (`03:00.0`). Das ist keine
 Geschmacksfrage, sondern die Voraussetzung dafür, dass der Rechner aus dem Idle
 zurückkommt.
@@ -780,6 +899,107 @@ aus D3 und kein Fehler.
 Compute steht sie weiter zur Verfügung, sie hängt nur nicht mehr im
 Modesetting-Pfad.
 
+**Rückweg zur dGPU (Plan vom 13.09.2026, am selben Tag gegangen).** Die Beweislage hat sich seit
+August verschoben, und die Regel oben ist damit weicher, als sie klingt. Im
+Journal (reicht zurück bis 15.08.) steht **jeder** SMU-Ausfall der RX 6400
+(16., 17., 18.08. und die oben genannten 22./24.08.) **nach** einem
+`PM: suspend entry (s2idle)` — also im Fallback, den der Drop-in
+`SuspendState=mem` aus dem nächsten Abschnitt seit 25.08. unterbindet. Die
+`deep`-Versuche unmittelbar davor (abgebrochen bei "Abort CPU freeze", Geräte
+suspendiert und wieder aufgeweckt) hat die Karte **mit aktivem Display** jedes
+Mal unbeschadet überstanden; am 16.08. um 00:34 z. B. ein kompletter
+Geräte-Suspend/-Resume im deep-Pfad ohne eine einzige amdgpu-Fehlerzeile, die
+SMU starb erst im anschließenden s2idle-Bein. Seit dem Kabelwechsel: 20 echte
+S3-Zyklen, 0 × `SMU: No response`, 0 × s2idle, dazu rund 340 Runtime-Resumes
+der dGPU aus BACO ohne Fehler.
+
+Was **nicht** getestet ist: ein vollständiger S3 mit der dGPU in D0 und
+aktivem CRTC — nicht aus dem Runtime-Suspend heraus, sondern als Karte, die
+gerade ein Bild ausgibt. Genau das ist der Unterschied zu heute, und genau das
+muss vor dem Umstecken einmal gezielt laufen. In dieser Reihenfolge:
+
+1. **Trockenlauf ohne Umstecken.** dGPU wach halten, selbstweckenden S3
+   fahren. Die Karte steht dann beim Suspend in D0 statt in D3hot und
+   durchläuft ihren vollen Suspend/Resume-Pfad, das Display hängt weiter an
+   der iGPU — stirbt die SMU doch, kostet das einen Reboot, keinen toten
+   Bildschirm. Nicht während einer Besprechung; `rtcwake` weckt sich selbst,
+   der Power-Button ist nicht nötig (so am 25.08. verifiziert).
+
+   ```sh
+   echo on | sudo tee /sys/bus/pci/devices/0000:03:00.0/power/control
+   sudo rtcwake -m mem -s 20
+   journalctl -k -b --since -3min | grep -E '0000:03:00.0.*(SMU|fail|error|timeout)'   # muss leer bleiben
+   echo auto | sudo tee /sys/bus/pci/devices/0000:03:00.0/power/control
+   ```
+
+2. **Render-GPU festlegen, bevor das Kabel wandert.** `boot_vga` steht auf
+   der iGPU (`/sys/bus/pci/devices/0000:11:00.0/boot_vga` = 1), und wlroots
+   nimmt das Boot-VGA-Gerät als primäre GPU. Wandert nur das Kabel, rendert
+   Sway weiter auf der Raphael und kopiert jeden Frame per PCIe auf die
+   RX 6400 — das Schlechteste aus beiden Welten. Zwei Wege: im BIOS
+   "Primary Display" / "Initial Display Output" auf PCIe stellen (dann kippt
+   `boot_vga`, ohne eine Zeile Config und auch für den TTY-Notfallpfad), oder
+   `WLR_DRM_DEVICES=/dev/dri/by-path/pci-0000:03:00.0-card` vor dem Start
+   von Sway. Unter SDDM geht Letzteres nur über eine eigene Session-Datei mit
+   `Exec=env WLR_DRM_DEVICES=... sway`; der Login-Loop aus dem SDDM-Abschnitt
+   war ein `bash -lc`-Wrapper-Problem, kein `env`-Problem. Die iGPU im BIOS
+   **nicht** abschalten: sie ist der einzige Encoder der Kiste (Navi 24 hat
+   keinen, s. Bildschirmaufnahme), `renderD129` muss bleiben.
+
+3. **Umstecken** auf DP-1 oder HDMI-A-1 der RX 6400. Der Output heißt dann
+   nicht mehr `HDMI-A-2` — `monitors.tmpl` anpassen und den Modus mit
+   `swaymsg -t get_outputs` gegenprüfen (3440x1440@99.982Hz, s. dort).
+
+4. **Derselbe rtcwake-Test mit Display an der dGPU**, mit `book` per SSH
+   daneben. Rückfallebene: Kabel zurück an die iGPU, Reboot.
+
+Preis, wenn es klappt: kein Runtime-Suspend mehr für die Karte (ein aktiver
+CRTC hält sie in D0), also ein paar Watt mehr im Leerlauf. Gewinn: Sway
+rendert 3440x1440@100 Hz auf der stärkeren Karte. Eine Zwischenlösung ohne
+jedes Risiko gibt es heute schon: Display an der iGPU lassen und einzelne
+Anwendungen mit `DRI_PRIME=1` (oder `DRI_PRIME=pci-0000_03_00_0`) auf der
+RX 6400 rendern lassen — die Karte wacht dafür aus BACO auf, das tut sie laut
+Journal seit Wochen fehlerfrei.
+
+**Ergebnis (13.09.2026, 15:27–15:33).** Der Plan ist in anderer Reihenfolge
+gelaufen als aufgeschrieben, mit demselben Resultat:
+
+- Schritt 1 (Trockenlauf) ist ausgefallen — das Kabel war schon umgesteckt,
+  als die Session wieder aufgenommen wurde.
+- Schritt 2 hat das BIOS erledigt: nach dem Reboot um 15:27 meldet der Kernel
+  `pci 0000:03:00.0: vgaarb: setting as boot VGA device`, `boot_vga` steht
+  auf der RX 6400 und auf 0 für die Raphael. wlroots nimmt damit die dGPU als
+  primäre Karte, `WLR_DRM_DEVICES` und eine eigene SDDM-Session-Datei sind
+  nicht nötig. Direkt belegen lässt sich das ohne root nicht — sway hält
+  `CAP_SYS_NICE` und ist deshalb nicht dumpable, `/proc/<pid>/fd` bleibt zu —
+  aber Firefox hat ausschließlich `renderD128` offen, und das ist jetzt die
+  RX 6400 (`/dev/dri/by-path/pci-0000:03:00.0-render`). Wer es genau wissen
+  will: `sudo cat /sys/kernel/debug/dri/1/clients`.
+- Schritt 3: `swaymsg -t get_outputs` zeigt `HDMI-A-1` mit
+  3440x1440@99.982 Hz. Die Output-Zeile über die Monitor-Kennung in
+  `monitors.tmpl` hat gegriffen, ohne dass etwas anzupassen war.
+- Schritt 4: `sudo rtcwake -m no -s 30 && systemctl suspend` um 15:32:25,
+  also über logind und damit über den Weg, den swayidle nachts nimmt.
+  `PM: suspend entry (deep)` → `PM: suspend exit` um 15:33:06. Die dGPU
+  macht wie erwartet `MODE1 reset` (kein Fehler, s. oben), dann
+  `SMU is resumed successfully!`, `DMUB hardware initialized`. Kein
+  `SMU: No response`, kein `sdma0 timeout`, kein s2idle. Der Monitor stand
+  danach mit denselben 99.982 Hz, `power/runtime_status` der Karte auf
+  `active` mit `control=auto` — der aktive CRTC hält sie in D0, das ist der
+  im Plan erwartete Preis (Leistungsaufnahme laut hwmon ~8 W im Leerlauf).
+
+Damit ist der einzige nicht getestete Fall (S3 mit dGPU in D0 und aktivem
+CRTC) genau einmal positiv gelaufen. Eine Stichprobe, kein Dauerbeweis — die
+Rückfallebene bleibt: Kabel zurück an `HDMI-A-2` der iGPU, Reboot, `boot_vga`
+kippt von selbst zurück. Die Render-Node-Nummern haben den Wechsel überlebt:
+`renderD129` ist weiterhin die Raphael (der einzige Encoder, s.
+Bildschirmaufnahme), `renderD128` die RX 6400.
+
+Was der Test nebenbei aufgedeckt hat: der Bildschirm war über den Suspend
+hinweg **nicht gesperrt**. Im Session-Log (`~/.cache/wayland-errors`) steht
+`sh: Zeile 1: hyprlock: Kommando nicht gefunden` — das Paket-Aufräumen vom
+Mittag hat hyprlock mitgenommen, s. „Nachlese 13.09.2026".
+
 ## Suspend hängt sich auf (gelöst: kein s2idle-Fallback)
 
 **Symptom.** Nach dem automatischen Suspend kommt der Rechner nicht zurück:
@@ -790,7 +1010,8 @@ harte Reset.
 **Was tatsächlich passiert** (Journal vom 24.08.2026, Boot `-1`, ab 09:03:25 —
 `journalctl -b -1` und dann nach `PM: suspend` suchen):
 
-1. hypridle löst nach 15 min `systemctl suspend` aus. systemd probiert
+1. Der Idle-Daemon (damals hypridle, heute swayidle) löst nach 15 min
+   `systemctl suspend` aus. systemd probiert
    `SuspendState` der Reihe nach durch, per Default `mem standby freeze`.
    Erster Versuch `mem` = S3. Der Kernel bricht beim Einfrieren der CPUs ab:
 
@@ -955,7 +1176,7 @@ steckt. Erst `pm_wakeup_irq` lesen, dann den Zweig auflösen — nicht raten.
 ## Fester Workspace pro App (nur `cube`)
 
 Die Fenster liegen an diesem Arbeitsplatz immer gleich, also steht das auch so
-in der Config — im cube-Zweig von `hypr/rules.conf.tmpl`:
+in der Config — im cube-Zweig von `sway/rules.tmpl`:
 
 | WS | App | Klasse |
 |---|---|---|
@@ -969,28 +1190,31 @@ in der Config — im cube-Zweig von `hypr/rules.conf.tmpl`:
 - **Fensterregel, kein Autostart.** Nichts wird beim Login gestartet; die Regel
   greift erst, wenn man die App selbst öffnet. Wer Thunderbird nie startet, hat
   eine leere 3.
-- **Und kein Pinning.** Hyprland wertet Fensterregeln genau einmal aus, beim
-  Öffnen des Fensters. Danach ist das Fenster ein Fenster wie jedes andere —
+- **Und kein Pinning.** Die Regel greift genau einmal, im Moment des
+  Fensteröffnens. Danach ist das Fenster ein Fenster wie jedes andere —
   `$mod+SHIFT+<n>` schiebt es weiter, und es bleibt dort. Die Regel holt es
   nicht zurück.
 - **`foot` steht bewusst nicht in der Liste.** Ein Terminal soll dort aufgehen,
   wo man gerade arbeitet; ein fester Platz wäre hier genau die falsche Hilfe.
-- **Ohne `silent`**, der Workspace wird also mitgewechselt: man startet eine App
-  und steht danach davor. Wer eine davon lieber im Hintergrund aufgehen lässt,
-  hängt an ihre Zeile ein `silent` an (`workspace 3 silent`). Beide Formen sind
-  gegen das laufende 0.56 geprüft (`hyprctl keyword windowrule` → `ok`, keine
-  `configerrors`).
+- **`assign` platziert STILL**, der Workspace wird also *nicht* mitgewechselt:
+  die App geht im Hintergrund auf, man bleibt stehen, wo man ist. Unter Hyprland
+  war das früher andersherum (dort stand die Regel bewusst ohne `silent`). Wer
+  das alte Verhalten will, ersetzt die Zeile durch die auskommentierte Variante
+  in `sway/rules.tmpl` (`move container to workspace number N, workspace number
+  N`) — die hängt allerdings an der Auswertungsreihenfolge zweier Befehle und
+  ist an dieser Stelle noch nicht nachgemessen.
 - **Warum nur auf dem cube:** die Aufteilung hängt an diesem Arbeitsplatz —
   Citrix für den Kunden, ein Monitor. Das book verteilt Workspaces über zwei
-  Monitore (`monitors.conf.tmpl`) und braucht eine eigene Aufteilung, sobald sie
-  feststeht. Deshalb ist `rules.conf` seit dieser Änderung ein chezmoi-Template
-  (`rules.conf.tmpl`); Zielname und `source =`-Zeile in `hyprland.conf` bleiben
+  Monitore (`sway/monitors.tmpl`) und braucht eine eigene Aufteilung, sobald sie
+  feststeht. Deshalb ist die Regeldatei ein chezmoi-Template
+  (`sway/rules.tmpl`); Zielname und `include`-Zeile in `sway/config` bleiben
   unverändert.
 - Citrix hat in Waybars `window-rewrite` jetzt auch ein Icon: 🪟 (U+1FA9F) für
   die Windows-Sitzung, die dort drin hängt — 🖥 war schon für `foot` vergeben.
   Das Zeichen ist mit `fc-list :charset=1fa9f` gegen NotoEmoji-Regular geprüft,
   es ist jung genug (Emoji 13.0), dass sich das lohnt.
-- Die Klassen sind alle mit `hyprctl clients -j` abgelesen (08.09.2026), bis auf
+- Die Klassen sind alle am 08.09.2026 live abgelesen (heute: `swaymsg -t
+  get_tree`), bis auf
   KeePassXC — das lief beim Gegenprüfen nicht, die Klasse stammt aus der bereits
   verifizierten `window-rewrite`-Liste in `waybar/config.jsonc.tmpl`.
 
@@ -999,15 +1223,16 @@ in der Config — im cube-Zweig von `hypr/rules.conf.tmpl`:
 `SUPER+F1` oder der Klick auf **"Keys"** in der Waybar zeigt die Tastenbelegung
 als durchsuchbares fuzzel-Popup (tippen filtert).
 
-Der Witz daran: **Quelle ist `binds.conf` selbst.** `dot_local/bin/keybinds`
+Der Witz daran: **Quelle ist `sway/binds` selbst.** `dot_local/bin/keybinds`
 parst die Datei — Bindings *und* die `# --- Abschnitt ---`-Kommentare, aus denen
 die Gliederung im Popup wird. Eine neue Bindung taucht damit automatisch auf.
 Eine von Hand gepflegte Zweitliste wäre nach dem dritten neuen Binding falsch,
 und das Repo hat mit `drift-check.sh` schon genug Meinung zu Abweichungen.
 
-- Bewusst **nicht** `hyprctl binds -j`: das kennt zwar den Live-Zustand, liefert
+- Bewusst **nicht** die Live-Bindungsliste des Compositors: die kennt zwar den
+  laufenden Zustand, liefert
   aber Modmasken statt Tastennamen und hat keine Abschnitte. Der Unterschied
-  fällt nur auf, wenn man Bindings zur Laufzeit per `hyprctl keyword` ändert —
+  fällt nur auf, wenn man Bindings zur Laufzeit ändert —
   die fehlen dann in der Übersicht.
 - `$mod` wird beim Anzeigen zu `SUPER`, und `~/.local/bin/` fällt bei den
   eigenen Skripten weg, damit die Zeilen lesbar bleiben.
@@ -1015,6 +1240,203 @@ und das Repo hat mit `drift-check.sh` schon genug Meinung zu Abweichungen.
   hinter `SHIFT+7`, das Binding wäre also faktisch ein Dreifingergriff.
 - Waybar-Modul ist `custom/keybinds`, Beschriftung **Text** ("Keys") wie der
   Rest der Bar — es ist weiterhin kein Nerd Font installiert.
+
+## Benachrichtigungen (swaync)
+
+Seit 10.09.2026 macht **SwayNotificationCenter** (`swaync`) die
+Benachrichtigungen, vorher war es mako. Zwei Dinge kamen dazu, und beide waren
+der Grund für den Wechsel: jedes Popup hat ein **✕** zum Wegklicken, und es gibt
+ein **Panel mit den vergangenen Meldungen** — auch denen, die man verpasst hat.
+
+| Aktion | Taste | Waybar |
+|---|---|---|
+| Panel auf/zu | `SUPER`+`N` | Linksklick auf **Msg** |
+| Nicht stören (DND) | `SUPER`+`SHIFT`+`N` | Rechtsklick auf **Msg** |
+| Einzelne Meldung schließen | — | **✕** am Popup |
+| Alle löschen | — | Knopf in der Kopfzeile des Panels |
+
+Das Waybar-Modul zeigt `Msg 0` … `Msg 3` (Anzahl ungelesener Meldungen) und im
+DND-Zustand `DND 2`. Die Farben folgen der Logik der übrigen Bar: gedämpft im
+Normalfall, Mauve wenn etwas ansteht, Gelb für DND — gelb wie der `Wach`-Schalter,
+weil beides Zustände sind, die man aktiv wieder abstellen muss.
+
+### Warum nicht mehr mako
+
+Beide Wünsche waren mit mako 1.11 nicht zu erfüllen, und zwar nicht aus
+Konfigurationsmangel, sondern prinzipiell:
+
+- **Kein Schließen-Knopf.** mako zeichnet ein Popup mit cairo als *eine* Fläche.
+  Es gibt darin keine Widgets, also auch keine Stelle, die einen eigenen Klick
+  bekommen könnte. Konfigurierbar ist nur, was ein Klick **aufs ganze Popup**
+  tut (`on-button-left`/`-right`/`-middle`). Ein `✕` in die `format`-Zeile zu
+  schreiben wäre gegangen — es wäre aber ein gemaltes Zeichen ohne eigene
+  Funktion gewesen, also genau die Art Attrappe, die man ein halbes Jahr später
+  für kaputt hält.
+- **Keine brauchbare History.** `makoctl history` und `makoctl restore` gibt es
+  (`makoctl help`, mako 1.11.0), aber das ist ein Ringpuffer im laufenden
+  Prozess — `max-history` steht per Default auf 5 und der Inhalt ist nach jedem
+  Neustart des Daemons weg. Das trägt "die eine Meldung von eben nochmal", nicht
+  "was habe ich heute Vormittag verpasst".
+
+swaync bringt beides von Haus aus, ist ein reguläres Fedora-Paket
+(`SwayNotificationCenter`, 0.12.6 in `updates`, **keine COPR** — dieselbe
+Überlegung wie bei swaybg statt hyprpaper) und spricht dieselbe
+`org.freedesktop.Notifications`-Schnittstelle. Kein Skript im Repo musste
+deshalb angefasst werden: `notify-send` aus libnotify bleibt der Client, und
+`record` verlässt sich weiter darauf, dass eine kritische Meldung stehen bleibt,
+bis man sie wegklickt (vorher `[urgency=high] default-timeout=0`, jetzt
+`timeout-critical: 0`).
+
+### Das Waybar-Modul
+
+`custom/notification` in `waybar/common.jsonc.tmpl` — es ist damit in **beiden**
+Sessions da, nicht nur unter Sway.
+
+Der eine Punkt, der es von den anderen Custom-Modulen unterscheidet: es hat
+**kein `interval` und kein `signal`**. `swaync-client -swb` ist kein
+Statusaufruf, der einmal läuft und sich beendet, sondern ein Abonnement — der
+Prozess hängt am Daemon und schreibt bei jeder Änderung eine neue JSON-Zeile.
+Waybar erkennt genau daran den Dauerbetrieb. Ein `interval` würde den Prozess im
+Takt abschießen und neu starten, ein `signal` wäre überflüssig, weil es nichts
+zu pollen gibt. Die Anzeige steht dadurch sofort statt nach bis zu einer Sekunde
+(anders als bei `custom/recording`, das wirklich pollt).
+
+Text statt Glyphe wie überall — es ist weiterhin kein Nerd Font installiert. Der
+DND-Zustand steht deshalb als **Wort** da (`DND`) und nicht nur als Gelbton: das
+ist der eine Zustand, in dem man sich sonst wundert, warum nichts mehr aufpoppt,
+und eine Farbe allein liest man nach zwei Wochen nicht mehr.
+
+Die Formatzeile heißt `"{icon} {text}"` und **nicht** `"{icon} {}"`. Waybar
+mischt seit dem Umstieg auf fmt 10 keine benannten und positionellen
+Platzhalter mehr in einem Format; die kurze Schreibweise kostet:
+
+```
+[error] custom/notification: mixing manual and automatic argument indexing
+        is no longer supported; try replacing "{}" with "{text}"
+```
+
+Das steht **nur im Log**. In der Bar sieht man eine Lücke und sucht den Fehler
+im Daemon. (Live über den Haufen gefahren beim Bauen des Moduls, 10.09.2026 —
+in `common.jsonc.tmpl` steht die Warnung deshalb direkt an der Zeile.)
+
+### Konfiguration: zwei Dateien, eine davon ohne Kommentare
+
+- `swaync/config.json` — Verhalten (Position, Timeouts, Panelbreite, die
+  deutschen Beschriftungen).
+- `swaync/style.css` — Aussehen. **GTK 4**, nicht cairo wie mako.
+
+**`config.json` ist die einzige Datei im Repo ohne Kommentare**, und das ist
+keine Nachlässigkeit: JSON kennt keine. Die Begründungen zu den Werten stehen
+deshalb hier. Gegen Tippfehler hilft `"$schema"` in Zeile 2 — die vollständige
+Liste aller Schlüssel samt Defaults steht in
+`/etc/xdg/swaync/configSchema.json`.
+
+- `timeout: 6`, `timeout-critical: 0` — 1:1 die Zeiten aus der alten
+  `mako/config` (swayncs eigener Default wäre 10). Kritisches bleibt stehen,
+  bis man es wegklickt; darauf verlässt sich `dot_local/bin/record`.
+- `notification-window-width: 400` statt mako-`width: 320` — die 80 px sind der
+  Platz, den das ✕ und die Aktionsknöpfe brauchen, ohne den Text zu quetschen.
+- `relative-timestamps: false` — der Default zeigt „26 minutes ago", und zwar
+  **auf Englisch**: es gibt keine deutsche Übersetzung
+  (`/usr/share/locale/de/LC_MESSAGES` enthält nichts von swaync). In einer sonst
+  deutschen Oberfläche ist der absolute ISO-Zeitstempel das kleinere Übel — und
+  für die eigentliche Frage ans Panel („wann kam das?") ohnehin die bessere
+  Antwort.
+- `text-empty` und die Texte unter `widget-config` — dieselbe Baustelle,
+  einmal eingedeutscht.
+- `widgets: ["title", "dnd", "notifications"]` — swayncs Default stellt
+  `"inhibitors"` voran. Das Widget listet Anwendungen, die Benachrichtigungen
+  unterdrücken; das macht hier niemand, und eine dauerhaft leere Überschrift im
+  Panel ist Fläche ohne Aussage.
+- `transition-time: 0` — Deko-Nullpunkt. Sway animiert nichts, das Panel soll
+  sich nicht als Einziges einblenden.
+- `fit-to-screen: true` + `control-center-width: 420` — das Panel geht über die
+  volle Höhe am rechten Rand. Auf dem cube (3440×1440) ist das ein schmaler
+  Streifen und stört nichts. `control-center-height` steht bewusst **nicht**
+  dabei: der Wert wird bei `fit-to-screen` ignoriert und wäre ein Regler, an dem
+  man später vergeblich dreht.
+- `keyboard-shortcuts: true` — `Escape` schließt das Panel, Pfeiltasten
+  navigieren. Ohne das ist ein Panel, das man per Taste öffnet, per Taste nicht
+  wieder zuzubekommen.
+- `ignore-gtk-theme: true` und `cssPriority: "user"` — beides steht so auch in
+  swayncs mitgeliefertem `/etc/xdg/swaync/config.json`; hier bewusst
+  übernommen, nicht weggelassen. `ignore-gtk-theme` löscht `GTK_THEME` aus der
+  Umgebung, damit ein GTK-Theme nicht in unsere Farben malt. Der Fall tritt auf
+  beiden Hosts gerade nicht ein (es gibt kein `~/.config/gtk-4.0/gtk.css` und
+  `bootstrap.sh` setzt kein `GTK_THEME`) — der Tag, an dem sich das ändert, soll
+  aber nicht der Tag sein, an dem das Panel plötzlich Adwaita-blau ist.
+
+### Das Stylesheet: Variablen statt Selektoren
+
+Der wichtigste Punkt an `swaync/style.css`, und der einzige, der beim Ändern
+wirklich weh tut: **swaync lädt zwei Stylesheets.** Erst seinen Default aus
+`/etc/xdg/swaync/style.css`, dann unseren. Im Log steht das wörtlich:
+
+```
+Loading CSS: "/etc/xdg/swaync/style.css"
+Loading CSS: "/home/zoellert/.config/swaync/style.css"
+```
+
+Beide landen auf derselben GTK-Priorität. Bei **gleicher Spezifität** gewinnt
+also das später geladene — unseres. Bei geringerer verliert es, und zwar
+**still**: kein Fehler, keine Warnung, die Regel ist einfach wirkungslos.
+Dieselbe Falle wie eine Sway-Fensterregel mit dem falschen Feld.
+
+Der Default ist durchgehend über **CSS-Custom-Properties** gebaut
+(`background: rgba(var(--noti-bg), var(--noti-bg-alpha))`), und genau das ist
+der vorgesehene Angriffspunkt: `:root` einmal überschreiben, und sämtliche
+Regeln des Defaults ziehen die neuen Werte. Deshalb besteht unser Stylesheet
+fast nur aus einem `:root`-Block und hat nur eine Handvoll echter Selektoren —
+für die Fälle, in denen es keine passende Variable gibt (Rahmenfarbe nach
+Dringlichkeit, der gedämpfte Zeitstempel, das eckige Avatarbild). Jeder davon
+ist so lang wie sein Gegenstück im Default; kürzer verliert er. Die Ketten sind
+brutal:
+
+```css
+.notification-row .notification-background .notification
+  .notification-default-action .notification-content .text-box .time
+```
+
+Zwei Fallen bei den Variablen selbst:
+
+- `--noti-bg` ist eine **Komponentenliste** (`30, 30, 46`), keine Farbe — der
+  Default setzt sie in `rgba(var(--noti-bg), var(--noti-bg-alpha))` ein. Ein
+  `#1e1e2e` an dieser Stelle ergibt schwarz.
+- `--border-radius: 0` erwischt fast alles, aber nicht das Avatarbild: dort
+  steht im Default ein fester `border-radius: 100px`, keine Variable. Dafür
+  braucht es die eine lange Regel.
+
+Änderungen greifen ohne Abmelden: `swaync-client -R` lädt die Konfiguration neu,
+`swaync-client -rs` das Stylesheet.
+
+### Der Umstieg (einmalig, von Hand)
+
+`chezmoi apply` legt die neuen Dateien an, aber zwei Dinge macht es nicht:
+
+```
+sudo dnf install SwayNotificationCenter
+sudo dnf remove mako          # sonst meldet drift-check.sh es als überzählig
+rm -rf ~/.config/mako         # chezmoi löscht eine entfernte Quelle NICHT mit
+```
+
+Danach **abmelden und neu anmelden**, nicht nur `SUPER`+`SHIFT`+`C`. Zwei
+Gründe: ein Sway-Reload startet die `exec`-Zeilen ohnehin nicht neu, und mako
+und swaync belegen denselben DBus-Namen `org.freedesktop.Notifications` — läuft
+mako noch, bekommt swaync ihn nicht und beendet sich still. Das Symptom wäre
+"gar keine Benachrichtigungen mehr", und man suchte es in der Konfiguration.
+
+### Verworfen
+
+- **mako behalten und die History per `makoctl history -j` in ein
+  fuzzel-Popup kippen** (dasselbe Muster wie `bt`, `wifi`, `audio-out`). Hätte
+  ins Repo gepasst und wäre ein Skript ohne neues Paket gewesen — scheitert aber
+  an der Quelle: fünf flüchtige Einträge sind kein Notification-Center. Und den
+  Schließen-Knopf hätte es weiterhin nicht gegeben.
+- **dunst** statt swaync: kann Kontextmenü und `history-pop`, aber ebenfalls
+  keinen Knopf am Popup und kein Panel. Damit löst es genau denselben halben
+  Teil des Problems wie mako, für denselben Preis eines Daemon-Wechsels.
+- **swayfx/eigene Bastelei** für die Optik: nicht angefasst. Das Panel ist GTK,
+  es reicht ein Stylesheet.
 
 ## Screenshots
 
@@ -1033,23 +1455,23 @@ nur mehr Tasten für dieselbe Entscheidung.
 
 - Kein neues Paket für die Funktion selbst: `grim`, `slurp`, `jq` und
   `wl-clipboard` standen schon in packages.txt. Dazu kam nur `libnotify` für die
-  Rückmeldung — mako ist der Anzeige-Daemon, der *Client* (`notify-send`) fehlt
+  Rückmeldung — swaync ist der Anzeige-Daemon, der *Client* (`notify-send`) fehlt
   auf einem Minimal Install komplett. Ohne ihn kann kein Skript im Repo eine
   Notification schicken. Fehlt er trotzdem, bleibt das Skript still und macht
   den Screenshot ohne Meldung.
-- **Kein grimblast** (hyprland-contrib): das hinge an derselben COPR wie
+- **Kein grimblast** (hyprland-contrib): das hing an derselben COPR wie
   hyprland selbst, deren Inhalt hier niemand kontrolliert — dieselbe Überlegung
-  wie bei hyprpaper/swaybg beim Wallpaper.
-- Der Fenster-Modus listet über `hyprctl clients -j` nur die **sichtbaren
-  Fenster der aktiven Workspace** (`mapped`, nicht `hidden`) und gibt deren
-  Rechtecke an `slurp -r`. Damit rastet die Auswahl auf Fensterkanten ein,
+  wie bei hyprpaper/swaybg beim Wallpaper, und mit Hyprland ohnehin erledigt.
+- Der Fenster-Modus listet über `swaymsg -t get_tree` nur die **sichtbaren
+  Fenster** (`.visible == true`, plus `.pid` gegen die Container-Knoten) und gibt
+  deren Rechtecke an `slurp -r`. Damit rastet die Auswahl auf Fensterkanten ein,
   statt pixelgenaues Zielen zu verlangen.
-- `screen` nutzt `grim -o <monitor>` statt Koordinaten aus `hyprctl monitors`:
+- `screen` nutzt `grim -o <monitor>` statt Koordinaten aus `swaymsg -t get_outputs`:
   auf skalierten Monitoren fallen Pixel- und Logikmaße auseinander, `-o` lässt
   grim selbst rechnen.
 - Der Dateiname hat Sekundenauflösung. Zwei Screenshots in derselben Sekunde
   überschreiben sich — praktisch nur mit gedrückt gehaltener Taste erreichbar.
-- Vorher lag das als zwei Einzeiler direkt in `binds.conf`
+- Vorher lag das als zwei Einzeiler direkt in der binds-Datei
   (`grim -g "$(slurp)" - | wl-copy`). Die Semantik von `SHIFT+Print` hat sich
   dabei geändert: früher alle Monitore, jetzt der aktive.
 
@@ -1087,7 +1509,7 @@ record toggle [modus]  # was die Tasten tun
   den Screenshots belegt. Für eine Aufnahme bliebe nur
   `SUPER+SHIFT+CTRL+ALT+S` — ein Vierfingergriff für eine Taste, die man mitten
   in einer Aufnahme trifft. `R` war auf beiden Hosts komplett frei
-  (`hyprctl binds` gegengeprüft), beide bekommen deshalb dieselbe Bindung —
+  (gegen die Bindungsliste geprüft), beide bekommen deshalb dieselbe Bindung —
   anders als bei den Screenshots, wo zwei Sätze nebeneinander stehen müssen.
 - **Ton ist aus, solange nichts anderes gesagt wird.** Ein Toggle, der unbemerkt
   das Mikrofon mitschneidet, ist die falsche Vorgabe. Ein `--audio` schaltet ihn
@@ -1138,7 +1560,7 @@ record toggle [modus]  # was die Tasten tun
 - **Kein `all`.** wf-recorder nimmt genau **einen** Output auf. Auf dem cube ist
   das ohnehin dasselbe wie `screen`; auf dem book muss man sich entscheiden. Bei
   `region`/`window` leitet das Skript den Output aus der **Auswahl** ab
-  (`hyprctl monitors`), nicht aus der aktiven Workspace — man zieht das Rechteck
+  (`swaymsg -t get_outputs`), nicht aus der aktiven Workspace — man zieht das Rechteck
   mit der Maus, und die kann auf dem anderen Monitor landen. Die Kantenlängen
   kommen dabei in physischen Pixeln, `x`/`y` im logischen Raum, deshalb steht im
   Skript `width / scale`.
@@ -1165,7 +1587,7 @@ record toggle [modus]  # was die Tasten tun
 - **Kein `on-click` zum Stoppen:** eine laufende Aufnahme per Klick auf die Bar
   zu beenden hieße, mit dem Zeiger *im Bild* herumzufahren.
 
-**Offener Punkt:** eine lange Aufnahme läuft in den Lockscreen. hypridle sperrt
+**Offener Punkt:** eine lange Aufnahme läuft in den Lockscreen. swayidle sperrt
 nach 5 Minuten, und `record` hält den Rechner nicht wach — beim Vorführen tippt
 und klickt man meist, dann greift der Timer nie, aber sicher ist das nicht. Bis
 dahin: vor langen Aufnahmen den **"Wach"**-Schalter der Waybar drücken (s.
@@ -1269,398 +1691,191 @@ ohnehin (`SUPER+D`, cliphist, keybinds, wifi, bt) und steht per `fuzzel.ini` auf
 - Kein Waybar-Modul mit Zähler. Wer es will, hat mit `todo status` die Zahl
   schon; das wäre ein `custom/`-Modul nach dem Muster von `custom/keybinds`.
 
-## Mac als Thin Client (nur `cube`)
+## Compositor: Sway (und der Abschied von Hyprland)
 
-Das MacBook zeigt den Hyprland-Desktop des cube im Vollbild, Tastatur und
-Trackpad gehen durch. Server ist `wayvnc` (packages.txt), gestartet von
-`dot_local/bin/remote` über die User-Unit `systemd/user/wayvnc.service`.
-Nur im LAN, nur solange es eingeschaltet ist.
+Bis zum **10.09.2026** liefen hier zwei Compositoren nebeneinander: Hyprland aus
+der COPR `ashbuk/Hyprland-Fedora` als Hauptsystem und Sway als Zweitsession zum
+Ausprobieren. Sway hat gewonnen; Hyprland ist samt Konfiguration, Portal,
+Session-Target, COPR und dem Mac-Thin-Client aus dem Repo entfernt.
 
-```sh
-remote on          # am cube — oder vom Mac aus: ssh cube remote on
-remote off
-remote toggle
-remote status      # on / off / halb
+Was das praktisch heißt:
+
+- **Eine Konfiguration**, `home/dot_config/sway/`: `config` sourct
+  `mocha`, `base`, `monitors`, `binds`, `rules`, `effects`. Es gilt die Regel des
+  Repos: Funktion in `base`/`binds`/`rules`, Deko **ausschließlich** in `effects`.
+  Die Dateien tragen keine Endung — Sway braucht keine.
+- **Eine Waybar-Konfiguration**, `waybar/config.jsonc.tmpl`. Vorher waren es
+  drei (`common.jsonc.tmpl` plus je eine Variante pro Compositor, per `include`
+  verbunden), dazu ein eigenes chezmoi-Template für die Workspace-Icons. Diese
+  ganze Aufteilung existierte nur wegen der zwei Sessions und ist ersatzlos weg.
+  Der Aufruf in `sway/base` braucht deshalb auch kein `-c` mehr.
+- **Die Skripte haben ihre Compositor-Weiche verloren.** `screenshot`, `record`
+  und `keybinds` hatten je zwei Zweige und wählten anhand von `SWAYSOCK`. Jetzt
+  reden sie nur noch mit `swaymsg`.
+- **`hyprlock` ist geblieben**, als einziges `hypr*`-Paket und mit Absicht. Es
+  braucht laut `strings /usr/bin/hyprlock` nur Standardprotokolle
+  (`ext-session-lock-v1`, `wp-cursor-shape`, `wp-fractional-scale`,
+  `wp-viewporter`, `wlr-screencopy`) und läuft unter Sway unverändert. Deshalb
+  gibt es `home/dot_config/hypr/` noch — mit genau zwei Dateien,
+  `hyprlock.conf` und der Palette `mocha.conf`, die es sourct. Kein `swaylock`:
+  das wären zwei Lockscreens zum Pflegen und Themen.
+- **`hypridle` ist dagegen gegangen.** Dieselbe Prüfung zeigt neben
+  `ext-idle-notify-v1` auch `hyprland-lock-notification-v1`, ein
+  Hyprland-eigenes Protokoll. Die Idle-Kette macht `swayidle` (Zeiten und
+  Begründungen unverändert: 5 min sperren, 15 min Suspend, **keine**
+  dpms-off-Stufe dazwischen — die Herleitung steht bei „Idle-Verhalten").
+
+### Der Mac als Thin Client ist mitgegangen
+
+`wayvnc` hat auf dem cube einen virtuellen Monitor bespielt, damit der Mac als
+zweiter Bildschirm derselben Sitzung dienen konnte. Der Aufbau hing vollständig
+an `hyprctl output create headless "mac"` — und **Sway 1.11 kennt kein
+`create_output`**. Nachbauen ließe er sich auch mit dem Befehl nicht: wayvnc
+entscheidet allein am Namenspräfix `HEADLESS-`, ob es den Output auf Zuruf des
+Clients resized, und stürzt dabei ab. Genau deshalb hieß der Output drüben
+`mac`; Sway würde den Namen selbst vergeben.
+
+Entfernt wurden deshalb `dot_local/bin/remote`, `systemd/user/wayvnc.service`,
+`dot_config/wayvnc/`, das Paket `wayvnc` und der Schlüssel-/Firewall-Block aus
+`bootstrap.sh`. Per `git log` jederzeit wieder ausgrabbar.
+
+**Zwei Reste bleiben auf der Maschine**, weil `bootstrap.sh` sie angelegt hat und
+nicht zurücknimmt:
+
+```
+sudo firewall-cmd --permanent --remove-service=vnc-server && sudo firewall-cmd --reload
+rm -rf ~/.config/wayvnc            # Serverschluessel und config.secret
+sudo dnf copr remove ashbuk/Hyprland-Fedora
 ```
 
-Auf dem Mac dann `cube.local:5900` im VNC-Client, Benutzer und Passwort aus
-`~/.config/wayvnc/config.secret` auf dem cube. Beim ersten Verbinden zeigt der
-Client den Fingerprint des Serverschlüssels — einmal bestätigen, danach kennt
-er ihn wie SSH einen Host-Key.
+### Was beim Umstieg auffiel
 
-**Client:** TigerVNC Viewer (`brew install --cask tigervnc-viewer`). wayvnc
-bietet beim Handshake ausschließlich RSA-AES an (Security-Types `RA2` und
-`RA2_256`, per Handshake-Probe geprüft); TigerVNC kann das seit 1.12. Apples
-eingebaute Bildschirmfreigabe (`open vnc://cube.local`) kennt nach allem, was
-bekannt ist, nur ihre eigenen und die klassische VNC-Anmeldung — einen Versuch
-wert, aber nicht darauf bauen.
+Nichts davon ist ein Fehler, aber alles davon fällt beim Umstellen auf:
 
-**Passwort merken kann TigerVNC hier nicht.** Seine Passwortdatei
-(`PasswordFile`) gilt nur für die klassische VNC-Anmeldung ohne Benutzername;
-bei RSA-AES mit Benutzer fragt der Dialog immer (`vncviewer/UserDialog.cxx`:
-Datei wird nur ausgewertet, wenn kein `user` verlangt ist). Der einzige
-Automatik-Weg sind die Umgebungsvariablen `VNC_USERNAME` und `VNC_PASSWORD`,
-die der Viewer vor dem Dialog liest (1.15 geprüft). Auf dem Mac also einmal
-ins Schlüsselbund und dann per Skript starten, statt die App zu klicken:
+1. **Keine Rundung, keine Animationen.** Sway kann beides nicht. Fenster sind
+   eckig und erscheinen ohne Übergang. Wer beides will, bräuchte swayfx.
+2. **Apps landen still auf ihrem Workspace** (nur `cube`, s. „Fester Workspace
+   pro App"). `assign` platziert, ohne mitzuwechseln — man bleibt stehen, wo man
+   ist. Die Alternative (`for_window … move container to workspace number N,
+   workspace number N`) steht auskommentiert in `sway/rules.tmpl`.
+3. **`SUPER+SHIFT+C` lädt die Konfiguration neu.** Sway liest seine
+   Konfiguration nicht von selbst neu ein. Was ein Reload **nicht** tut: die
+   `exec`-Zeilen erneut starten — waybar, swaync und swayidle laufen weiter wie
+   sie sind.
+4. **`app_id` vs. `class`.** Sway hat zwei getrennte Felder: `app_id` trifft nur
+   Wayland-Fenster, `class` nur XWayland-Fenster. Deshalb steht Citrix in
+   `sway/rules.tmpl` als `class`, alle anderen als `app_id`. Eine Regel mit dem
+   falschen Feld fällt **still** durch. Gegenprüfen: `swaymsg -t get_tree`.
+5. **Sway kennt kein `env`.** Umgebungsvariablen für die Session gehen über
+   `dbus-update-activation-environment` bzw. über eine Sway-Variable vor dem
+   Kommando (`$qtenv` in `sway/base`) — die Herleitung steht dort.
+6. **Kein `highrr`, kein `auto-right`.** Modus und Position der Monitore stehen
+   in `sway/monitors.tmpl` explizit.
 
-```sh
-# einmalig: Passwort aus ~/.config/wayvnc/config.secret (cube) ablegen
-security add-generic-password -a zoellert -s cube-vnc -w
-# Startskript, z. B. ~/bin/cube
-VNC_USERNAME=zoellert \
-VNC_PASSWORD="$(security find-generic-password -a zoellert -s cube-vnc -w)" \
-  exec /Applications/TigerVNC\ Viewer*.app/Contents/MacOS/TigerVNC\ Viewer cube.local:5900
+### Konfiguration prüfen, ohne die Session anzufassen
+
+```
+sway -C
 ```
 
-Der Mac ist nicht Teil dieses Repos, das Skript lebt nur dort.
+Liest die Konfiguration und meldet Fehler, ohne eine laufende Sitzung zu
+berühren. Das ist der Weg, eine Änderung zu prüfen, bevor man `SUPER+SHIFT+C`
+drückt.
+## Nachlese 13.09.2026: Review nach dem swayidle-Fund
 
-**Unscharf heißt JPEG.** TigerVNC handelt hier Tight aus (Journal: `Choosing
-tight encoding`) und regelt mit „Auto select" die JPEG-Qualität nach der
-gemessenen Bandbreite herunter. Im LAN: *Options → Compression*, „Auto select"
-aus, „Allow JPEG compression" aus (verlustfrei) oder Qualität auf 9. Kostet
-Bandbreite, die hier egal ist. Die Einstellung lässt sich im selben Dialog als
-Voreinstellung speichern, das funktioniert, anders als beim Passwort.
+Der Fund "Standby eine Sekunde nach dem Entsperren" (s. Idle-Verhalten) war
+ein Kommando, dessen Semantik nie gegen das Tool geprüft worden war. Daraufhin
+das ganze Repo auf dieselbe Fehlerklasse durchgesehen. Was dabei geändert
+wurde, mit Begründung jeweils im Kommentar an der Stelle:
 
-**Warum es ohne Extra-Handgriff ins Fenster passt.** Der Remote hat eine feste
-Größe. Wäre sie größer als das TigerVNC-Fenster, zeigte der Client das Bild 1:1
-mit Scrollbalken — das halbe, abgeschnittene Bild. Deshalb steht die `mac`-Zeile
-in `monitors.conf.tmpl` auf `1440x900` (Skalierung 1), dem logischen
-16:10-Standardformat des 13"-Macs. Das passt ohne Vollbild ins Fenster und füllt
-einen Vollbild-Client exakt. Auf dem Touch-Bar-MacBook ist das wichtig, weil es
-dort kein bequemes `F8` fürs Vollbildmenü gibt.
+- **`unlock 'pkill -USR1 -x hyprlock'`** statt SIGTERM (`sway/base`). hyprlock
+  entsperrt nur auf USR1 sauber; stirbt der Lock-Client ohne `unlock`, bleibt
+  die Session laut ext-session-lock-v1 gesperrt, Sway zeigt eine Farbfläche.
+- **`SUPER+L` → `loginctl lock-session`** statt `hyprlock` direkt
+  (`sway/binds`). Ein Weg zum Sperren, nicht zwei; pidof-Schutz und
+  `LockedHint` gelten damit auch für das manuelle Sperren.
+- **`output * power on`** statt `dpms on` (`sway/base`): in Sway 1.11 ist
+  `dpms` laut `sway-output(5)` nur noch ein deprecated Alias.
+- **Umgebung und Session-Target in einer `exec`-Zeile mit `&&`** (`sway/base`).
+  Sway wartet zwischen exec-Zeilen nicht; gewann das Target das Rennen, startete
+  das Portal ohne `WAYLAND_DISPLAY` in der systemd-Umgebung. Nie beobachtet,
+  aber ein Rennen.
+- **Lautstärketasten** (`sway/binds`): Sway hat dafür keine Defaults, die
+  Tasten taten nichts. Jetzt `wpctl` mit `--locked`, gedeckelt bei 100 %.
+- **`wifi pick`** schnitt die SSID bei Offset 26 statt 24 ab — zwei Zeichen
+  fehlten, gespeicherte Netze wurden nie erkannt und fragten jedes Mal neu nach
+  dem Passwort.
+- **`kbdlight`** suchte `ite8291r3-ctl` per Namen; unter SDDM liegt
+  `~/.local/bin` nicht im PATH, die Tasten starben mit "fehlt". Jetzt voller
+  Pfad (nur book betroffen).
+- **`wallpaper`** meldete Fehler per fuzzel-Dmenu, weil angeblich libnotify
+  fehle. Es ist installiert; fuzzel ist ein modales Overlay, das aus `exec
+  wallpaper restore` beim Login ein blockierendes Popup erzeugt hätte. Jetzt
+  `notify-send` wie in allen Nachbarskripten.
+- **`record`**: `flock` um Start/Toggle (drei Tasten, zwei Drücke, zwei
+  Recorder, einer davon unerreichbar), Zielordner wird erst in `start()`
+  aufgelöst (der Sekundentakt der Waybar forkte sonst xdg-user-dir mit).
+- **Kommentare**, die auf Hyprland-Dateinamen zeigten (`base.conf`,
+  `binds.conf`, `rules.conf`, `exec-once`, `bindl`) oder auf eine nie
+  existierende `environment.d/10-device-config.conf`, sind auf die Sway-Namen
+  gezogen.
 
-`„Resize remote session to the local window"` in TigerVNC (*Options → Screen*)
-kann aus bleiben: wayvnc lehnt Resize bei diesem Output bewusst ab (s. u.), es
-brächte nur Log-Rauschen.
+**Nicht gemacht, bewusst:**
 
-**Warum die Auflösung fix ist und nicht dem Fenster folgt.** wayvnc entscheidet
-allein am Output-*Namen* (Präfix `HEADLESS-`/`NOOP-`), ob es die Größe auf
-Client-Zuruf ändert. Mit einem `HEADLESS-`Namen täte es das — stürzt dabei auf
-Hyprland 0.56 aber reproduzierbar mit SIGSEGV ab (07.09.2026 nachgestellt: der
-Client schickt `SetDesktopSize`, wayvnc fängt an zu resizen und segfaultet). Der
-Output heißt deshalb absichtlich `mac`; wayvnc meldet dann
-`not resizing output mac: not a headless one` und bleibt stehen. Die Größe legt
-also `monitors.conf.tmpl` fest, das Anpassen ans Panel macht der Client per
-Vollbild/Skalierung. Nicht auf einen `HEADLESS-`Namen umbenennen.
+- swayidle als systemd-User-Unit mit `Restart=on-failure`. Stirbt swayidle,
+  gibt es weder Lock noch Suspend, und nichts zeigt das an — der Punkt ist
+  berechtigt. Aber die Unit müsste in einer echten Session getestet werden,
+  und die stand an dem Tag nicht zur Verfügung. Offen.
+- Das Paket-Aufräumen. Entgegen den Kommentaren in `packages.txt` waren
+  `hyprland`, `hypridle`, `xdg-desktop-portal-hyprland`, `wayvnc` und `mako`
+  am 13.09. noch installiert und die COPR noch aktiv; das Hyprland-Portal lief
+  sogar und wurde von xdg-desktop-portal für GlobalShortcuts/InputCapture
+  gewählt. Weg damit:
 
-**Anderes Panel / lieber gestochen scharf ohne Client-Skalierung.** Wenn dein
-TigerVNC kein pixelgenaues Retina beherrscht und im Vollbild trotzdem abschneidet,
-ist es „punktbasiert": es braucht ein Bild, das in Bildschirm*punkte* passt. Dann
-in `monitors.conf.tmpl` die `mac`-Zeile auf die Punkt-Auflösung deines Macs setzen
-(16:10 behalten, damit nichts verzerrt), Skalierung 1, und `chezmoi apply`:
+  ```sh
+  sudo dnf remove hyprland hypridle xdg-desktop-portal-hyprland wayvnc mako
+  sudo dnf copr remove ashbuk/Hyprland-Fedora
+  ```
 
-| MacBook | native (Pixel) | typische Punkt-Auflösung (16:10) |
-| --- | --- | --- |
-| 13" M1 | 2560x1600 | `1680x1050` oder `1440x900`, Skalierung 1 |
-| 14"    | 3024x1964 | `1512x982`, Skalierung 2 (dann native Pixel) |
+  `~/.config/wayvnc/` (mit RSA-Key) liegt ebenfalls noch da; chezmoi löscht
+  keine Dateien, die es nicht mehr verwaltet.
 
-Beispiel 13": `monitor = mac, 1680x1050@60, -1680x-3000, 1` — Position-x = die
-neue Breite, damit der HDMI-Monitor bei 0x0 bleibt.
+  **Erledigt um 13:26 (dnf-Transaktion 45, 54 Pakete) — mit einem Opfer.**
+  Die Transaktion hat `hyprlock-0.9.6` als „Dependency" mit entfernt. Das war
+  kein dnf-Fehler: hyprlock gibt es in den Fedora-Repos nicht (nur `hyprlang`),
+  es kam wie Hyprland aus der COPR `ashbuk/Hyprland-Fedora`, und mit der COPR
+  war auch sein einziger Lieferant weg. `packages.txt` behauptete das
+  Gegenteil („das einzige hypr*-Paket, das geblieben ist") — die Aussage
+  stimmte für das Protokoll-Argument, nicht für die Paketquelle. Aufgefallen
+  ist es erst beim dGPU-Suspend-Test um 15:32: swayidle ruft
+  `loginctl lock-session`, Sway meldet den Lock, swayidles `lock`-Kommando
+  läuft in `sh: hyprlock: Kommando nicht gefunden`, und der Rechner schläft
+  ohne Sperre ein und wacht offen wieder auf. Bis das ersetzt ist, sperrt
+  weder die 5-Minuten-Stufe noch `SUPER+L` irgendetwas.
 
-**Was `remote on` tut.** Es legt einen virtuellen Monitor `mac` an
-(`hyprctl output create headless mac`); die Regel dafür steht im cube-Zweig von
-`monitors.conf.tmpl`: 1440x900 bei Skalierung 1 (Begründung oben). Dann wandern
-alle Workspaces vom HDMI-Monitor auf `mac`, der Fokus folgt, und wayvnc startet
-auf genau diesem Output. `remote off` dreht es in umgekehrter Reihenfolge
-zurück: erst wayvnc beenden, warten bis der Prozess weg ist, Workspaces zurück,
-dann den Monitor entfernen. Beides idempotent. Die Reihenfolge beim Ausschalten
-ist Pflicht, s. u. "Den Monitor nie unter einem verbundenen Client entfernen".
+  **Entscheidung: swaylock.** Die drei Kandidaten in Fedora bzw. per COPR:
+  hyprlock zurück über `ashbuk/Hyprland-Fedora` (Config bleibt, aber der
+  Sperrbildschirm hängt dauerhaft an einer Drittquelle, die gerade wegen
+  Drift entfernt wurde), gtklock 4.0 (Fedora, GTK, Uhr per Modul, Theming
+  von null) oder swaylock 1.8.6 — schon installiert als Recommends von
+  `sway-config-upstream`, kann `-f` und SIGUSR1-Unlock, also genau die zwei
+  Eigenschaften, die die swayidle-Kette braucht. Preis: keine Uhr und kein
+  Datum auf dem Sperrbildschirm. Umgesetzt: `swaylock/config` (Mocha,
+  flache Farbe, Ring statt Eingabefeld), `sway/base` lock/unlock auf
+  swaylock, `kbdlight` liest die Palette aus `sway/mocha`, `hypr/` ist aus
+  dem Repo raus, `packages.txt` führt swaylock statt hyprlock. Das
+  Verzeichnis `~/.config/hypr/` bleibt wie `~/.config/wayvnc/` liegen, bis es
+  jemand von Hand löscht.
 
-**Warum kein Spiegeln und kein Abschalten des echten Monitors.** 21:9 auf
-einem 16:10-Panel ist entweder winzig oder abgeschnitten, deshalb der eigene
-Output. Und `monitor = HDMI-A-2, disable` wäre zwar der offensichtliche Weg,
-zerstört aber den `wl_output` — genau das Ereignis, das Thunderbird kaputtmacht
-(s. "Display-Aus killt Thunderbird"). Fenster zwischen zwei bestehenden Outputs
-zu verschieben ist dagegen normaler Multi-Monitor-Betrieb. Preis: der echte
-Monitor bleibt an und zeigt einen leeren Workspace. Wer ihn dunkel will, drückt
-seinen Knopf — nicht `dpms off`, aus demselben Grund.
-
-Der virtuelle Monitor liegt bewusst NICHT angrenzend am HDMI-Monitor
-(`-1440x-3000`): Hyprland lässt den Cursor nur zwischen sich berührenden
-Monitoren wechseln, so kann er nicht auf den echten Bildschirm rutschen, wo
-ihn der VNC-Client nicht zeigt.
-
-**Sicherheit und Reichweite.**
-
-- wayvnc lauscht nur, solange `remote on` aktiv ist. Im Alltag ist Port 5900 zu.
-- Anmeldung per RSA-AES: Serverschlüssel `~/.config/wayvnc/rsa_key.pem`,
-  Zugangsdaten `~/.config/wayvnc/config.secret`. Beides legt bootstrap.sh
-  einmalig an, beides liegt NICHT im Repo (öffentlich!). Die chezmoi-verwaltete
-  `config` enthält nur das Unsekrete; die Unit klebt beim Start beide Dateien
-  nach `$XDG_RUNTIME_DIR/wayvnc.conf` zusammen, weil wayvnc weder Include noch
-  Umgebungsvariablen kennt. Deshalb auch nie `chezmoi add ~/.config/wayvnc/`
-  als Verzeichnis — das würde die Secret-Datei mitnehmen.
-- Firewall: firewalld-Service `vnc-server` in Zone `public` (bootstrap.sh).
-  "Nur LAN" heißt: der Router leitet 5900 nicht weiter. Für Zugriff von
-  außerhalb wäre der Weg ein SSH-Tunnel (`ssh -L 5900:localhost:5900 cube`),
-  der Port selbst bleibt zu.
-- Kein Schlüssel-Rotieren: der Client hat sich den Fingerprint gemerkt und
-  würde nach einem neuen Schlüssel einen fremden Server vermuten.
-
-**Wenn der Client kurz ein Bild zeigt und dann abbricht** (TigerVNC „connection
-closed"), lief wayvnc ohne `--render-cursor`. wayvnc 0.9.1 holt den Mauszeiger
-über eine eigene Cursor-Session von Hyprlands `ext-image-copy-capture`;
-scheitert darin ein Frame — der Zeiger wird versteckt (`cursor:inactive_timeout`)
-oder verlässt den Output — wertet wayvnc das als fatal und beendet sich
-(`Fatal error while capturing`, `journalctl --user -u wayvnc.service`). Mit
-`--render-cursor` malt Hyprland den Zeiger ins Hauptbild (PAINT_CURSORS) und der
-Abbruch bleibt aus; auf cube per A/B reproduziert (07.09.2026): ohne Flag
-Absturz beim Verstecken des Cursors, mit Flag stabil über wiederholte
-enter/leave-Zyklen. Fürs Verständnis wichtig: die Cursor-Session gibt es mit
-dem Flag trotzdem — wayvnc legt sie unabhängig davon an (`configure_cursor_sc`
-in `src/main.c`), sie stirbt nur nicht mehr. Warum genau, ist nicht geklärt.
-Diese Session ist es, die Hyprland im nächsten Absatz zum Absturz bringt.
-
-**Den Monitor nie unter einem verbundenen Client entfernen.** Solange ein
-VNC-Client verbunden ist, hält Hyprland für wayvnc die Cursor-Session
-(`CCursorshareSession`) auf dem Output `mac`. Wird der Output dann entfernt
-(`hyprctl output remove mac`), stürzt Hyprland 0.56.2 beim nächsten
-Cursor-Wechsel mit SIGSEGV ab (`CCursorshareSession::copy` →
-`beginFullFakeRender` → `CMonitor::resources()` auf dem toten Monitor) und
-reißt die ganze Sitzung mit: man landet im SDDM, alle Fenster sind weg. Am
-07.09.2026 genau so passiert — ein Test räumte mit `hyprctl output remove mac`
-auf, während TigerVNC auf dem Mac verbunden war (Coredump und
-`~/.cache/hyprland/hyprlandCrashReport*.txt` belegen die Kette). wayvnc selbst
-stirbt beim Wegbrechen des Compositors mit einem Double-Free in
-`xkb_keymap_unref`; das ist Folge, nicht Ursache. Deshalb: den Monitor
-ausschließlich über `remote off` loswerden. Das beendet erst wayvnc (damit die
-Cursor-Session sauber verschwindet), wartet, bis kein wayvnc-Prozess mehr
-lebt, und entfernt den Output erst dann; lebt noch einer, bricht es ab und
-lässt den Monitor stehen. Test-Instanzen nie auf denselben Output setzen,
-sondern auf einen eigenen (`hyprctl output create headless mactest`).
-
-**Wenn es ruckelt oder nachzieht.** Drei Stellschrauben, alle in der Unit:
-
-- `--gpu`: ohne das Flag holt wayvnc jedes Bild als Shared-Memory-Kopie, d. h.
-  Hyprland liest den Frame im Compositor-Thread von der GPU zurück, und der
-  H.264-Encoder von neatvnc steht nicht zur Verfügung (er braucht DMA-BUF).
-  Mit dem Flag öffnet wayvnc den Render-Node der iGPU (`renderD129`, dieselbe
-  GPU, auf der Hyprland rendert) und bekommt die Frames als DMA-BUF. Fedoras
-  neatvnc ist mit libavcodec, TurboJPEG und VAAPI gebaut (`rpm -q --requires
-  neatvnc`), H.264 gibt es also, sobald der Client es anbietet.
-- `--max-fps=60`: wayvnc begrenzt sonst auf 30 Bilder/s, der Output läuft mit 60.
-- Die Kodierung entscheidet der Client. Was er bekommen hat, steht dank
-  `--log-level=info` im Journal (`Choosing <x> encoding for client`). TigerVNC
-  nimmt per Voreinstellung Tight mit JPEG; H.264 nur, wenn sein Build es kann
-  (*Options → Compression*, „Auto select" aus, dann ist es aufgelistet oder
-  eben nicht). Im LAN kostet Bandbreite nichts, Kompressionsarbeit schon:
-  „Compression level" runter, „JPEG quality" hoch.
-
-Stand 07.09.2026: ohne `--gpu` und mit 30 fps war TigerVNC vom Mac deutlich
-träge. Mit `--gpu`, 60 fps und `--render-cursor` läuft es mit TigerVNC
-spürbar flüssiger (Tight-Encoding, MIN-RTT 1 ms, wayvnc bei ~4 % CPU),
-Restunschärfe kommt von JPEG, s. o. „Unscharf heißt JPEG".
-
-**Grenzen.**
-
-- Die Hyprland-Session muss am cube laufen; nach einem Reboot muss jemand am
-  SDDM anmelden. hyprlock lässt sich über VNC entsperren.
-- Eingaben über VNC zählen für hypridle als Aktivität, die Kiste bleibt also
-  wach, solange gearbeitet wird. Wer sich trennt, ohne `remote off`, lässt
-  sie nach 5 min sperren und nach 15 min in den Suspend gehen — danach ist sie
-  aus dem LAN nicht mehr erreichbar (kein Wake-on-LAN eingerichtet). Vor dem
-  Trennen also `remote off`, oder den `Wach`-Schalter in der Waybar setzen.
-- Kein Ton. Video, Bitwig oder Cider streamt man so nicht; für Terminal,
-  Editor und Browser reicht es im LAN.
-- Über SSH funktioniert `remote` nur, weil das Script die Hyprland-Instanz
-  selbst sucht (`hyprctl instances`) — die Signatur-Variable, die hyprctl
-  sonst braucht, gibt es in einer SSH-Sitzung nicht.
-
-Auf Hardware verifiziert (07.09.2026): `remote on`/`off` als Rundlauf, auch
-ohne Hyprland-Signatur in der Umgebung (SSH-Fall) — Output mit Name und
-Wunschmodus, Monitor-Regel greift, HDMI bleibt bei 0x0, sechs Workspaces mit
-Fenstern hin und zurück, Fokus landet wieder auf dem vorher aktiven Workspace,
-Unit startet mit zusammengeklebter Config und räumt sie beim Stopp weg, Port
-5900 offen bzw. zu, und der Cursor-Absturz oben ohne/mit `--render-cursor` (ohne
-Flag reproduzierbar tot, mit Flag stabil). Mit dem echten TigerVNC-Client vom
-Mac: Verbindung, Anmeldung und Bild bei 1440x900 bestätigt. Cursor-Test und
-`--gpu` nur mit einem selbstgebauten RFB-Client, der dieselbe
-Cursor-Anforderung stellt.
-
-## Sway als Zweitcompositor
-
-Sway liegt **neben** Hyprland, nicht statt seiner. Beide Sessions stehen im
-SDDM zur Auswahl, teilen sich die komplette Peripherie und lassen sich bei
-jedem Login gegeneinander tauschen. Nichts an der Hyprland-Konfiguration wurde
-dafür angefasst — wer Sway nie auswählt, merkt von diesem Abschnitt nichts.
-
-`sway` bringt seine eigene `/usr/share/wayland-sessions/sway.desktop` mit. Es
-gibt deshalb **keine** eigene Session-Datei im Repo, aus demselben Grund wie bei
-Hyprland (s. "Login-Screen (SDDM)": eine selbstgebaute Session-Datei hatte dort
-einen Login-Loop erzeugt).
-
-### Aufbau
-
-`home/dot_config/sway/` ist absichtlich Datei für Datei das Spiegelbild von
-`home/dot_config/hypr/` — gleiche Namen, gleiche Reihenfolge, gleiche
-Aufteilung, und es gilt dieselbe Regel: **Funktion in base/binds/rules, Deko
-ausschließlich in effects.**
-
-| Hyprland | Sway | Inhalt |
-|---|---|---|
-| `hyprland.conf` | `config` | Einstiegspunkt, sourct/includet nur |
-| `mocha.conf` | `mocha` | Catppuccin-Palette |
-| `base.conf` | `base` | Input, Autostart, Umgebung, Idle-Kette |
-| `monitors.conf.tmpl` | `monitors.tmpl` | Outputs, Host-Weiche |
-| `binds.conf` | `binds` | Tastenkürzel |
-| `rules.conf.tmpl` | `rules.tmpl` | Fensterregeln, Host-Weiche |
-| `effects.conf` | `effects` | Gaps, Rahmen, Farben |
-
-Die Übersetzungstabelle Hyprland → Sway (`bind` → `bindsym`, `killactive` →
-`kill`, `movefocus, l` → `focus left`, …) steht im Kopf von `sway/binds`, damit
-sie beim Nachziehen einer Änderung direkt danebensteht.
-
-### Was geteilt wird, statt kopiert zu sein
-
-Der Punkt der Übung: **eine** Peripherie für zwei Compositoren.
-
-- **waybar** — hier steckte die einzige echte Arbeit. Die Bar unterscheidet
-  sich zwischen den Sessions in genau zwei Modulen (`*/workspaces`,
-  `*/window`), der Rest ist identisch. Statt die Datei zu kopieren, ist sie
-  jetzt dreigeteilt:
-  - `common.jsonc.tmpl` — Uhr, Netz, Bluetooth, Lautstärke, Akku, Tray,
-    Idle-Schalter, Aufnahmemodus, Bildschirmaufnahme, Keys-Knopf. Wird von
-    Waybar nie direkt geladen.
-  - `config.jsonc.tmpl` / `config-sway.jsonc.tmpl` — je `modules-left` plus das
-    compositor-eigene Modulpaar, und ein `include` auf `common.jsonc`.
-    Waybars Regel dabei (`waybar(5)`): bei doppelten Schlüsseln gewinnt die
-    **einbindende** Datei. Der Include-Pfad ist absolut, weil Waybar dort kein
-    `~` auflöst; chezmoi setzt ihn beim Ausrollen ein.
-  - `home/.chezmoitemplates/waybar-workspaces-icons` — die App-Emoji-Liste.
-    Die steht damit einmal im Repo und landet in beiden Modulen; ein
-    Doppelpflegen der zwölf Einträge wäre nach der zweiten Änderung schiefgegangen.
-
-  `style.css` ist unverändert geteilt, bis auf einen Zusatz: der aktive
-  Workspace heißt unter Hyprland `.active` und unter Sway `.focused`, beide
-  Selektoren stehen jetzt nebeneinander. Dazu kommt `.visible` für den
-  Sway-Fall "Workspace liegt auf dem anderen Monitor vorne".
-
-- **`keybinds`** liest weiter die binds-Datei selbst statt einer zweiten
-  gepflegten Liste — jetzt nur eben die der laufenden Session, mit einem
-  zweiten awk-Parser für die `bindsym`-Syntax. Die Abschnittsmarken
-  (`# --- Kern ---`) sind in beiden Dateien dieselben, die Modifier werden
-  angeglichen (`Shift` → `SHIFT`, `q` → `Q`): **die beiden Popups sehen
-  identisch aus.** Mit `KEYBINDS_CONF=~/.config/sway/binds keybinds` lässt sich
-  die jeweils andere Liste ansehen, ohne die Session zu wechseln.
-
-- **`screenshot` und `record`** fragen den Compositor nur an drei Stellen
-  (sichtbare Fenster, Monitor unter der Maus, aktiver Monitor). Die gehen jetzt
-  über `swaymsg` statt `hyprctl`, wenn `SWAYSOCK` gesetzt ist. Ein Detail dabei:
-  Sways `.rect` ist bereits vollständig logisch, die Division durch `scale` aus
-  dem Hyprland-Zweig entfällt hier.
-
-- **Unverändert übernommen**, weil compositor-unabhängig: fuzzel, foot, mako,
-  swaybg (und damit das ganze `wallpaper`-Skript), grim, slurp, wf-recorder,
-  cliphist, playerctl, `bt`, `wifi`, `audio-out`, `todo`, `keylight`,
-  `kbdlight`, `music`, `recording-mode`.
-
-- **`hyprlock` bleibt auch unter Sway der Sperrbildschirm.** Es braucht laut
-  `strings /usr/bin/hyprlock` nur Standardprotokolle (`ext-session-lock-v1`,
-  `wp-cursor-shape`, `wp-fractional-scale`, `wp-viewporter`, `wlr-screencopy`) —
-  alles Dinge, die Sway kann. Damit sieht der Lockscreen in beiden Sessions
-  gleich aus und `hypr/hyprlock.conf` bleibt die einzige Quelle dafür.
-  Kein `swaylock`: das wären zwei Lockscreens zum Pflegen und Themen.
-
-- **`hypridle` dagegen nicht.** Dieselbe Prüfung zeigt neben
-  `ext-idle-notify-v1` auch `hyprland-lock-notification-v1` — ein
-  Hyprland-eigenes Protokoll. Ob hypridle ohne das sauber degradiert, ist
-  nichts, was man am Sperrbildschirm ausprobiert; in der Sway-Session macht
-  deshalb `swayidle` die Kette (Zeiten und Begründungen identisch: 5 min
-  sperren, 15 min Suspend, **keine** dpms-off-Stufe dazwischen — die
-  Herleitung dazu steht in `hypr/hypridle.conf` und hängt am Monitor, nicht am
-  Compositor).
-
-- **Portale**: `xdg-desktop-portal-wlr` neben dem hyprland-Backend, dazu
-  `sway-portals.conf` neben `hyprland-portals.conf`. Welches greift, entscheidet
-  `xdg-desktop-portal` an `XDG_CURRENT_DESKTOP` — der Dateiname muss dazu passen.
-
-- **`sway-session.target`** neben `hyprland-session.target`, gleiche Aufgabe:
-  irgendetwas muss `graphical-session.target` binden, sonst bleibt
-  `xdg-desktop-portal.service` für immer "Dependency failed".
-
-### Unterschiede, die man kennen muss
-
-Nichts davon ist ein Fehler, aber alles davon fällt beim ersten Login auf:
-
-1. **Keine Rundung, keine Animationen.** Sway kann beides nicht. Die zwei
-   bewussten Ausnahmen vom Deko-Nullpunkt aus `hypr/effects.conf`
-   (`rounding = 4`, kurze Slides) haben hier kein Gegenstück — Fenster sind
-   eckig und erscheinen ohne Übergang. Das ist der sichtbarste Unterschied.
-   Wer beides will, bräuchte swayfx; bewusst nicht Teil dieses Versuchsaufbaus.
-2. **Apps landen still auf ihrem Workspace** (nur `cube`, s. "Fester Workspace
-   pro App"). `assign` platziert, ohne mitzuwechseln; drüben steht die Regel
-   bewusst ohne `silent` und man landet bei dem Programm, das man gerade
-   gestartet hat. Die Alternative (`for_window … move container to workspace
-   number N, workspace number N`) steht auskommentiert in `sway/rules.tmpl` —
-   erst ausprobieren, dann umstellen.
-3. **`SUPER+SHIFT+C` lädt die Konfiguration neu.** Das ist der einzige Bind
-   ohne Gegenstück in `hypr/binds.conf`, und der einzige bewusste Zusatz:
-   Hyprland liest seine `.conf` bei jeder Änderung von selbst neu ein, Sway
-   nicht. Ohne die Taste hieße jede Anpassung: abmelden und neu anmelden.
-   Was ein Reload **nicht** tut: die `exec`-Zeilen erneut starten — waybar,
-   mako und swayidle laufen weiter wie sie sind.
-4. **`app_id` vs. `class`.** Hyprlands `class` deckt beides ab, Sway hat zwei
-   getrennte Felder: `app_id` trifft nur Wayland-Fenster, `class` nur
-   XWayland-Fenster. Deshalb steht Citrix in `sway/rules.tmpl` als `class`, alle
-   anderen als `app_id`. Eine Regel mit dem falschen Feld fällt **still** durch —
-   genau die Falle wie bei Hyprlands Fensterregel-Grammatik. Gegenprüfen:
-   `swaymsg -t get_tree` (das Gegenstück zu `hyprctl clients`).
-5. **Sway kennt kein `env`.** Die zwei Zeilen aus `hypr/base.conf`
-   (`QT_QPA_PLATFORMTHEME`, `ELECTRON_OZONE_PLATFORM_HINT`) gehen deshalb
-   literal per `dbus-update-activation-environment` in die
-   Activation-Environment — das deckt alles ab, was systemd oder D-Bus startet.
-   Was Sway **direkt** startet (Keybind, fuzzel), erbt sie nicht. Für den einen
-   Fall, in dem das sichtbar wird, steht ein explizites `env` davor: Double
-   Commander hat unter Linux keinen eigenen Dark Mode und käme sonst hell hoch
-   (`$qtenv` in `sway/base`, benutzt in `sway/binds`).
-6. **`remote` (Mac als Thin Client) gibt es unter Sway nicht.** Das ist eine
-   bewusste Lücke, kein Vergessen: der ganze Aufbau hängt daran, dass der
-   virtuelle Output **nicht** `HEADLESS-` heißt — wayvnc entscheidet allein am
-   Namenspräfix, ob es den Output auf Zuruf des Clients resized, und stürzt
-   dabei ab (07.09.2026 nachgestellt, s. "Mac als Thin Client"). Sway vergibt
-   die Namen für `create_output` selbst und nummeriert zwangsweise
-   `HEADLESS-1`, `HEADLESS-2`, … — der Trick aus `hypr/monitors.conf.tmpl`
-   lässt sich hier nicht nachbauen. Für den Thin Client also weiter Hyprland.
-7. **`SUPER+;` (Fokus nach rechts)** verhält sich wie drüben, also auf
-   de-Layout hinter `SHIFT+,`. Die Zeile ist die 1:1-Kopie. Wer die *physische*
-   Taste an US-`;`-Position will (also `ö`), findet zwei Alternativen
-   auskommentiert in `sway/binds` — beide erzeugen dann aber einen echten
-   Unterschied zwischen den Sessions.
-8. **Modus statt `highrr`** auf dem `cube`: Sway kennt das Schlüsselwort nicht,
-   der Modus steht ausgeschrieben (`3440x1440@99.982Hz`, gemessener Wert). Auf
-   dem `book` gibt es kein `auto-right`, die Positionen stehen als Koordinaten
-   und die `1920` ist zu prüfen (`swaymsg -t get_outputs`, Feld `rect`).
-
-### Stand
-
-Konfiguration und Skripte sind geschrieben und übersetzen sauber; die
-Waybar-Aufteilung ist gegengeprüft (die Hyprland-Bar rendert nach dem Split
-**semantisch identisch** zu vorher, und beide Bars ergeben nach dem Include
-eine vollständige Konfiguration mit derselben Icon-Liste). Der `keybinds`-Parser
-ist gegen beide binds-Dateien gelaufen, die Hyprland-Ausgabe ist unverändert.
-
-**Nicht auf Hardware verifiziert** — zum Zeitpunkt der Einrichtung war `sway`
-noch nicht installiert, es konnte also weder `sway -C` (Konfigurationsprüfung)
-noch ein echter Login laufen. Erster Lauf deshalb in dieser Reihenfolge:
-
-```bash
-sudo ./bootstrap.sh          # zieht sway, swayidle, xdg-desktop-portal-wlr
-chezmoi apply
-sway -C                      # Konfiguration prüfen, OHNE die Session zu starten
-```
-
-Erst danach im SDDM "Sway" auswählen. Fällt etwas um, ist die Hyprland-Session
-unberührt daneben — sie ist der Rückweg.
-
-Nach dem ersten erfolgreichen Login gegenprüfen:
-`swaymsg -t get_outputs` (Modus und Position), `swaymsg -t get_tree` (app_id
-gegen die Regeln in `rules`), Waybar vollständig, `SUPER+F1` (Popup identisch
-zu Hyprland), ein Screenshot je Modus, Lock über `SUPER+L`.
+Lehre aus dem Review selbst: ein Skript, dessen Fehlerpfad oder Erfolgspfad
+etwas auf den Bildschirm bringt (slurp, fuzzel, notify-send), testet man nicht
+in der laufenden Session — auch nicht "nur den Fehlerpfad". Lock-Logik mit einer
+reinen Shell-Nachbildung prüfen, nicht mit dem echten Skript.
 
 ## Login-Screen (SDDM)
 
 Ersetzt den früheren TTY1-Autostart. Der ist nicht weg, sondern zum Notfallpfad
-geworden: `.bash_profile` startet Hyprland nur noch dann direkt, wenn
+geworden: `.bash_profile` startet `sway` nur noch dann direkt, wenn
 `sddm.service` **nicht** läuft — also wenn der Display-Manager kaputt ist. Damit
 bleibt die alte "eine Komponente weniger"-Resilienz erhalten, ohne dass sich
 beide Startwege ins Gehege kommen.
@@ -1669,7 +1884,7 @@ beide Startwege ins Gehege kommen.
   drin, damit die Wahl feststeht: `sddm` verlangt ein virtuelles
   `sddm-greeter-displayserver`, das auch `sddm-x11` erfüllen würde — dnf könnte
   sonst Xorg auf ein System ziehen, das keins hat.
-- **Der Greeter läuft in weston, nicht in Hyprland.** `sddm-wayland-generic`
+- **Der Greeter läuft in weston, nicht in der Session-Umgebung.** `sddm-wayland-generic`
   enthält laut Fedora-Spec keine einzige Datei; es zieht nur weston rein und
   markiert die Displayserver-Wahl. Das ist die wichtigste Eigenschaft dieses
   Setups, weil daran der erste Anlauf gescheitert ist: in
@@ -1688,11 +1903,12 @@ beide Startwege ins Gehege kommen.
 - Font-Anpassung (JetBrains Mono) landet in `theme.conf.user` neben der
   `theme.conf` des Themes — SDDM liest das als Override, ein Theme-Update
   überschreibt es nicht.
-- **Keine eigene Session-Datei** — es gilt die aus dem COPR-Paket
-  ("Hyprland" im Session-Menü des Greeters). Hier stand mal eine eigene mit
-  `Exec=/bin/bash -lc "exec start-hyprland"`, die einen **Login-Loop** erzeugt
-  hat: Session startet, stirbt sofort, Greeter kommt wieder. Zwei Denkfehler:
-  `start-hyprland` ist der Wrapper für den **TTY**-Start (er macht das Session-
+- **Keine eigene Session-Datei** — es gilt die aus dem `sway`-Paket
+  ("Sway" im Session-Menü des Greeters). Zu Hyprland-Zeiten stand hier mal eine
+  eigene mit `Exec=/bin/bash -lc "exec start-hyprland"`, die einen
+  **Login-Loop** erzeugt hat: Session startet, stirbt sofort, Greeter kommt
+  wieder. Zwei Denkfehler, die für jeden Compositor gelten: ein
+  `start-*`-Wrapper ist für den **TTY**-Start gedacht (er macht das Session-
   und D-Bus-Setup, das es ohne Display-Manager sonst nicht gäbe) — unter SDDM
   erledigt das der Display-Manager bereits. Und Anführungszeichen im `Exec=`
   folgen der Desktop-Entry-Spec, nicht Shell-Quoting.
@@ -1701,8 +1917,8 @@ beide Startwege ins Gehege kommen.
   einzige brauchbare Quelle.
 - **`~/.local/bin` ist unter SDDM nicht im PATH**, weil die Session ohne
   Login-Shell startet. `keylight` und `wallpaper` werden deshalb in
-  `binds.conf`/`base.conf` mit vollem Pfad aufgerufen (`~/.local/bin/...`,
-  Hyprland führt `exec` über `/bin/sh -c` aus, die Tilde wird expandiert).
+  `sway/binds` und `sway/base` mit vollem Pfad aufgerufen (`~/.local/bin/...`,
+  Sway führt `exec` über `/bin/sh -c` aus, die Tilde wird expandiert).
   Das ist der unangenehmste Unterschied zum TTY-Login und der Grund für den
   PATH-Check in §3.
 - bootstrap.sh macht `systemctl enable sddm` bewusst **ohne** `--now`: das würde
@@ -1733,7 +1949,7 @@ beide Startwege ins Gehege kommen.
     echo 'KEYLIGHT_HOST=192.168.x.y' > ~/.config/keylight.conf
     ```
     Reihenfolge: `--host` > `$KEYLIGHT_HOST` > diese Datei. `~/.bashrc` wäre
-    kein Weg: Hyprland führt `exec` über ein nicht-interaktives `/bin/sh` aus,
+    kein Weg: Sway führt `exec` über ein nicht-interaktives `/bin/sh` aus,
     und unter SDDM gibt es ohnehin keine Login-Shell.
   - **Keine mDNS-Discovery, und kein `keylight.local`-Default mehr.** Auf diesem
     System ist mDNS gar nicht aktiv (`resolvectl mdns` sagt für alle Links `no`,
@@ -1797,9 +2013,9 @@ diese Frage unter der Hand beantworten.
 **Der Wrapper.** `dot_local/bin/kbdlight` ist eigener Code und macht das, was
 das Tool nicht kann: Toggle mit gemerkter Helligkeit, Auf/Ab in Schritten, und
 Farben über **Namen** statt RGB-Tripel. Die Farbwerte werden dabei nicht
-dupliziert, sondern zur Laufzeit aus `hypr/mocha.conf` gelesen — die Datei
-bezeichnet sich selbst als "einzige Quelle der Palette", und das soll auch für
-die Tastatur gelten. Ein Theme-Wechsel zieht die Beleuchtung damit automatisch
+dupliziert, sondern zur Laufzeit aus `hypr/mocha.conf` gelesen — derselben
+Datei, aus der sich hyprlock die Palette holt, damit Sperrbildschirm und
+Beleuchtung nicht auseinanderlaufen. Ein Theme-Wechsel zieht die Beleuchtung damit automatisch
 mit.
 
 ```console
@@ -1812,7 +2028,7 @@ Farbe:      mauve (203,166,247)
 **Die Fn-Tasten funktionieren direkt.** Das Input-Device `Uniwill WMI hotkeys`
 meldet laut Capability-Bitmap `KBDILLUMTOGGLE`, `KBDILLUMUP` und
 `KBDILLUMDOWN` — es braucht also kein Custom-Modul, nur drei Bindings in
-`binds.conf`. Sie sind als `bindl` gesetzt und gehen damit auch bei gesperrtem
+`sway/binds`. Sie sind mit `--locked` gesetzt (Hyprlands `bindl`) und gehen damit auch bei gesperrtem
 Bildschirm; Licht anmachen ist nichts, wofür man erst das Passwort tippen will.
 
 **Auf dem cube** sagt `kbdlight` sofort, dass kein Controller da ist, statt
@@ -1829,14 +2045,12 @@ Reihenfolge, in der wir sie live debuggt haben:
   hat eine harte Dependency darauf — ohne die bleibt der komplette Portal-Dienst
   im Zustand `Dependency failed`, dauerhaft, egal was sonst stimmt. Ein
   Wayland-Compositor muss systemd explizit sagen "wir sind jetzt eine grafische
-  Session"; das macht normalerweise uwsm, das es in F44 nicht gibt (siehe
-  unten), und `start-hyprland` tut es NICHT. Fix: `systemd/user/hyprland-session.target`
-  (1:1 aus dem [Hyprland-Wiki](https://wiki.hypr.land/Useful-Utilities/Systemd-start/)),
-  gestartet per `exec-once` ganz am Anfang von `base.conf`. Kein Shutdown-Hook
-  (bräuchte die Lua-Config, offenes TODO) — beim echten Logout räumt
-  systemd --user sowieso alles ab.
+  Session"; das macht normalerweise uwsm, das es in F44 nicht gibt, und Sway
+  tut es von sich aus NICHT. Fix: `systemd/user/sway-session.target`,
+  gestartet per `exec` ganz am Anfang von `sway/base`. Kein Shutdown-Hook —
+  beim echten Logout räumt systemd --user sowieso alles ab.
   Diagnose: `systemctl --user status xdg-desktop-portal.service` — `Dependency
-  failed` heißt exakt das hier. `systemctl --user cat hyprland-session.target`
+  failed` heißt exakt das hier. `systemctl --user cat sway-session.target`
   bestätigt, ob die Unit überhaupt ankam (nach `chezmoi apply` einmalig
   `systemctl --user daemon-reload` nötig, damit neue Units gefunden werden).
 - **2. Activation-Environment muss `XDG_DATA_DIRS` enthalten.** Portal-Backends
@@ -1846,7 +2060,7 @@ Reihenfolge, in der wir sie live debuggt haben:
   `~/.local/share/flatpak/exports/share/applications/`; fehlt dieser Pfad in
   dem `XDG_DATA_DIRS`, das das Portal sieht, findet es die Datei nicht.
   `xdg-mime query default` fragt aber die *Login-Shell*, antwortet also trotzdem
-  korrekt — das Auseinanderfallen macht den Fehler verwirrend. Fix: `base.conf`
+  korrekt — das Auseinanderfallen macht den Fehler verwirrend. Fix: `sway/base`
   reicht `XDG_DATA_DIRS`/`PATH`/`XDG_SESSION_TYPE` explizit per
   `dbus-update-activation-environment` durch. Firefox selbst ist davon nicht
   mehr betroffen, seit es ein natives Paket ist (s. "Firefox: nativ statt
@@ -1911,7 +2125,7 @@ braucht ein Drittanbieter-Repo), systemd-Integration nativ statt nachgerüstet.
   `docker.sock` erwarten. Für die brauchst du zusätzlich
   `export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"` — absichtlich
   NICHT in `.bash_profile` gepackt (das ist laut eigenem Datei-Header nur für
-  den Hyprland-Autostart da), sondern manuell in eine eigene `~/.bashrc`
+  den TTY-Notfallpfad da), sondern manuell in eine eigene `~/.bashrc`
   eintragen, falls gebraucht.
 
 **lazydocker** ist ebenfalls kein Fedora-Paket (geprüft: 404 auf
@@ -1929,8 +2143,9 @@ zu installieren.
   ```sh
   export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
   ```
-  In Hyprlands `env =` wäre sie schlecht aufgehoben: dort wird `$XDG_RUNTIME_DIR`
-  nicht expandiert, man müsste die UID hartkodieren.
+  In der Compositor-Konfiguration wäre sie schlecht aufgehoben: Sway kennt kein
+  `env`, und in der Activation-Environment müsste man `$XDG_RUNTIME_DIR`
+  hartkodieren.
 - `dot_config/lazydocker/config.yml` (aus dem Repo) setzt
   `commandTemplates.dockerCompose` auf **`podman-compose`** — sonst ruft
   lazydocker `docker-compose` auf, das es hier nicht gibt. Ausserdem ein
@@ -2066,7 +2281,7 @@ Arbeitsmuster (Skriptpuffer plus lebende R-Konsole) ohne diesen Anhang.
 
 **Grafikausgabe läuft über XWayland — und das ist kein Problem.** R bringt kein
 Wayland-Device mit; `capabilities()` meldet `X11 TRUE, cairo TRUE`, das
-Standardgerät ist X11. Auf dieser Hyprland-Sitzung getestet (`x11(); plot(1:3);
+Standardgerät ist X11. Live getestet (`x11(); plot(1:3);
 dev.off()` bei `DISPLAY=:0`): das Fenster geht auf, Xwayland läuft ohnehin
 rootless mit. Wen das stört, schreibt mit `png()`/`pdf()` in eine Datei oder nimmt
 `httpgd`, das im Browser rendert.
@@ -2107,15 +2322,15 @@ Wahl fiel gegen LibreOffice, und zwar am Fenstermodell, nicht am Funktionsumfang
   Dokument und jeder Dialog ("Speichern unter", "Optionen", "Suchen &
   Ersetzen") sind eigene Wayland-Toplevels. Ein Tiling-WM kachelt die alle
   gleichberechtigt ein — der Dialog schiebt das Dokument auf die halbe Breite.
-- **Die naheliegende Gegenregel greift hier nicht.** Hyprland kann
-  `windowrule = float, match:modal 1`, aber `modal` kommt aus dem Protokoll
-  `xdg-dialog-v1`, und LibreOffices GTK3-Backend spricht das nicht. Über
-  `match:class` sind Dialoge auch nicht zu fassen: sie erben die Klasse des
+- **Die naheliegende Gegenregel greift hier nicht.** Eine Regel auf „modal"
+  klänge passend, aber `modal` kommt aus dem Protokoll `xdg-dialog-v1`, und
+  LibreOffices GTK3-Backend spricht das nicht. Über die App-ID sind Dialoge
+  auch nicht zu fassen: sie erben die des
   Hauptfensters. Bliebe Matching auf Fenstertitel — lokalisiert, versionsabhängig,
   also genau die Sorte Regel, die still kaputtgeht.
 - **OnlyOffice ist ein Ein-Fenster-Programm** mit Dokument-Tabs und in-App
   gerenderten Dialogen. Da ist nichts zu kacheln, also braucht es auch keine
-  Regel in `rules.conf`. Zweiter Grund: die bessere Treue bei
+  Regel in `sway/rules`. Zweiter Grund: die bessere Treue bei
   `.docx`/`.xlsx`/`.pptx`.
 - **Preis:** ODF kann es, ist aber nicht seine Muttersprache; Base/Draw/Math
   haben kein Gegenstück. Wer die braucht, holt sich LibreOffice ad hoc dazu
@@ -2160,13 +2375,15 @@ mitprüfen:
 
 ```sh
 flatpak run org.onlyoffice.desktopeditors     # startet es überhaupt
-hyprctl clients | grep -iA2 -e class -e onlyoffice   # Klasse + xwayland: 0/1
+swaymsg -t get_tree | grep -iA2 -e class -e onlyoffice   # Klasse + shell
 xdg-mime query default application/vnd.openxmlformats-officedocument.wordprocessingml.document
 xdg-mime query default application/pdf        # muss firefox.desktop bleiben
 fc-list | grep -ci -e carlito -e caladea -e liberation
 ```
 
-- **OnlyOffice läuft über XWayland** (`hyprctl clients` → `xwayland: 1`), und das
+- **OnlyOffice läuft über XWayland** (`swaymsg -t get_tree` → `shell: xwayland`,
+  und die Regel in `sway/rules.tmpl` greift deshalb über `class`, nicht
+  `app_id`), und das
   ist der Normalzustand, kein Fehler: die App hat keinen Wayland-Support. Bei
   Upstream sind "Switch to native Wayland on Linux", "crashes on Wayland
   sessions due to XCB/X11 dependency" und "flatpak: Can't run on Wayland" offen.
@@ -2180,7 +2397,7 @@ fc-list | grep -ci -e carlito -e caladea -e liberation
   der Weg, nicht der Platform-Switch.
 - Die **Fensterklasse** kommt damit aus dem X11-`WM_CLASS` (die `.desktop`-Datei
   deklariert `StartupWMClass=ONLYOFFICE`). Vor einem Eintrag in Waybars
-  `window-rewrite` (s. Theming) den echten Wert aus `hyprctl clients` nehmen —
+  `window-rewrite` (s. Theming) den echten Wert aus `swaymsg -t get_tree` nehmen —
   dieselbe Regel wie bei allen anderen Klassen dort.
 
 ## Dateimanager (Double Commander)
@@ -2190,7 +2407,7 @@ nebeneinander, das eine ist Quelle, das andere Ziel, und die Funktionstasten
 machen die Arbeit — `F3` Betrachten, `F4` Bearbeiten, `F5` Kopieren, `F6`
 Verschieben/Umbenennen, `F7` Ordner anlegen, `F8` Löschen. Dazu Tabs pro Panel,
 Archive als begehbare Ordner, Mehrfach-Umbenennen, Verzeichnisvergleich und ein
-eingebauter FTP/SFTP-Client. Start: **`SUPER+E`** (s. `binds.conf`).
+eingebauter FTP/SFTP-Client. Start: **`SUPER+E`** (s. `sway/binds`).
 
 ### Warum ausgerechnet `doublecmd-qt6` — und warum das kein Detail ist
 
@@ -2215,7 +2432,7 @@ dnf repoquery --whatprovides /usr/bin/doublecmd     # → doublecmd-gtk
 belegt ausgerechnet die GTK2-Variante — und GTK2 hat nie ein Wayland-Backend
 bekommen, die läuft also zwangsweise über XWayland. Wer den Befehl tippt, den
 er erwartet, bekommt genau die Version, die hier nicht taugt. Deshalb stehen
-Paketname *und* Aufrufname sowohl in `packages.txt` als auch in `binds.conf`
+Paketname *und* Aufrufname sowohl in `packages.txt` als auch in `sway/binds`
 und `mimeapps.list` ausgeschrieben mit `-qt6`.
 
 Nur `doublecmd-qt6` linkt `libwayland-client.so.0` direkt; `qt6-qtwayland` steht
@@ -2224,12 +2441,13 @@ ohnehin schon in `packages.txt`. Kosten: 3 Pakete, 48 MB.
 ### Drag & Drop in Firefox-Upload-Felder
 
 Das ist der eigentliche Grund für die Paketwahl. Firefox ist hier ein natives
-dnf-Paket und läuft nativ auf Wayland (`hyprctl clients -j | grep xwayland` →
-`false`). Ein Wayland-Client, der zieht, bietet die Auswahl per
+dnf-Paket und läuft nativ auf Wayland (damals abgelesen mit
+`hyprctl clients -j | grep xwayland` → `false`; heute `swaymsg -t get_tree`,
+Feld `shell`). Ein Wayland-Client, der zieht, bietet die Auswahl per
 `wl_data_device` als `text/uri-list` an — genau das nimmt ein
 `<input type="file">` entgegen. Beide Seiten nativ, ein Protokoll, fertig.
 
-Über XWayland müsste derselbe Drop durch Hyprlands XDND-Brücke im XWM
+Über XWayland müsste derselbe Drop durch die XDND-Brücke des XWayland-Managers
 übersetzt werden. Die **existiert** — X11-nach-Wayland-DnD ist nicht
 grundsätzlich unmöglich —, ist aber der bekannt fragile Weg. Die Qt6-Variante
 umgeht sie vollständig, statt sich auf sie zu verlassen.
@@ -2240,7 +2458,7 @@ Die Paketauswahl war aus den Abhängigkeiten hergeleitet; inzwischen ist sie
 nachgemessen:
 
 ```sh
-hyprctl clients -j | grep -iB4 -i doublecmd | grep -e class -e xwayland
+swaymsg -t get_tree | grep -iB4 -i doublecmd | grep -e app_id -e shell
 ```
 
 - **`xwayland: false`** — bestätigt, `doublecmd-qt6` ist ein nativer
@@ -2250,7 +2468,7 @@ hyprctl clients -j | grep -iB4 -i doublecmd | grep -e class -e xwayland
   NICHT verwechseln mit `QT_QPA_PLATFORMTHEME`, das wir sehr wohl setzen —
   das ist eine andere Variable (s. Dark Mode unten).
 - **Fensterklasse** ist `doublecmd-qt6`, ebenfalls aus derselben Ausgabe. Sie
-  gehört geprüft, bevor sie in `rules.conf` oder Waybars `window-rewrite`
+  gehört geprüft, bevor sie in `sway/rules` oder Waybars `window-rewrite`
   landet — dieselbe Regel wie bei allen anderen Klassen dort. Bisher ist
   bewusst keine Regel eingetragen: der Manager soll gekachelt laufen wie jedes
   andere Arbeitsfenster.
@@ -2283,7 +2501,9 @@ Qt zieht sie aus einem Platform-Theme, und `libqgtk3.so` liegt unter
 `qt6-qtbase-gui`. **Kein zusätzliches Paket**, insbesondere kein `qt6ct` und
 kein `adwaita-qt6`. Zwei Zeilen im Repo schalten das scharf:
 
-- `env = QT_QPA_PLATFORMTHEME,gtk3` in `hypr/base.conf`
+- `QT_QPA_PLATFORMTHEME=gtk3` in der `dbus-update-activation-environment`-Zeile
+  von `sway/base` (Sway kennt kein `env`), plus `$qtenv` vor dem Aufruf in
+  `sway/binds`
 - `gtk-application-prefer-dark-theme = 1` in `dot_config/gtk-3.0/settings.ini`
 
 Das färbt die Panels gleich mit: DCs Panel-Farben stehen ab Werk auf
@@ -2297,8 +2517,8 @@ der vorgesehene Weg und deckt echte GTK-Programme gleich mit ab — passend zum
 ohnehin gesetzten `color-scheme=prefer-dark` in dconf.
 
 `QT_QPA_PLATFORMTHEME` steht zusätzlich in der Liste von
-`dbus-update-activation-environment` in `base.conf`. Grund: DC startet nicht nur
-über SUPER+E als Kind von Hyprland, sondern auch als Handler für
+`dbus-update-activation-environment` in `sway/base`. Grund: DC startet nicht nur
+über SUPER+E als Kind der Session, sondern auch als Handler für
 `inode/directory` (s. `mimeapps.list`) — dann startet ihn das Portal aus der
 systemd-Activation-Environment heraus. Ohne den Eintrag käme er über die Taste
 dunkel und über den Doppelklick hell hoch.
@@ -2776,11 +2996,147 @@ scanimage -L          # sieht der Host das Gerät?
 Antwortet der Host und das Flatpak nicht, ist es die Sandbox; antwortet auch der
 Host nicht, ist es Netz/avahi — dann ist die Suche im Frontend Zeitverschwendung.
 
+## Drift auflösen (`drift-check.sh pick`)
+
+`./drift-check.sh` listet wie immer die Pakete, die installiert sind, aber nicht
+im Repo stehen. `./drift-check.sh pick` legt dieselbe Liste in **fzf**: `TAB`
+markiert (mehrere), dann entscheidet eine Taste, was mit dem markierten Schwung
+passiert.
+
+| Taste | Aktion |
+|---|---|
+| `CTRL-R` | entfernen — `dnf remove` |
+| `CTRL-P` | nach `packages.txt` übernehmen — gehört dazu, war nur nie eingetragen |
+| `CTRL-E` | nach `packages-expected.txt` — soll da sein, gehört aber nicht ins Setup |
+| `ESC` | Abbruch, nichts passiert |
+
+Die Liste hat **zwei Spalten**, und die zweite ist der ganze Trick: der
+Installationsgrund aus der RPM-Datenbank. Sortiert wird danach — `User` oben,
+`Group` unten.
+
+### Warum die Liste ohne diese Spalte unbrauchbar ist
+
+`dnf repoquery --userinstalled` wirft zwei völlig verschiedene Dinge in denselben
+Topf. Von den 67 Einträgen auf dem cube sind:
+
+| Reason | Anzahl | Was es heißt |
+|---|---|---|
+| `User` | 28 | wirklich explizit installiert — **nur hier** lohnt das Nachdenken |
+| `Group` | 38 | kam über eine comps-Gruppe der Erstinstallation: `bash`, `glibc`, `coreutils`, `sudo`, `util-linux`. Nichts davon hat je jemand einzeln ausgesucht |
+| `External User` | 1 | an dnf vorbei installiert (heruntergeladenes `.rpm`) |
+
+Ohne die Spalte steht der halbe Anaconda-Sockel unkommentiert zwischen den
+echten Ad-hoc-Installationen — und dann kann man bei keinem Eintrag einschätzen,
+was er da tut. Mit ihr sind es 28 Zeilen, bei denen die Frage „weg oder
+behalten?" überhaupt sinnvoll ist.
+
+**Trotzdem nicht gefiltert.** Die `Group`-Pakete verschwinden nicht, sie rutschen
+nach unten. Wegzulassen wäre wieder ein Ausschluss, den nicht der Nutzer
+getroffen hat — und die Grenze verläuft nicht da, wo man sie vermutet: `kernel`
+steht als `User` drin, `sudo` dagegen als `Group`. Wer hier pauschal filtert,
+filtert falsch.
+
+### Die Vorschau beantwortet „wo kommt das her?"
+
+Rechts steht zu jedem Eintrag Version, Installationsdatum, Größe — und zwei
+Blöcke, die die eigentliche Entscheidung tragen:
+
+```
+Woher:                                  Woher:
+  3 yum install btop  15.08.2026          1 (leer)  15.08.2026  419 Pakete
+Wird gebraucht von:                     Wird gebraucht von:
+  Kein Paket benötigt btop                ca-certificates, dracut, …
+```
+
+Links ein Befehl, den man selbst getippt hat, und nichts hängt dran — das kann
+weg. Rechts eine Transaktion ohne Kommandozeile, die 419 Pakete angefasst hat
+(die Anaconda-Erstinstallation), mit vier Abhängigen — das bleibt.
+
+Der Block kommt aus `dnf history list --contains-pkgs`. Das ist die **einzige**
+Stelle, an der die Vorschau `dnf` statt `rpm` benutzt: `rpm` liest die lokale
+Datenbank und antwortet sofort, `dnf info` geht an den Metadaten-Cache und
+braucht pro Cursorschritt eine knappe Sekunde — bei 67 Einträgen der Unterschied
+zwischen Durchscrollen und Warten. `--contains-pkgs` ist mit 0,026 s die
+Ausnahme, die nichts kostet.
+
+Der letzte Block (`rpm -q --whatrequires`) entscheidet, ob „entfernen" eine
+Zeile oder eine Lawine wird.
+
+### Warum es trotzdem eine dritte Kategorie braucht
+
+Auch mit Reason-Spalte und Herkunft bleiben Einträge übrig, die weder ins Setup
+gehören noch weg sollen: ein `User`-Paket, das man bewusst ad hoc installiert
+hat und ad hoc behalten will. Für die ist `packages-expected.txt` da.
+
+Ohne Platz für diese Kategorie bleibt die Liste dauerhaft lang. Und eine Liste,
+die man jedes Mal überliest, meldet irgendwann auch das eine echte Paket nicht
+mehr — dann kann man `drift-check.sh` auch gleich löschen.
+
+**Nicht vorbefüllt, mit Absicht.** Es wäre technisch trivial, die 419 Namen aus
+`dnf history info 1` einmal einzutragen. Genau das soll nicht passieren: dann
+stünde eine generierte Datei im Repo, die nie jemand gelesen hat, und die
+Entscheidung „das darf hier stehen" wäre für 419 Pakete auf einmal getroffen
+worden, ohne sie je anzusehen. Jeder Eintrag entsteht stattdessen am Gegenstand,
+über `CTRL-E`, **mit Begründung** — das Skript fragt sie ab und schreibt sie als
+Kommentar mit. Eine Ausnahmeliste ohne Begründungen ist nach einem halben Jahr
+nicht mehr von einer Liste vergessener Pakete zu unterscheiden.
+
+### Warum fzf und nicht fuzzel
+
+Das Repo macht jeden GUI-Picker mit fuzzel (`bt`, `wifi`, `audio-out`, …). Für
+diesen hier geht das nicht: **fuzzel kann im dmenu-Modus nur einen Eintrag
+zurückgeben.** „Sieben hypr-Pakete markieren und in einem Rutsch entfernen" ist
+aber genau der Fall, für den das Tool existiert. fzf ist dasselbe Prinzip
+(tippen filtert, Enter wählt) für das Terminal, kann `--multi` und liefert über
+`--expect` gleich mit, welche Taste gedrückt wurde. Reguläres Fedora-Paket, in
+packages.txt eingetragen.
+
+### Die Sicherung ist `dnf` selbst
+
+`CTRL-R` ruft `dnf remove` **ohne `-y`**. Das ist die einzige Sicherung, und sie
+ist absichtlich keine eigene: `dnf` zeigt von sich aus die vollständige
+Transaktion — inklusive der Pakete, die als Abhängigkeit mitgehen — und fragt
+dann nach. Eine selbstgebaute Rückfrage davor wäre eine zweite, schlechtere
+Wahrheit, die irgendwann von der ersten abweicht. Wer hier `bash` markiert,
+sieht in der dnf-Vorschau, was das bedeutet, und kann mit `n` abbrechen.
+
+Zusätzlich schützt dnf die Pakete aus `/etc/dnf/protected.d/` (auf diesem System
+`systemd`, `systemd-udev`, `sudo`, `setup`, `grub2-efi-x64`,
+`grub2-tools-minimal`, `selinux-policy-targeted`, `shim-x64`) hart — die lassen sich gar nicht
+entfernen. `kernel`, `glibc`, `bash`, `coreutils` und `rpm` stehen da **nicht**
+drin; bei denen ist die Transaktionsvorschau die einzige Bremse.
+
+### Der Hyprland-Fall, durchgespielt
+
+Das Tool ist für genau diesen Ablauf gebaut worden, und er ist am 10.09.2026
+einmal komplett durchgelaufen (s. „Compositor: Sway"):
+
+1. `hyprland`, `hypridle` und `xdg-desktop-portal-hyprland` aus `packages.txt`
+   löschen, `dot_config/hypr/` bis auf `hyprlock.conf` + `mocha.conf` entfernen,
+   `hyprland-session.target`, die Portal-Datei und den COPR-Aufruf in
+   `bootstrap.sh` mit.
+2. `./drift-check.sh pick` — die Pakete stehen jetzt als Drift da (installiert,
+   aber nicht mehr im Repo), und zwar mit Reason `User` und der Herkunftszeile
+   `15.08. hyprland hyprlock hypridle …` in der dritten Spalte. Tippen filtert
+   auf `hypr`, `TAB` markiert, `CTRL-R` entfernt.
+3. Auf dem book dasselbe.
+
+Dasselbe gilt für `mako`, das beim Umstieg auf swaync überflüssig wurde: es
+taucht in der Liste als `User` / `15.08. hyprland hyprlock hypridle …` auf,
+ohne Abhängige.
+
+Was das Tool **nicht** tut: die COPR `ashbuk/Hyprland-Fedora` abräumen. Die ist
+eine Repo-Definition, kein Paket — `sudo dnf copr remove ashbuk/Hyprland-Fedora`
+gehört zum selben Aufräumen, muss aber von Hand. Genauso wenig räumt es
+Konfigurationsreste im Home ab (`~/.config/wayvnc`).
+
 ## Betriebsmodus
 
 - Ad-hoc `dnf install` ist erlaubt; was bleibt, wandert SOFORT in packages.txt.
 - GUI-Apps nur als Flatpak (flatpaks.txt), außer Firefox (s. o.).
   Dev-Toolchain über SDKMAN/mise.
 - Config-Änderungen enden immer im Repo: live editiert ⇒ `chezmoi re-add`.
-- `./drift-check.sh` zeigt handinstallierte Pakete, die nicht im Repo stehen.
+- `./drift-check.sh` zeigt handinstallierte Pakete, die nicht im Repo stehen;
+  `./drift-check.sh pick` löst sie auf (entfernen / übernehmen / als erwartet
+  ablegen) — s. eigenen Abschnitt.
 - Vor jedem Commit: `git status` + `git diff` (Repo ist public!). TODO: gitleaks-Hook.

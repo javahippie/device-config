@@ -1,0 +1,140 @@
+/* Catppuccin Mocha, Mauve-Akzent — dieselbe Palette wie waybar/style.css.
+
+   ANDERS ALS BEI MAKO: swaync ist GTK 4, nicht cairo. Es gilt GTK-CSS, und vor
+   allem laedt swaync ZWEI Stylesheets — erst seinen Default aus
+   /etc/xdg/swaync/style.css, dann diese Datei. Beide auf derselben
+   GTK-Prioritaet (config.json: "cssPriority"), es gewinnt also bei gleicher
+   Spezifitaet das spaeter geladene, und das sind wir.
+
+   Genau deshalb steht hier fast kein Selektor. Der Default ist durchgehend
+   ueber CSS-Custom-Properties gebaut (`background: rgba(var(--noti-bg), ...)`),
+   und die sind der vorgesehene Angriffspunkt: einmal :root ueberschreiben und
+   alle Regeln des Defaults ziehen die neuen Werte. Der Weg ueber eigene
+   Selektoren waere ein Wettruesten gegen Ketten wie
+
+     .notification-row .notification-background .notification
+       .notification-default-action .notification-content .text-box .summary
+
+   — sieben Klassen, die man ohne Not nachbauen muesste. Wo unten trotzdem ein
+   Selektor steht, fehlt schlicht die passende Variable; jeder davon ist so
+   lang wie sein Gegenstueck im Default, sonst verliert er still.
+
+   Nachschlagen, was es an Variablen und Klassen gibt: /etc/xdg/swaync/style.css.
+   Aendern und sofort sehen, ohne Neustart: `swaync-client -rs`.
+
+   Deko-Nullpunkt wie ueberall im Repo: --border-radius auf 0, Schatten aus. */
+
+:root {
+    /* Panel: Mantle, eine Nuance dunkler als die Meldungen darauf, damit die
+       Liste als Flaeche lesbar bleibt. Der Default ist hier durchscheinend
+       (rgba(46,46,46,0.7)) — wir machen ihn deckend, weil hinter dem Panel je
+       nach Workspace ein Terminal voller Text liegt und Text auf Text nichts
+       gewinnt. */
+    --cc-bg: #181825;
+
+    /* Die Meldung selbst: Base. --noti-bg ist eine KOMPONENTENLISTE, keine
+       Farbe — der Default setzt sie in rgba(var(--noti-bg), var(--noti-bg-alpha))
+       ein. Ein "#1e1e2e" an dieser Stelle ergibt reines Schwarz. */
+    --noti-bg: 30, 30, 46;
+    --noti-bg-alpha: 1;
+    --noti-bg-darker: #181825;
+    --noti-bg-hover: #313244;
+    --noti-bg-focus: #313244;
+
+    /* 2px Mauve wie unter mako — der Rahmen war dort die einzige Farbe, die
+       eine Meldung von einem Fenster unterschied, und das bleibt so. */
+    --noti-border-color: #cba6f7;
+    --border: 2px solid var(--noti-border-color);
+
+    /* Der Schliessen-Knopf: das, was mako prinzipiell nicht konnte. Gedaempft
+       im Ruhezustand, damit er nicht lauter ist als die Meldung selbst, und
+       erst beim Darueberfahren rot. Rot heisst hier ausnahmsweise nicht
+       "kaputt", sondern "weg damit" — dieselbe bewusste Ausnahme wie bei der
+       laufenden Bildschirmaufnahme in waybar/style.css. */
+    --noti-close-bg: #313244;
+    --noti-close-bg-hover: #f38ba8;
+
+    --text-color: #cdd6f4;
+    --text-color-disabled: #7f849c;
+    --bg-selected: #cba6f7;
+
+    --border-radius: 0;
+    --notification-shadow: none;
+
+    /* 13px wie die Waybar; der Default liegt bei 15/16px und faellt neben der
+       Bar sofort als "andere Anwendung" auf. */
+    --font-size-summary: 13px;
+    --font-size-body: 13px;
+    --notification-icon-size: 48px;
+}
+
+/* Font: der Default setzt gar keine Familie und erbt damit die GTK-Vorgabe.
+   Nur die Familie, keine Groesse — die kommt aus den Variablen oben. */
+* {
+    font-family: "JetBrains Mono";
+}
+
+/* --- Was keine Variable hat --- */
+
+/* Dringlichkeit, 1:1 die Abstufung aus der alten mako/config: low = grau,
+   normal = Mauve (kommt aus --noti-border-color), critical = Peach. Dass
+   Kritisches stehen bleibt, bis man es wegklickt, macht dagegen
+   timeout-critical=0 in config.json, nicht dieses Stylesheet.
+   Die drei Regeln im Default sind absichtlich leer — sie existieren nur als
+   Haken fuer genau das hier. */
+.notification-row .notification-background .notification.low {
+    border-color: #585b70;
+}
+
+.notification-row .notification-background .notification.critical {
+    border-color: #fab387;
+}
+
+/* Der Zeitstempel ist der Grund, warum das Panel ueberhaupt etwas taugt ("wann
+   kam das?"), soll die Meldung aber nicht anfuehren. Der Default gibt ihm
+   dieselbe Groesse und dasselbe Fett wie die Ueberschrift — hier gedaempft und
+   normal. Das ist auch der Grund fuer die volle Selektorkette: kuerzer verliert
+   sie gegen den Default, und zwar STILL. */
+.notification-row .notification-background .notification .notification-default-action .notification-content .text-box .time {
+    color: #7f849c;
+    font-weight: normal;
+    font-size: 12px;
+}
+
+/* Fliesstext eine Stufe leiser als die Ueberschrift. */
+.notification-row .notification-background .notification .notification-default-action .notification-content .text-box .body {
+    color: #a6adc8;
+}
+
+/* Bilder (Chat-Avatare, Album-Cover) macht der Default rund (border-radius:
+   100px, ein fester Wert und nicht die Variable). Eckig wie alles hier. */
+.notification-row .notification-background .notification .notification-default-action .notification-content .image {
+    border-radius: 0;
+}
+
+/* Auf dem roten Hover-Grund braucht das ✕ die dunkle Schrift; der Default
+   faerbt es ueber .close-button hell. */
+.close-button:hover {
+    color: #1e1e2e;
+}
+
+/* Kopfzeile des Panels ("Benachrichtigungen" + "Alle loeschen"; die Texte
+   stehen in config.json unter widget-config). Der Default gibt dem Label
+   1.5rem — neben 13px Fliesstext ist das eine Ueberschrift zu viel. */
+.widget-title > label {
+    font-size: 14px;
+}
+
+/* "Nicht stoeren" eingeschaltet: Peach, nicht Mauve — dieselbe Ueberlegung wie
+   beim gelben "Wach" in der Waybar. Kein Fehler, aber der eine Zustand, in dem
+   der Rechner absichtlich schweigt, und den muss man aktiv wieder abstellen.
+   Das Waybar-Modul sagt dann "DND". */
+.widget-dnd switch:checked {
+    background: #fab387;
+}
+
+/* NICHT gesetzt, und das mit Absicht: .blank-window (die Flaeche hinter dem
+   geoeffneten Panel, die Klicks abfaengt). Ein leichter Schleier darauf waere
+   huebsch, die Regel hat aber dieselbe Spezifitaet wie die des Defaults und
+   haenge damit allein an der Ladereihenfolge — fuer reine Kosmetik ist das der
+   falsche Handel. Klick daneben schliesst das Panel ohnehin. */

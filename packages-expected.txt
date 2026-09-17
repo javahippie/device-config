@@ -1,0 +1,23 @@
+# Pakete, die in der Drift-Liste auftauchen DUERFEN, ohne Teil des Setups zu
+# sein. Dritte Kategorie neben packages.txt (gehoert dazu, wird installiert) und
+# "weg damit" (dnf remove) — siehe Kopf von drift-check.sh.
+#
+# Der typische Fall ist der Anaconda-Sockel: `dnf repoquery --userinstalled`
+# zaehlt alles mit, was die Erstinstallation angelegt hat (auf dem cube die 419
+# Pakete aus Transaktion 1 vom 15.08.2026), also auch bash, glibc, kernel und
+# systemd. Die gehoeren weder in packages.txt (bootstrap.sh soll sie nicht
+# installieren wollen) noch geloescht.
+#
+# Format wie packages.txt: ein Paketname pro Zeile, '#' leitet einen Kommentar
+# ein. Absichtlich identisch, damit man eine Zeile zwischen den beiden Dateien
+# verschieben kann, ohne sie umzuschreiben.
+#
+# JEDER EINTRAG BRAUCHT EINEN GRUND. Eine Ausnahmeliste ohne Begruendungen ist
+# nach einem halben Jahr nicht mehr von einer Liste vergessener Pakete zu
+# unterscheiden — und dann ist der ganze drift-check wertlos.
+#
+# Fuellen per `./drift-check.sh pick` (markieren, CTRL-E); der Grund wird dabei
+# abgefragt und landet als Kommentar hier.
+
+# (noch leer — es ist bewusst nichts vorbefuellt, auch nicht der Sockel:
+#  jeder Eintrag soll aus einer eigenen Entscheidung am Gegenstand stammen)

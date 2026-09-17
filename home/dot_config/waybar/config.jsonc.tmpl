@@ -1,36 +1,292 @@
-// Waybar in der HYPRLAND-Session. Der Loewenanteil der Bar steht in
-// common.jsonc.tmpl und wird unten per "include" hereingezogen; hier bleibt
-// nur, was compositor-spezifisch ist.
+// Waybar in der Sway-Session.
 //
-// Warum ueberhaupt geteilt: seit es die Sway-Session gibt (dot_config/sway),
-// braucht es zwei Bar-Konfigurationen, die sich in genau zwei Modulen
-// unterscheiden. Eine Datei zu kopieren hiesse, jede kuenftige Aenderung an
-// Uhr, Netz, Bluetooth oder Aufnahmemodus doppelt zu pflegen — nach der
-// dritten Aenderung waere eine der beiden Bars falsch.
+// EINE Datei. Bis 10.09.2026 waren es drei: common.jsonc.tmpl mit dem geteilten
+// Teil, dazu config.jsonc.tmpl und config-sway.jsonc.tmpl, die ihn per "include"
+// hereinzogen und sich nur im Workspace- und Fenster-Modul unterschieden. Diese
+// Aufteilung existierte ausschliesslich, weil es zwei Compositoren gab; mit
+// Hyprland ist sie ersatzlos weggefallen.
 //
-// Waybars Include-Regel (waybar(5)): bei doppelten Schluesseln gewinnt die
-// EINBINDENDE Datei. Alles hier schlaegt also common.jsonc, nicht umgekehrt.
-// Der Pfad ist absolut, weil Waybar in Include-Pfaden kein "~" aufloest;
-// chezmoi setzt ihn beim Ausrollen ein.
+// Der Dateiname ist wieder config.jsonc — Waybar sucht von sich aus genau den.
+// Der Aufruf in sway/base braucht deshalb kein -c mehr.
+//
+// Text-only, bewusst: packages.txt installiert JetBrains Mono + Font Awesome,
+// aber keine Nerd-Font-Glyphen — Icon-Glyphen würden hier zu Tofu-Boxen führen.
+// App-Icons im Workspace-Switcher nutzen deshalb Noto-Emoji (auch aus
+// packages.txt) statt Nerd-Font-Glyphen wie in den meisten geteilten Configs.
+// battery-Modul blendet sich auf Hosts ohne Akku (cube) von selbst aus.
 {
-    "include": ["{{ .chezmoi.homeDir }}/.config/waybar/common.jsonc"],
+    "modules-left": ["sway/workspaces", "sway/window"],
 
-    "modules-left": ["hyprland/workspaces", "hyprland/window"],
-
-    "hyprland/workspaces": {
-        // {id} ist die Workspace-Nummer. Das Sway-Modul nennt dasselbe Feld
-        // {name} — einer von genau zwei Unterschieden zwischen den Bars.
-        "format": "{id} {windows}",
-        // Immer 1-6 zeigen, auch leer. Hyprland muss die Workspaces dafuer
-        // selbst als persistent kennen, das steht in hypr/rules.conf.tmpl.
-        // Schreibweise "*" = auf allen Outputs; das Sway-Modul will hier
-        // stattdessen einen Eintrag pro Workspace (s. config-sway.jsonc.tmpl).
+    "sway/workspaces": {
+        // {name}: so heisst die Workspace-Nummer im Sway-Modul (laut Manpage
+        // "Number stripped from workspace value"). Hier wird nichts benannt,
+        // es steht also schlicht die Zahl da.
+        "format": "{name} {windows}",
+        // Immer 1-6 zeigen, auch leer. Es braucht dafuer KEINE Entsprechung in
+        // sway/rules: das Modul erzeugt die fehlenden Buttons selbst.
+        // Die leere Liste je Eintrag heisst "auf allen Outputs".
         "persistent-workspaces": {
-            "*": [1, 2, 3, 4, 5, 6]
+            "1": [],
+            "2": [],
+            "3": [],
+            "4": [],
+            "5": [],
+            "6": []
         },
-{{ template "waybar-workspaces-icons" . }}
+        // App-Icons im Workspace-Switcher. Bis 10.09.2026 lag dieser Block als
+        // eigenes chezmoi-Template in home/.chezmoitemplates/, weil ihn zwei
+        // Bar-Konfigurationen (Hyprland und Sway) hereinzogen. Es gibt nur noch
+        // eine — der Block steht deshalb wieder da, wo er hingehoert.
+        "all-outputs": true,
+        // "unique-icons" ist in der Manpage nicht dokumentiert (gleiche App
+        // zweimal = ein Icon). Kennt sway/workspaces es nicht, ignoriert Waybar
+        // den Schluessel still — dann stehen im Zweifel zwei gleiche Emoji
+        // nebeneinander, mehr passiert nicht.
+        "unique-icons": true,
+        "window-rewrite-default": "•",
+        // WICHTIG: waybar matcht den Ausdruck gegen die GANZE Klasse, nicht als
+        // Teilstring. Die frueheren Regeln wie class<[Ff]irefox> konnten deshalb
+        // nie greifen — die Klasse heisst org.mozilla.firefox. Funktioniert
+        // hatten nur foot, cider und ONLYOFFICE, weil dort Muster und Klasse
+        // zufaellig identisch waren. Neue Eintraege daher entweder exakt
+        // schreiben oder mit .* umschliessen.
+        //
+        // Was "class" hier bedeutet, haengt am FENSTER: fuer Wayland-Fenster ist
+        // es die app_id, fuer XWayland-Fenster die WM_CLASS.
+        //
+        // Alle Klassen gegengeprueft (2026-08-21) — heute mit
+        // `swaymsg -t get_tree`.
+        "window-rewrite": {
+            "class<foot>": "\ud83d\udda5",
+            "class<org\\.mozilla\\.firefox>": "\ud83e\udd8a",
+            // thunderbird_esr heute; .* deckt auch den Wechsel auf den
+            // Nicht-ESR-Zweig ab.
+            "class<org\\.mozilla\\.thunderbird.*>": "\u2709\ufe0f",
+            // Citrix (Wfica). Fenster = die Windows-Sitzung beim Kunden, die
+            // ueber Citrix drin haengt; \ud83d\udda5 ist schon fuer foot vergeben.
+            // U+1FA9F ist ein junges Emoji (13.0) -- Abdeckung in
+            // NotoEmoji-Regular gegengeprueft (fc-list :charset=1fa9f).
+            // Klein geschrieben kommt Wfica auch vor (s. rules), deshalb die
+            // Zeichenklasse.
+            "class<[Ww]fica>": "\ud83e\ude9f",
+            "class<com\\.slack\\.Slack>": "\ud83d\udcac",
+            // Element meldet sich als im.riot.Riot — Altlast aus der Riot-Zeit.
+            "class<im\\.riot\\.Riot>": "\ud83d\udd37",
+            "class<org\\.keepassxc\\.KeePassXC>": "\ud83d\udd11",
+            // Die Klasse enthaelt die VERSION ("Apache NetBeans IDE 31"), das .*
+            // ist also nicht Kosmetik: ohne es faellt das Icon beim naechsten
+            // NetBeans-Major wieder aus.
+            "class<Apache NetBeans IDE.*>": "\u2615",
+            "class<cider>": "\ud83c\udfb5",
+            // Lokaler Player: foot mit eigener app-id (s. mpv-audio.desktop),
+            // schwebt per rules. Andere Note als Cider, damit man im
+            // Workspace-Switcher sieht, WAS gerade spielt.
+            "class<mpv-audio>": "\ud83d\udcbf",
+            "class<ONLYOFFICE>": "\ud83d\udcc4",
+            // NICHT verifiziert — Signal lief beim Gegenpruefen nicht.
+            "class<.*[Ss]ignal.*>": "\ud83d\udd12"
+        }
     },
-    "hyprland/window": {
+    "sway/window": {
         "max-length": 60
+    },
+
+    "layer": "top",
+    "position": "top",
+    "height": 30,
+    "spacing": 4,
+
+    "modules-center": ["clock"],
+    "modules-right": ["custom/screenrec", "idle_inhibitor", "custom/keybinds", {{ if eq .chezmoi.hostname "cube" }}"custom/recording", {{ end }}"pulseaudio", "bluetooth", "network", "battery", "custom/notification", "tray"],
+
+    // Haelt den Rechner wach, solange laengere Hintergrund-Jobs laufen.
+    // Klick schaltet um: "Idle" = normale Kette (5 min Lock, 15 min Suspend),
+    // "Wach" = nichts davon.
+    //
+    // Technik: Waybar haelt dafuer einen zwp_idle_inhibitor_v1 auf seiner
+    // eigenen Layer-Surface. Der Compositor stoppt daraufhin die
+    // ext-idle-notify-v1-Timer — und genau aus denen speist sich der
+    // Idle-Daemon. Es wird also nicht der Daemon gestoppt, sondern ihm die Uhr
+    // angehalten; ein `pidof swayidle` sieht weiter alles normal.
+    //
+    // Der Mechanismus ist reines Standardprotokoll: swayidle (sway/base) hoert
+    // auf ext-idle-notify-v1 und wird hierdurch stillgelegt.
+    //
+    // Der Zustand liegt bewusst nirgends auf Platte (start-activated bleibt
+    // ungesetzt): nach Waybar-Neustart oder Relogin ist der Schutz wieder aus.
+    // Ein vergessener Inhibit, der einen Reboot ueberlebt, faellt sonst erst
+    // auf, wenn der Akku leer ist.
+    "idle_inhibitor": {
+        "format": "{icon}",
+        "format-icons": {
+            "activated": "Wach",
+            "deactivated": "Idle"
+        },
+        "tooltip-format-activated": "Kein Lock, kein Suspend — Klick schaltet zurueck",
+        "tooltip-format-deactivated": "Lock nach 5 min, Suspend nach 15 min"
+    },
+
+    // Klick öffnet den Geräte-Picker (dot_local/bin/bt). Text statt Glyphe wie überall.
+    "bluetooth": {
+        "format-off": "BT off",
+        "format-on": "BT",
+        "format-connected": "BT {device_alias}",
+        "tooltip": false,
+        // Links: bekanntes Gerät verbinden/trennen. Rechts: neues koppeln.
+        "on-click": "~/.local/bin/bt pick",
+        "on-click-right": "~/.local/bin/bt pair"
+    },
+
+    // Klickbares Gegenstück zu SUPER+F1. Text statt Glyphe, wie der Rest der Bar
+    // (kein Nerd Font installiert, s. Kopf dieser Datei).
+    // Das Skript liest ~/.config/sway/binds; der fruehere Compositor-Zweig ist
+    // mit Hyprland am 10.09.2026 weggefallen.
+    "custom/keybinds": {
+        "format": "Keys",
+        "tooltip": false,
+        "on-click": "~/.local/bin/keybinds"
+    },
+
+    // Benachrichtigungen (swaync). Links: Panel auf/zu — dort stehen die
+    // vergangenen Meldungen, die man verpasst hat. Rechts: "Nicht stoeren".
+    // Gleiche Aktionen wie SUPER+N und SUPER+SHIFT+N (s. sway/binds).
+    //
+    // Kein "interval": `swaync-client -swb` ist KEIN Statusaufruf, der einmal
+    // laeuft und sich beendet, sondern ein Abonnement — es haengt am Daemon und
+    // schreibt bei jeder Aenderung eine neue JSON-Zeile. Waybar erkennt genau
+    // daran den Dauerbetrieb und liest die Zeilen einfach mit. Ein interval
+    // wuerde den Prozess im Takt abschiessen und neu starten; ein signal
+    // (wie bei custom/recording) ist ueberfluessig, weil nichts zu pollen ist.
+    // Anzeige steht damit sofort, nicht erst nach bis zu einer Sekunde.
+    //
+    // Kein "exec-if": swaync steht in packages.txt und ist ab sofort der
+    // Notification-Daemon der Session. Fehlt es, ist das kein Fall fuer ein
+    // stillschweigend ausgeblendetes Modul, sondern ein kaputtes Setup —
+    // dann soll die Luecke in der Bar auffallen.
+    //
+    // "{icon} {text}" statt reiner Farbe: {icon} kommt aus format-icons und
+    // haengt am "alt"-Feld des Daemons, {text} ist die Anzahl.
+    //
+    // {text} und NICHT das sonst uebliche {}: Waybar mischt seit dem Umstieg
+    // auf fmt 10 keine positionellen und benannten Platzhalter mehr in einem
+    // Format. "{icon} {}" wirft "mixing manual and automatic argument indexing
+    // is no longer supported" ins Log und das Modul bleibt leer — der Fehler
+    // steht NUR im Log, in der Bar sieht man eine Luecke. Damit steht der
+    // DND-Zustand als WORT da ("DND 2") und nicht nur als Gelbton — das ist
+    // der eine Zustand, bei dem man sich sonst wundert, warum nichts mehr
+    // aufpoppt. Text statt Glyphe wie die ganze Bar (kein Nerd Font).
+    // Die vier inhibited-*-Faelle kommen vom Idle-Inhibit-Pfad des Daemons;
+    // sie sind hier absichtlich mit denselben Woertern belegt statt zu fehlen —
+    // ein nicht gemapptes alt liesse Waybar sonst {icon} leer rendern.
+    "custom/notification": {
+        "exec": "swaync-client -swb",
+        "return-type": "json",
+        "format": "{icon} {text}",
+        "format-icons": {
+            "none": "Msg",
+            "notification": "Msg",
+            "inhibited-none": "Msg",
+            "inhibited-notification": "Msg",
+            "dnd-none": "DND",
+            "dnd-notification": "DND",
+            "dnd-inhibited-none": "DND",
+            "dnd-inhibited-notification": "DND"
+        },
+        "tooltip": false,
+        // -sw ("skip wait") laesst den Client nicht auf einen erst noch
+        // startenden Daemon warten, sondern sofort zurueckkehren.
+        "on-click": "swaync-client -t -sw",
+        "on-click-right": "swaync-client -d -sw"
+    },
+
+    // Laufende Bildschirmaufnahme (dot_local/bin/record, wf-recorder).
+    // NICHT zu verwechseln mit custom/recording weiter unten — das ist der
+    // Audio-Aufnahmemodus (Scarlett + CPU). Deshalb auch ein anderes Signal:
+    // 8 hier, 7 dort.
+    //
+    // Auf BEIDEN Hosts, anders als custom/recording: aufnehmen kann man
+    // ueberall, dafuer braucht es keine bestimmte Hardware.
+    //
+    // Ohne Aufnahme liefert `record status` leeren Text — Waybar blendet das
+    // Modul dann komplett aus. Es ist also nur zu sehen, wenn es etwas zu
+    // sagen hat; ein dauerhaftes "keine Aufnahme" waere reine Bar-Belegung.
+    //
+    // interval 1, damit die Laufzeit mitzaehlt. Das ist hier vertretbar, weil
+    // `record status` bewusst ohne jq, date und cat auskommt (reine
+    // Bash-Builtins, s. Kommentar dort) — der Sekundentakt kostet damit
+    // nichts. Das Signal ist trotzdem noetig: Start und Stopp sollen sofort
+    // stehen, nicht erst nach bis zu einer Sekunde.
+    //
+    // Kein on-click zum Stoppen: eine laufende Aufnahme per Mausklick auf die
+    // Bar zu beenden hiesse, mit dem Zeiger IM Bild herumzufahren. Dafuer sind
+    // die drei R-Tasten da.
+    "custom/screenrec": {
+        "exec": "~/.local/bin/record status",
+        "return-type": "json",
+        "interval": 1,
+        "signal": 8
+    },
+{{ if eq .chezmoi.hostname "cube" }}
+    // Aufnahmemodus (dot_local/bin/recording-mode): schiebt das Scarlett ins
+    // pro-audio-Profil und die CPU aus dem Sparmodus — und wieder zurueck.
+    // Text statt Glyphe wie der Rest der Bar.
+    //
+    // NUR AUF DEM CUBE. Das Modul haengt an einem fest angeschlossenen
+    // Focusrite und einer Desktop-CPU; auf dem book waere es ein Schalter ins
+    // Leere. Die Weiche steht an drei Stellen und muss zusammen gepflegt
+    // werden: hier, in .chezmoiignore (das Script selbst) und in bootstrap.sh
+    // (Root-Helfer + sudoers-Regel). Das CSS in style.css ist bewusst NICHT
+    // gegatet — Regeln fuer ein nicht vorhandenes Modul sind wirkungslos, und
+    // eine vierte Weiche waere mehr Risiko als der Gewinn.
+    //
+    // return-type json, damit ein Aufruf Text, Tooltip UND CSS-Klasse liefert.
+    // Der Zustand wird dabei jedes Mal frisch aus PipeWire und /sys gelesen und
+    // nirgends zwischengespeichert — ein von Hand mit wpctl umgestelltes Profil
+    // oder ein abgezogenes Interface faellt der Anzeige damit sofort auf,
+    // statt sie gegen eine gemerkte Wahrheit laufen zu lassen.
+    //
+    // "signal": 7 muss zu RECMODE_WAYBAR_SIGNAL im Script passen. Nach dem
+    // Umschalten schickt das Script pkill -RTMIN+7 waybar, damit die Bar sofort
+    // nachzieht; das interval ist nur der Rueckfall fuer Aenderungen, die nicht
+    // ueber den Button liefen.
+    "custom/recording": {
+        "exec": "~/.local/bin/recording-mode status",
+        "return-type": "json",
+        "interval": 10,
+        "signal": 7,
+        "on-click": "~/.local/bin/recording-mode toggle"
+    },
+{{ end }}
+    "clock": {
+        "format": "{:%H:%M   %a, %d.%m.}"
+    },
+    "pulseaudio": {
+        "format": "Vol {volume}%",
+        "format-muted": "Vol muted",
+        // Links stummschalten (wie gehabt), rechts das Ausgabegerät wechseln.
+        "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+        "on-click-right": "~/.local/bin/audio-out pick"
+    },
+    // Klick oeffnet den Netz-Picker (dot_local/bin/wifi), analog zum
+    // bluetooth-Modul darueber. Rechts: nm-connection-editor fuer statische IP,
+    // 802.1X und VPN — alles, was der Picker bewusst nicht kann.
+    "network": {
+        "format-wifi": "{essid} {signalStrength}%",
+        "format-ethernet": "eth {ipaddr}",
+        "format-disconnected": "offline",
+        "tooltip": false,
+        "on-click": "~/.local/bin/wifi pick",
+        "on-click-right": "~/.local/bin/wifi edit"
+    },
+    "battery": {
+        "format": "Bat {capacity}%",
+        "format-charging": "Bat {capacity}% +",
+        "states": {
+            "warning": 20,
+            "critical": 10
+        }
+    },
+    "tray": {
+        "spacing": 8
     }
 }

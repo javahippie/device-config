@@ -1,29 +1,21 @@
 # Einstiegspunkt fuer Sway — Inhalt lebt in den includeten Dateien.
 #
-# Aufbau BEWUSST 1:1 wie dot_config/hypr: gleiche Dateinamen, gleiche
-# Reihenfolge, gleiche Aufteilung. Es gilt dieselbe Regel wie drueben:
-# Funktion in base/binds/rules, Deko AUSSCHLIESSLICH in effects.
-# Wer eine Aenderung an Hyprland macht, sieht damit sofort, welche Datei hier
-# das Gegenstueck ist — und andersherum.
+# Aufteilung: Funktion in base/binds/rules, Deko AUSSCHLIESSLICH in effects.
+# Das ist die Regel des Repos, und sie gilt hier ohne Ausnahme — wer eine Farbe
+# oder einen Rahmen in base sucht, sucht am falschen Ort.
 #
-# Warum Sway ueberhaupt: Zweitcompositor zum Ausprobieren, parallel installiert.
-# Beide Sessions stehen im SDDM nebeneinander (sway bringt seine eigene
-# /usr/share/wayland-sessions/sway.desktop mit, es braucht KEINE eigene
-# Session-Datei im Repo — s. die Begruendung im SDDM-Block von bootstrap.sh).
-# Hyprland bleibt unangetastet; nichts hier schreibt in dot_config/hypr.
+# Sway ist seit 10.09.2026 der einzige Compositor. Davor lag daneben eine
+# gleich aufgebaute Hyprland-Konfiguration in dot_config/hypr; die Dateinamen
+# hier stammen aus dieser Zeit, weshalb sie ohne Endung heissen (Sway braucht
+# keine, Hyprland wollte .conf). hypr/ ist seit 13.09.2026 ganz weg — auch
+# der Sperrbildschirm ist jetzt swaylock (swaylock/config).
 #
-# Die Peripherie ist geteilt, nicht kopiert: waybar, fuzzel, foot, mako, swaybg,
-# grim/slurp, wf-recorder, cliphist und hyprlock laufen unter beiden. Was das
-# fuer die einzelnen Bausteine heisst, steht in base und in README
-# "Sway als Zweitcompositor".
-#
-# Unterschiede zu Hyprland, die man kennen muss (Details jeweils vor Ort):
-#   - keine Fenster-Rundung und keine Animationen (s. effects)
-#   - Apps landen still auf ihrem Workspace statt mitzuwechseln (s. rules)
-#   - `remote` (Mac als Thin Client) gibt es hier NICHT (s. README)
+# sway bringt seine eigene /usr/share/wayland-sessions/sway.desktop mit, es
+# braucht also KEINE Session-Datei im Repo — s. die Begruendung im SDDM-Block
+# von bootstrap.sh.
 #
 # include-Pfade sind relativ zur Datei, die sie einbindet. Hier trotzdem
-# absolut geschrieben, damit es genau wie hyprland.conf zu lesen ist.
+# absolut geschrieben, damit man sie ohne Nachdenken lesen kann.
 
 include ~/.config/sway/mocha
 include ~/.config/sway/base
