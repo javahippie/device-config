@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Haengt Aufnahme-Streams, die am RNNoise-Filter vorbeigreifen, wieder davor.
+#
+# WARUM ES DAS BRAUCHT. 99-rnnoise.conf setzt priority.session = 3000, damit
+# WirePlumber "Mikrofon (RNNoise)" als Standardquelle waehlt. Das wirkt nur bei
+# Anwendungen, die die Standardquelle auch nehmen. Citrix' HDX-Engine tut das
+# nicht -- sie fordert ihr Geraet mit Namen an (gemessen: target.object =
+# alsa_input.usb-046d_HD_Pro_Webcam_C920_...). Damit laeuft das Mikrofon am
+# Filter vorbei, und zwar lautlos: der Filter laeuft, der Knoten existiert,
+# `pactl get-default-source` sagt brav "rnnoise_source" -- nur haengt kein
+# Anruf daran.
+#
+# Vorher durchprobiert und verworfen (03.09.2026, alles am Geraet gemessen):
+#   * pulse.rules mit update-props target.object -- die Regel MATCHT (mit einer
+#     Marker-Property nachgewiesen), aber die explizite Geraeteanforderung des
+#     Clients gewinnt. Ohne --device funktioniert sie, mit --device nicht.
+#     Ausserdem nicht sicher eingrenzbar: media.class steht beim Matchen noch
+#     nicht zur Verfuegung, und ohne die Eingrenzung bekaeme auch der
+#     WIEDERGABE-Stream eine Quelle als Ziel -- dann ist der Ton im Call weg.
+#   * node.virtual = false an der Filterquelle, damit Citrix sie listet --
+#     ohne Wirkung, in Citrix' Geraeteliste taucht sie weiterhin nicht auf.
+#   * Identitaetstausch (Filter uebernimmt Namen der Webcam) -- nutzlos,
+#     solange Citrix den Knoten gar nicht erst listet.
+# Der wahrscheinliche Grund fuers Aussieben: genau die zwei gelisteten Quellen
+# tragen die Pulse-Flags HW_MUTE_CTRL und HW_VOLUME_CTRL, die Filterquelle
+# nicht. Dafuer gibt es in PipeWires Pulse-Schicht keinen Stellhebel.
+#
+# WAS ES TUT. Es horcht auf neue Aufnahme-Streams und schiebt jeden, der genau
+# das Geraet abgreift, das der Filter selbst benutzt, auf die Filterquelle um.
+#
+# Bewusst NICHT "schiebe alles auf rnnoise": wer absichtlich von einem anderen
+# Mikrofon aufnimmt, soll das duerfen. Umgeleitet wird nur, was am Filter
+# VORBEI auf dessen eigene Eingangsquelle greift -- fuer dieses eine Geraet
+# gibt es dann keinen ungefilterten Weg mehr, fuer alle anderen aendert sich
+# nichts. Das Eingangsgeraet wird bei jedem Ereignis neu ermittelt, es steht
+# also nirgends fest verdrahtet (der Filter sucht es sich selbst, und ohne
+# Webcam ist es das interne Mikrofon).
+set -uo pipefail
+
+# Feste Sprache: `pactl subscribe` uebersetzt seine Ereigniszeilen, und auf
+# einem deutschen System hiesse es "Ereignis 'new' auf Quellenausgabe #123".
+export LC_ALL=C
+
+FILTER_NODE="rnnoise_source"     # media.class = Audio/Source, das Ziel
+FILTER_CAPTURE="capture.rnnoise_source"   # die Aufnahmeseite des Filters
+
+# Numerische IDs wechseln bei jedem PipeWire-Neustart, deshalb immer frisch
+# ueber den Namen aufloesen statt zu cachen.
+filter_id() {
+    pactl list short sources 2>/dev/null |
+        awk -v n="$FILTER_NODE" '$2 == n { print $1; exit }'
+}
+
+# Die Quelle, an der die Aufnahmeseite des Filters gerade haengt. Das ist das
+# Geraet, fuer das es keinen ungefilterten Weg geben soll.
+filter_input_id() {
+    local fid
+    fid=$(pactl list source-outputs 2>/dev/null | awk -v cap="$FILTER_CAPTURE" '
+        /^Source Output #/ { id = $3; sub("#", "", id); src = "" }
+        /^[[:space:]]*Source: / { src = $2 }
+        $0 ~ "node.name = \"" cap "\"" { print src; exit }
+    ')
+    printf '%s' "$fid"
+}
+
+sweep() {
+    local target raw
+    target=$(filter_id);      [ -n "$target" ] || return 0
+    raw=$(filter_input_id);   [ -n "$raw" ]    || return 0
+    [ "$raw" != "$target" ]   || return 0   # Sicherung gegen eine Schleife
+
+    # Spalten von `pactl list short source-outputs`: id, source, client, ...
+    # Streams OHNE Client (Spalte 3 == "-") sind interne Knoten wie die
+    # Aufnahmeseite des Filters selbst -- die niemals anfassen.
+    pactl list short source-outputs 2>/dev/null |
+    while read -r id src client _; do
+        [ "$client" != "-" ] || continue
+        [ "$src" = "$raw" ]  || continue
+        pactl move-source-output "$id" "$target" 2>/dev/null &&
+            printf 'mic-guard: Stream %s von Quelle %s auf %s umgehaengt\n' \
+                   "$id" "$src" "$FILTER_NODE"
+    done
+}
+
+sweep                       # einmal beim Start, fuer schon laufende Streams
+pactl subscribe 2>/dev/null | while read -r line; do
+    case "$line" in
+        *"on source-output"*|*"on server"*) sweep ;;
+    esac
+done

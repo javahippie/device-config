@@ -62,7 +62,30 @@ set $qtenv env QT_QPA_PLATFORMTHEME=gtk3
 # Irgendetwas muss graphical-session.target binden, sonst bleibt
 # xdg-desktop-portal.service dauerhaft "Dependency failed".
 # Unit: dot_config/systemd/user/sway-session.target.
-exec sh -c 'dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_DATA_DIRS PATH QT_QPA_PLATFORMTHEME=gtk3 ELECTRON_OZONE_PLATFORM_HINT=auto && systemctl --user start sway-session.target'
+# MOZ_GMP_PATH steht als BLOSSER NAME in der Liste, nicht als Paar — anders als
+# die beiden hinter ihm, und das ist hier richtig: die Variable ist im
+# Environment von Sway bereits vorhanden, der Name reicht also, um den
+# lebenden Wert weiterzugeben. Woher er kommt: SDDMs `wayland-session` exect
+# die Login-Shell (`$SHELL --login`), die sourct `/etc/profile` und damit
+# `/etc/profile.d/gmpopenh264.sh`. Am Geraet nachgemessen (08.10.2026) — der
+# von SDDM gestartete Compositor-Prozess hatte die Variable schon, bevor
+# irgendeine Compositor-Konfiguration gelesen war. Der Notfallpfad ueber TTY1
+# (dot_bash_profile) laeuft ebenfalls durch eine Login-Shell, ist also gedeckt.
+#
+# Noetig ist die Zeile trotzdem, denn `systemctl --user show-environment` hatte
+# sie NICHT: alles D-Bus- oder systemd-Aktivierte startet ohne sie. Genau das
+# ist der Fall, der wehtut — ohne MOZ_GMP_PATH findet Firefox das
+# openh264-Plugin nicht, und dann ist man in Pexip (confpool.vc.dlr.de) fuer
+# alle anderen unsichtbar: Kamera laeuft, Selbstbild steht, aber outbound-rtp
+# meldet dauerhaft 0 Pakete bei codec=video/H264. Audio geht normal durch,
+# deshalb sieht es nach einem Kameraproblem aus und ist keins. Der zweite Teil
+# des Fixes steckt im Firefox-Profil, nicht hier: media.gmp-gmpopenh264.enabled
+# und .provider.enabled auf true (Fedora liefert sie auf false aus).
+#
+# Unter Hyprland stand dafuer ein `env = MOZ_GMP_PATH,...` in base.conf. Das
+# war, wie die Messung zeigt, fuer direkt gestartete Kinder ueberfluessig und
+# fuer die Activation-Environment wirkungslos — diese Zeile hier ist der Ort.
+exec sh -c 'dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_DATA_DIRS PATH MOZ_GMP_PATH QT_QPA_PLATFORMTHEME=gtk3 ELECTRON_OZONE_PLATFORM_HINT=auto && systemctl --user start sway-session.target'
 
 # XSettings-Manager fuer XWayland-Clients — Sway bringt keinen mit.
 # Ohne ihn rendert Java/Swing komplett ohne Antialiasing.

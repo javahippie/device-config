@@ -1,0 +1,26 @@
+[Unit]
+# Siehe Kopf von dot_local/bin/mic-guard: haelt Aufnahme-Streams, die am
+# RNNoise-Filter vorbeigreifen, wieder davor. Noetig fuer Citrix' HDX-Engine,
+# die ihr Mikrofon mit Namen anfordert statt die Standardquelle zu nehmen.
+Description=Aufnahme-Streams auf die RNNoise-Quelle umhaengen
+# pipewire-pulse liefert sowohl `pactl subscribe` als auch das Umhaengen. Ohne
+# den Dienst gibt es nichts, woran sich das Skript anmelden koennte.
+After=pipewire-pulse.service
+Wants=pipewire-pulse.service
+# Startet der Audio-Stack neu (das passiert bei jedem `chezmoi apply` auf die
+# Filter-Config), wechseln alle numerischen IDs. Das Skript loest zwar jedes
+# Mal neu ueber Namen auf, aber `pactl subscribe` stirbt mit dem Server --
+# deshalb der Neustart weiter unten.
+PartOf=pipewire-pulse.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/mic-guard
+# Die Verbindung zu pipewire-pulse kann wegbrechen (Neustart des Stacks), dann
+# endet `pactl subscribe` und damit das Skript. Immer wieder hochkommen, mit
+# Abstand, damit es bei einem echten Fehler nicht heisslaeuft.
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

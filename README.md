@@ -297,6 +297,118 @@ pw-link -l | grep -B1 capture.rnnoise        # zeigt, an welchem echten Mikrofon
   nach Priorität. Ein anderes erzwingen: `target.object` in `capture.props`
   auf den `node.name` des gewünschten Geräts setzen (`pw-dump` zeigt ihn).
 
+### Citrix greift am Filter vorbei (`mic-guard`)
+
+Aufgenommen am 03.09.2026 auf dem Book. Symptom: im Citrix-Call kommt das
+Trommeln auf dem Tisch durch, obwohl RNNoise laeuft. Der ganze Abschnitt haengt
+nicht am Compositor — er galt unter Hyprland und gilt unter Sway unveraendert.
+
+**Der Filter war nie das Problem.** Nachgemessen mit 4 s Raumgeraeusch,
+gleichzeitig vor und hinter dem Filter aufgenommen:
+
+| | RMS |
+|---|---|
+| roh (C920) | −48,8 dBFS |
+| nach RNNoise | −86,3 dBFS |
+
+Rund 37 dB Daempfung — die Kette arbeitet.
+
+**Der Fehler steckt in der Verdrahtung.** `priority.session = 3000` sorgt
+dafuer, dass WirePlumber "Mikrofon (RNNoise)" als *Standardquelle* waehlt. Das
+wirkt nur bei Anwendungen, die die Standardquelle auch nehmen. Citrix' HDX-
+Engine tut das nicht — sie fordert ihr Geraet mit Namen an:
+
+```
+application.process.binary = "HdxRtcEngine"
+client.api                 = "pipewire-pulse"
+target.object              = "alsa_input.usb-046d_HD_Pro_Webcam_C920_...-02.analog-stereo"
+```
+
+Der Kommentar in `99-rnnoise.conf` behauptet, es gebe "schlicht kein
+ungefiltertes Standardmikrofon mehr". Das stimmt nur fuer Apps, die dem
+Standard folgen — und das ist die eigentliche Lehre hier.
+
+**Es faellt nicht auf, weil von aussen alles richtig aussieht:** der Filter
+laedt, der Knoten existiert, `pactl get-default-source` antwortet brav
+`rnnoise_source`. Sichtbar wird es einzig an der Quelle des *Streams*:
+
+```sh
+pactl list short source-outputs     # Spalte 2 ist die Quell-ID
+```
+
+Steht dort die ID der rohen Karte statt der von `rnnoise_source`, laeuft das
+Mikrofon ungefiltert — egal was die Standardquelle sagt.
+
+#### Drei Sackgassen, alle am Geraet durchprobiert
+
+- **`pulse.rules` mit `update-props target.object`.** Die Regel *matcht*
+  (mit einer Marker-Property nachgewiesen), aber die explizite
+  Geraeteanforderung des Clients gewinnt: ohne `--device` landet der Stream auf
+  `rnnoise_source`, mit `--device` nicht. Dazu nicht sicher eingrenzbar —
+  `media.class` steht beim Matchen noch nicht zur Verfuegung, und ohne die
+  Eingrenzung bekaeme auch der WIEDERGABE-Stream eine Quelle als Ziel; dann ist
+  der Ton im Call weg statt sauber.
+- **`node.virtual = false`**, damit Citrix die Quelle listet: ohne Wirkung.
+- **Identitaetstausch** (die Filterkette uebernimmt Namen und Beschreibung der
+  Webcam): nutzlos, solange Citrix den Knoten gar nicht erst listet.
+
+**Warum Citrix sie aussiebt** — belegt, aber nicht behebbar. Genau die zwei
+Quellen in Citrix' Geraeteliste tragen Hardware-Regler-Flags, die Filterquelle
+nicht:
+
+| Quelle | Pulse-Flags | gelistet |
+|---|---|---|
+| C920 | HARDWARE **HW_MUTE_CTRL HW_VOLUME_CTRL** DECIBEL_VOLUME LATENCY | ja |
+| Ryzen Analog In | HARDWARE **HW_MUTE_CTRL HW_VOLUME_CTRL** DECIBEL_VOLUME LATENCY | ja |
+| rnnoise_source | HARDWARE DECIBEL_VOLUME LATENCY | **nein** |
+| die zwei Monitore | HARDWARE DECIBEL_VOLUME LATENCY | nein |
+
+`HdxRtcEngine` ist nicht gegen libpulse gelinkt (keine `pa_*`-Symbole), und
+PipeWires Pulse-Schicht bietet keinen Stellhebel fuer diese Flags. Auf dem Cube
+ist die Quelle auswaehlbar, auf dem Book nicht — der Unterschied ist nicht
+geklaert.
+
+#### Die Loesung: `dot_local/bin/mic-guard`
+
+Ein kleiner User-Dienst horcht mit `pactl subscribe` auf neue Aufnahme-Streams
+und haengt jeden um, der am Filter vorbei auf **dessen eigene Eingangsquelle**
+greift. Bewusst nicht "schiebe alles auf rnnoise": wer absichtlich von einem
+anderen Mikrofon aufnimmt, darf das. Umgeleitet wird nur das eine Geraet, das
+der Filter selbst benutzt — dafuer gibt es dann keinen ungefilterten Weg mehr.
+Welches das ist, wird bei jedem Ereignis neu ermittelt, steht also nirgends
+fest verdrahtet (ohne Webcam ist es das interne Mikrofon).
+
+Das ist ein Daemon, und `99-rnnoise.conf` wirbt daneben mit "ohne GUI und ohne
+Daemon" — der Satz zielte gegen NoiseTorch und bleibt fuer die Filterkette
+richtig. Die Umleitung liesse sich ohne laufenden Prozess nicht loesen, siehe
+die drei Sackgassen oben.
+
+Verifiziert (03.09.2026, alles gemessen, nicht angenommen):
+
+| Test | Ergebnis |
+|---|---|
+| Client fordert explizit die rohe C920 an | wird auf `rnnoise_source` umgehaengt, Logzeile im Journal |
+| Client nimmt vom Ryzen-Analogeingang auf | bleibt unangetastet — kein Kapern fremder Geraete |
+| Aufnahmeseite des Filters selbst (Spalte "Client" = `-`) | bleibt auf der rohen Quelle — keine Schleife |
+| Wiedergabe-Streams | unberuehrt, der Dienst fasst nur source-outputs an |
+
+**Nicht aktiviert auf dem cube.** `bootstrap.sh` aktiviert nur `podman.socket`,
+sonst keine User-Units (gegengeprueft nach dem Sway-Umstieg, 08.10.2026) —
+chezmoi legt die Unit also nur ab, gestartet wird sie erst mit
+`systemctl --user enable --now mic-guard.service`. Auf dem cube ist sie damit
+inaktiv, solange das niemand ausfuehrt. Schaden wuerde sie dort nicht (sie
+waere ein No-Op, solange die Streams ohnehin auf rnnoise liegen), aber sie ist
+bislang nur auf dem book geprueft.
+
+Die Unit haengt an `default.target`, nicht an `sway-session.target`: sie hat mit
+der grafischen Sitzung nichts zu tun, nur mit `pipewire-pulse`.
+
+**Nachtest bei Zweifeln:** einmal trommeln oder klatschen, ohne dabei zu reden.
+RNNoise ist VAD-gesteuert — waehrend erkannter Sprache steht das Gate offen
+(plus 200 ms `VAD Grace Period`), Transienten kommen dann teilweise durch. Das
+ist Absicht und kein Defekt.
+
+
 ## Aufnahmemodus (nur `cube`)
 
 Waybar-Schalter zwischen "Interface für Meetings" und "Interface für die DAW".
@@ -999,6 +1111,251 @@ Was der Test nebenbei aufgedeckt hat: der Bildschirm war über den Suspend
 hinweg **nicht gesperrt**. Im Session-Log (`~/.cache/wayland-errors`) steht
 `sh: Zeile 1: hyprlock: Kommando nicht gefunden` — das Paket-Aufräumen vom
 Mittag hat hyprlock mitgenommen, s. „Nachlese 13.09.2026".
+
+## Workspaces auf zwei Monitoren (book)
+
+**Gewollt.** Workspace 1 auf dem internen Panel, 2-9 auf dem externen Monitor.
+
+**Was stattdessen passierte** (unter Hyprland, `hyprctl workspaces`,
+03.09.2026): 1-6 alle auf `eDP-1`, und ausgerechnet die 7 als einzige auf dem
+externen Schirm. Zwei unabhaengige Ursachen, die zusammen genau dieses Bild
+ergeben. Beide sind **nicht compositor-spezifisch**, und beide waren nach dem
+Sway-Umstieg wieder da — `sway/monitors.tmpl` hatte die Lehren aus diesem
+Abschnitt nicht abbekommen (korrigiert am 08.10.2026).
+
+**Ursache 1: der Monitor hiess nie so.** Im book-Zweig stand `DP-1`. Der
+externe Monitor heisst aber `HDMI-A-1` (er haengt an der NVIDIA, s. naechster
+Abschnitt). Damit lief die `output`-Zeile ins Leere und die Workspace-Bindung
+band an nichts.
+
+Das Tueckische daran: **es gibt keine Fehlermeldung.** Die AMD-Karte *hat*
+einen `DP-1`-Connector, er ist nur `disconnected` — die Zeile ist also
+syntaktisch gueltig und wartet einfach auf einen Monitor, der nie kommt.
+`hyprctl configerrors` blieb leer, und `sway -C` meldet aus demselben Grund
+auch nichts. Der echte Schirm kam derweil ueber den Fallback hoch. Deshalb
+steht "echte Namen eintragen" schon oben in der Verifikation: der Punkt faellt
+sonst durch jede Fehlerpruefung durch.
+
+**Ursache 2: eine Workspace ohne Monitor-Angabe landet dort, wo sie entsteht.**
+Gebunden waren nur 1 und 2; 3-9 hatten gar keine Angabe. Und "wo sie entsteht"
+heisst je nach Typ etwas anderes:
+
+| Workspace | woher | wo sie landete |
+|---|---|---|
+| 1-6 | `persistent:true`, entstehen beim Start | auf dem beim Start voreingestellten Monitor = Panel |
+| 7-9 | nicht persistent, entstehen beim ersten `$mod+7` | auf dem gerade **fokussierten** Monitor = der externe |
+
+Genau daher die verdrehte Aufteilung: die persistenten klebten am Panel, und
+die 7 war die einzige, die je auf dem externen Monitor angelegt wurde.
+
+**Fix.** Richtiger Name, und eine Monitor-Bindung an **jeder** Workspace, nicht
+nur an 1 und 2. In `sway/monitors.tmpl` sind das neun `workspace <n> output
+<name>`-Zeilen. Unter Sway faellt dabei zweierlei weg:
+
+- **`persistent:true` hat kein Gegenstueck und braucht keins** — die leeren
+  Buttons 1-6 erzeugt das `sway/workspaces`-Modul in Waybar selbst. Damit ist
+  die Haelfte von Ursache 2 strukturell weg: es gibt keine Workspaces mehr, die
+  schon beim Start irgendwo entstehen.
+- **`default:true` hat kein Gegenstueck und braucht keins** —
+  `workspace <n> output <name>` sagt bereits, wo der Workspace aufgeht.
+
+Was bleibt, ist der zweite Teil: ohne Bindung geht eine Workspace auf dem
+fokussierten Monitor auf. Deshalb stehen alle neun da.
+
+Haengt der externe Monitor nicht dran (Laptop unterwegs), legt Sway die
+verwaisten Workspaces von selbst aufs Panel — die Bindung ist kein Problem.
+
+**Dazu zwei Zahlen, die am Geraet nachgesehen sind** (08.10.2026, aus den
+DRM-/EDID-Daten, also unabhaengig vom Compositor):
+
+- Das Panel kann `2560x1440`, nicht 1920 Pixel breit. Die `position`-Angabe des
+  externen Monitors muss deshalb `2560 0` lauten; mit den vorher dort stehenden
+  `1920 0` haetten sich die beiden Monitore um 640 px ueberlappt.
+- Der externe Monitor ist DERSELBE physische C34H89x wie am cube (gleiche
+  Seriennummer `H1AK500000`). Trotzdem steht im book-Zweig der Connector-Name
+  und nicht die Monitor-Kennung: die Begruendung drueben ist das Umstecken
+  zwischen iGPU und dGPU, und das gibt es hier nicht (s. naechster Abschnitt).
+
+**Noch nicht unter Sway gegengeprueft.** Die Befunde stammen vom Hyprland-
+Stand, die Konfiguration ist portiert. Nachsehen mit
+`swaymsg -t get_outputs` (Namen, `current_mode`, `rect`) und
+`swaymsg -t get_workspaces` (Feld `output`).
+
+## Book: der externe Monitor haengt an der NVIDIA (teil-gelöst)
+
+Das Gegenstueck zum cube-Abschnitt "Monitor gehoert an die iGPU" — mit dem
+Unterschied, dass beim Book niemand das Kabel umstecken kann. Aufgenommen am
+03.09.2026 unter Hyprland 0.56.2; die Hardware-Befunde gelten unabhaengig
+davon, die Logzitate sind Hyprlands.
+
+**Die Hardware.** Das Book hat zwei GPUs, und die Displays sind fest verteilt:
+
+| Karte | Treiber | Connector | Display |
+|---|---|---|---|
+| `06:00.0` Radeon 680M (iGPU) | `amdgpu` (`card2`) | `eDP-1` | internes Panel |
+| `01:00.0` RTX 3060 Mobile | `nouveau` (`card1`) | `HDMI-A-1` | externer C34H89x |
+
+Die HDMI-Buchse ist also fest an der dedizierten Karte verdrahtet. `card1-eDP-2`
+und `card1-DP-5` sind `disconnected`, ein MUX zum Umschalten gibt es nicht.
+Genau deshalb steht im book-Zweig von `sway/monitors.tmpl` der Connector-Name:
+die Zeile kann nicht durch Umstecken veralten.
+
+**Was der Compositor daraus macht** (aus `hyprland.log`, `drm:`-Zeilen):
+
+```
+drm: Found 2 GPUs
+drm: gpu /dev/dri/card2 becomes primary drm
+drm: Starting backend for /dev/dri/card1, with driver nouveau with primary /dev/dri/card2
+Renderer: AMD Radeon 680M (radeonsi, rembrandt, ACO, ...)      <- gerendert wird hier
+Renderer: zink Vulkan 1.4(... RTX 3060 Laptop GPU (NVK GA106)) <- hierhin wird kopiert
+GBM: Buffer is marked as multigpu, forcing linear
+drm: No renderer attached to backend when required for blitting, initializing
+```
+
+Jedes Bild fuer den externen Monitor wird auf der AMD gerendert und dann
+**ueber die PCIe-Bruecke auf die NVIDIA geblittet** — mit `forcing linear`,
+also ohne jede Tiling- oder Kompressions-Optimierung. Dazu kommt, dass nouveau
+eine Ampere-Karte **nicht hochtaktet**: die GA106 haengt auf Boot-Clocks fest.
+
+Das ist kein Hyprland-Effekt. Sway/wlroots macht in derselben Lage dasselbe —
+eine Karte rendert, die andere stellt dar, das Bild muss dazwischen kopiert
+werden. Wie es dort im Log aussieht, ist noch nicht nachgelesen; die Stelle ist
+die Sway-Logausgabe der Session (`sway -d` bzw. das Journal der Sitzung).
+
+**Und der zweite Fund, direkt daneben:**
+
+```
+drm: Atomic supported, using atomic for modesetting          <- card2 (AMD)
+WARN drm: failed to set DRM_CLIENT_CAP_ATOMIC, falling back to legacy   <- card1 (nouveau)
+ERR  No support for gamma on the legacy iface
+```
+
+nouveau nimmt hier `DRM_CLIENT_CAP_ATOMIC` nicht an, der externe Monitor laeuft
+also ueber die **Legacy-DRM-Schnittstelle**. Das ist eine Treiber-Eigenschaft
+und damit auch unter Sway zu erwarten. Konkret spuerbar war es an der Maus: der
+Cursor ging nicht ueber eine Atomic-Plane, sondern per
+`drmModeSetCursor`-Ioctl, und zwar einmal pro Mausbewegung.
+
+**Was daran repariert ist.** Der Modus. Im Modeset-Log stand
+
+```
+legacy drm: Modesetting CRTC, mode: clock 265250 ... vrefresh 50
+```
+
+— 50 Hz, weil fuer das Book `preferred` eingetragen war. Es ist derselbe
+C34H89x wie am Cube, und fuer den steht die Lehre seit August schon im
+cube-Abschnitt: der EDID-Vorzugsmodus hat 49.99 Hz, die Modusliste kennt aber
+99.98 Hz. Die Book-Zeile hatte das nur nie mitbekommen. Unter Hyprland war der
+Fix `highrr`; Sway kennt kein solches Schluesselwort, dort muss der Modus
+ausgeschrieben werden (`mode 3440x1440@99.982Hz`, s. Begruendung zum Wert im
+cube-Zweig von `sway/monitors.tmpl`). Beide Modi am Geraet gegengeprueft
+(08.10.2026): die Liste kennt bei dieser Aufloesung nur 49.99, 59.97 und
+99.98 Hz. Liegt nach dem Start eine der ersten beiden an, hat die Zeile nicht
+gegriffen.
+
+**Was nicht repariert ist.** Der Cross-GPU-Blit und der Legacy-Pfad bleiben —
+die sind Eigenschaft von nouveau auf Ampere, nicht von der Config. Offene
+Optionen, keine davon bisher probiert:
+
+- **`akmod-nvidia` aus RPM Fusion.** Der proprietaere Treiber taktet die Karte
+  hoch und kann Atomic. Preis: RPM Fusion ist bisher in `bootstrap.sh` gar
+  nicht eingerichtet, und der Treiber braucht auf Wayland eigene
+  Env-Variablen — fuer die es in diesem Repo keinen Ort gibt (keine eigene
+  Session-Datei, s. bootstrap.sh).
+- **Externen Monitor weglassen**, wenn es aufs Tempo ankommt. Das Panel haengt
+  an der AMD, ist Atomic, laeuft mit 240 Hz und ist von alledem nicht betroffen.
+
+## Citrix (`wfica`) auf dem Book
+
+Der ICA-Client ist reines X11 und laeuft ueber XWayland. Zwei Effekte,
+aufgenommen am 03.09.2026 unter Hyprland. **Beide sind mit dem Sway-Umstieg
+wieder offen** — der eine, weil der Fix keinen Ort mehr hat, der andere war es
+schon vorher.
+
+### Klick landet oben links neben dem Cursor (unter Sway ungeprueft)
+
+**Symptom.** In der Citrix-Sitzung traf der Klick nicht die Pfeilspitze,
+sondern einen Punkt oben links davon. Ausserhalb von Citrix nicht bemerkbar.
+
+**Ursache.** Der **Hotspot** ging verloren, und zwar im DRM-Pfad, nicht in
+Citrix. Der externe Monitor haengt an der NVIDIA, und nouveau nimmt dort
+`DRM_CLIENT_CAP_ATOMIC` nicht an (s. Abschnitt oben) — der Schirm laeuft also
+ueber die Legacy-DRM-Schnittstelle. Und die Legacy-Cursor-Ioctl
+(`drmModeSetCursor`/`drmModeMoveCursor`) hat **keine Hotspot-Eigenschaft**; die
+gibt es erst in der Atomic-API als Plane-Properties `HOTSPOT_X`/`HOTSPOT_Y`.
+
+Dass es ausgerechnet in Citrix auffiel, liegt daran, dass der ICA-Client die
+Cursor der Remote-Sitzung durchreicht — mit deren eigenen Hotspots. Der
+Standard-Pfeil hat seinen Hotspot fast in der Ecke, da faellt ein verlorener
+Hotspot kaum auf; ein Windows-Cursor mit Hotspot in der Mitte schon.
+
+**Der Hyprland-Fix war `cursor:no_hardware_cursors = true`** im book-Zweig:
+damit ist die DRM-Cursor-Plane komplett aus dem Spiel, der Compositor rendert
+den Cursor mit ins Bild und rechnet den Hotspot selbst. Versatz weg, verifiziert
+— und die Befuerchtung, dass jede Mausbewegung dann ein Re-Render plus
+Cross-GPU-Blit ausloest und der externe Schirm zaeher wird, hat sich im
+Gebrauch nicht bestaetigt.
+
+**Unter Sway steht das offen.** Sway hat keine entsprechende
+Konfigurationsoption. Der Hebel waere `WLR_NO_HARDWARE_CURSORS=1`, und das ist
+eine Umgebungsvariable fuer den Compositor-Prozess selbst — in diesem Repo gibt
+es dafuer keinen Ort, weil bewusst keine eigene Session-Datei existiert
+(`bootstrap.sh` begruendet das mit dem Login-Loop). Der Fix ist deshalb
+**nicht vorsorglich portiert**: es ist gut moeglich, dass wlroots den Hotspot
+auf dem Legacy-Pfad selbst herausrechnet und das Problem hier gar nicht
+auftritt.
+
+**Pruefen, bevor man etwas baut:** in der Citrix-Sitzung auf dem externen
+Monitor einmal auf etwas Kleines klicken und sehen, ob die Pfeilspitze trifft.
+Trifft sie, ist die Sache erledigt. Trifft sie nicht, braucht es erst einen Ort
+fuer Compositor-Umgebungsvariablen — und der ist eine eigene Entscheidung, kein
+Einzeiler.
+
+### Windows-Cursor auf allen Schirmen, solange Citrix sichtbar ist (offen)
+
+**Symptom.** Sobald das Citrix-Fenster **sichtbar** ist, zeigt der Cursor auch
+auf dem internen Panel den Windows-Pfeil — ueber `foot`, ueber allem. Sobald
+die Citrix-Workspace nicht mehr angezeigt wird, ist der Cursor sofort wieder
+richtig. Nicht davon abhaengig, welches Fenster den Fokus hat: gemessen mit
+dem aktiven Fenster = `foot`, Zeiger ueber `foot`, trotzdem Windows-Pfeil.
+
+**Was es NICHT ist** (durchgeprueft, damit es niemand nochmal prueft):
+
+- **Kein Pointer-Grab.** In `/opt/Citrix/ICAClient/wfica` kommt `XGrabPointer`
+  gar nicht vor — nur `XUngrabPointer` und, davon getrennt, `fp_XGrabKeyboard`.
+  Ein X11-Pointer-Grab haette den Cursor legitim global gesetzt; der Weg ist es
+  also nicht.
+- **Kein fehlendes Cursor-Theme.** Ein anderes Theme zur Laufzeit zu setzen
+  aendert nichts.
+- **Keine Fokus-Einstellung.** `follow_mouse`/`mouse_refocus` und Verwandte
+  standen alle auf Default und plausibel.
+- **Kein Software-Cursor-Nebeneffekt.** Tritt mit Hardware- wie mit
+  Software-Cursorn auf.
+
+**Was es sehr wahrscheinlich ist.** `strings` auf dem Client zeigt neben
+`XDefineCursor` die internen Namen **`twSetCursorIfVisible`** und
+`twRestoreCursorIfMatch` — der Client setzt den Cursor also an *Sichtbarkeit*
+gekoppelt, nicht an Zeigerfokus. Unter echtem X11 ist das harmlos, weil
+`XDefineCursor` pro Fenster gilt und nur greift, solange der Zeiger drin ist.
+Ueber XWayland wird daraus ein `wl_pointer.set_cursor`, und das gilt fuer den
+einen Zeiger des Compositors. Genau die Sichtbarkeits-Kopplung erklaert, warum
+das Ausblenden der Workspace es sofort behebt.
+
+Dass der Mechanismus in XWayland und nicht im Compositor sitzt, heisst auch:
+der Umstieg auf Sway aendert daran voraussichtlich nichts. Verwandte offene
+Tickets: hyprwm/Hyprland
+[#7698](https://github.com/hyprwm/Hyprland/issues/7698) und
+[#9480](https://github.com/hyprwm/Hyprland/issues/9480) — beide beschreiben den
+XWayland-Pfad, nicht eine Hyprland-Eigenheit.
+
+**Womit man lebt.** Der Zustand ist kosmetisch — Klicks landen richtig, nur das
+Bild des Cursors stimmt nicht. Bleibt Citrix ausgeblendet, ist es weg.
+Waere es mehr als kosmetisch, waere der naechste Schritt, `wfica` in einem
+**eigenen, verschachtelten X-Server** (Xephyr bzw. rootful XWayland) laufen zu
+lassen: dann sind seine `XDefineCursor`-Aufrufe in dessen Fenster eingesperrt
+und erreichen den Zeiger des Compositors nicht mehr. Preis waeren Zwischenablage
+und Fensterintegration. Bisher nicht probiert.
+
 
 ## Suspend hängt sich auf (gelöst: kein s2idle-Fallback)
 

@@ -36,18 +36,85 @@ output "Samsung Electric Company C34H89x H1AK500000" mode 3440x1440@99.982Hz pos
 # es sie findet — welcher Monitor links landet, ist damit nicht festgelegt.
 # Deshalb hier explizite Koordinaten.
 #
-# Die 1920 sind die LOGISCHE Breite von eDP-1 (Pixelbreite geteilt durch
-# scale). Stimmt sie nicht, ueberlappen die beiden Monitore oder es klafft eine
-# Luecke — nachsehen mit `swaymsg -t get_outputs` (Feld `rect`) und die Zahl
-# hier angleichen. Auf dem cube ist das egal, dort haengt nur ein Monitor.
-output eDP-1 position 0 0 scale 1
-output DP-1 position 1920 0 scale 1
+# 2048 ist die LOGISCHE Breite von eDP-1: das Panel hat 2560x1440 physisch
+# (am Geraet nachgesehen 08.10.2026), geteilt durch scale 1.25. Bei scale 1 war
+# der Text auf dem Panel zu klein; der externe Monitor bleibt bei scale 1, Sway
+# skaliert pro Output.
+#
+# 1.25 und nicht 1.5, weil 2560/1.25 glatt aufgeht — bei 1.5 kaeme 1706.67
+# heraus, und die Position des externen Monitors muesste auf eine krumme Zahl.
+# Aendert sich der Faktor, MUSS die x-Position von HDMI-A-1 unten mit: sonst
+# ueberlappen sich die Monitore oder es klafft eine Luecke (hier stand frueher
+# 1920 bei 2560 Breite — 640 px Ueberlappung). Nachsehen mit
+# `swaymsg -t get_outputs` (Feld `rect`). Auf dem cube ist das egal, dort
+# haengt nur ein Monitor.
+#
+# Nebenwirkung: XWayland-Fenster (Java/Swing, Citrix) werden auf dem Panel
+# hochskaliert und damit leicht unscharf. Native Wayland-Clients nicht.
+output eDP-1 position 0 0 scale 1.25
 
-# Gegenstueck zu `workspace = 1, monitor:eDP-1, default:true`. Sway hat kein
-# `default:true` — `workspace <n> output <name>` sagt schon, wo der Workspace
-# aufgeht, sobald er gebraucht wird.
+# Der externe Monitor heisst hier HDMI-A-1, NICHT DP-1 — am Geraet
+# gegengeprueft (08.10.2026). Er haengt physisch an der NVIDIA (card1),
+# waehrend das Panel an der AMD-iGPU (card2) sitzt.
+#
+# Solange hier `DP-1` stand, lief die Zeile still ins Leere: die AMD-Karte HAT
+# einen DP-1-Connector, der ist nur "disconnected" — also syntaktisch gueltig,
+# kein Fehler in `sway -C`, und sie wartet einfach auf einen Monitor, der nie
+# kommt. Der echte Schirm kam derweil ueber den Fallback hoch, und
+# `workspace 2 output DP-1` band an nichts.
+#
+# Bewusst der Connector-Name und nicht die Monitor-Kennung wie beim cube,
+# obwohl es DERSELBE physische C34H89x ist (gleiche Seriennummer
+# H1AK500000, gegengeprueft): die dortige Begruendung ist das Umstecken
+# zwischen iGPU und dGPU. Am book gibt es das nicht — die HDMI-Buchse ist fest
+# an die dedizierte Karte verdrahtet, ein MUX zum Umschalten existiert nicht.
+#
+# Der Modus muss ausgeschrieben werden, aus demselben Grund wie beim cube:
+# ohne ihn nimmt Sway den EDID-Vorzugsmodus, und das sind auf diesem Monitor
+# 49.99 Hz. Unter Hyprland stand dafuer `highrr`, das Sway nicht kennt. Die
+# 99.98 Hz stehen in der Modusliste des Geraets; 99.982 ist der gemeldete
+# Wert, die Herleitung dazu steht im cube-Zweig.
+output HDMI-A-1 mode 3440x1440@99.982Hz position 2048 0 scale 1
+
+# OFFEN: der Cursor-Hotspot. Unter Hyprland stand hier zusaetzlich
+# `cursor { no_hardware_cursors = true }`, weil nouveau auf diesem Monitor
+# DRM_CLIENT_CAP_ATOMIC nicht annimmt und die Legacy-Cursor-Ioctl keine
+# Hotspot-Eigenschaft hat — der Klick landete oben links neben der Pfeilspitze
+# (am sichtbarsten in Citrix, s. README). Sway hat keine solche
+# Konfigurationsoption; der Hebel waere `WLR_NO_HARDWARE_CURSORS=1`, und der
+# ist eine Umgebungsvariable fuer den Compositor-Prozess selbst, hat also in
+# diesem Repo bislang keinen Ort (keine eigene Session-Datei, s. bootstrap.sh).
+# Bewusst NICHT vorsorglich eingebaut: wlroots rechnet den Hotspot auf dem
+# Legacy-Pfad moeglicherweise selbst heraus, dann gibt es das Problem hier gar
+# nicht. Pruefen heisst in Citrix einmal klicken und sehen, ob die Pfeilspitze
+# trifft.
+
+# WS1 aufs Panel, alles weitere auf den externen Monitor.
+#
+# Die Bindung MUSS an JEDER Workspace stehen, nicht nur an 1 und 2: eine
+# Workspace ohne `output` geht dort auf, wo sie zufaellig entsteht, naemlich auf
+# dem gerade fokussierten Monitor. Unter Hyprland war genau das der Grund,
+# warum 1-6 alle am Panel klebten und ausgerechnet die 7 als einzige auf dem
+# externen Schirm sass (die ganze Herleitung steht im README). Zwei gebundene
+# Zeilen und sieben ungebundene sind hier also keine Abkuerzung, sondern
+# derselbe Fehler nochmal.
+#
+# Sway hat kein `default:true` — `workspace <n> output <name>` sagt schon, wo
+# der Workspace aufgeht, sobald er gebraucht wird. Ein `persistent:true`-
+# Gegenstueck braucht es auch nicht: die leeren Buttons 1-6 erzeugt das
+# `sway/workspaces`-Modul selbst (s. waybar/config.jsonc.tmpl).
+#
+# Haengt der externe Monitor nicht dran (Laptop unterwegs), legt Sway die
+# verwaisten Workspaces aufs Panel.
 workspace 1 output eDP-1
-workspace 2 output DP-1
+workspace 2 output HDMI-A-1
+workspace 3 output HDMI-A-1
+workspace 4 output HDMI-A-1
+workspace 5 output HDMI-A-1
+workspace 6 output HDMI-A-1
+workspace 7 output HDMI-A-1
+workspace 8 output HDMI-A-1
+workspace 9 output HDMI-A-1
 {{- else -}}
 # Unbekannter Host: Sway arrangiert selbst (links nach rechts, Vorzugsmodus).
 {{- end }}
