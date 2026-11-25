@@ -1585,7 +1585,6 @@ in der Config — im cube-Zweig von `sway/rules.tmpl`:
 | 3 | Thunderbird | `org.mozilla.thunderbird_esr` |
 | 4 | Slack, Element | `com.slack.Slack`, `im.riot.Riot` |
 | 5 | *frei* | — |
-| 6 | KeePassXC | `org.keepassxc.KeePassXC` |
 
 - **Fensterregel, kein Autostart.** Nichts wird beim Login gestartet; die Regel
   greift erst, wenn man die App selbst öffnet. Wer Thunderbird nie startet, hat
@@ -1614,9 +1613,9 @@ in der Config — im cube-Zweig von `sway/rules.tmpl`:
   Das Zeichen ist mit `fc-list :charset=1fa9f` gegen NotoEmoji-Regular geprüft,
   es ist jung genug (Emoji 13.0), dass sich das lohnt.
 - Die Klassen sind alle am 08.09.2026 live abgelesen (heute: `swaymsg -t
-  get_tree`), bis auf
-  KeePassXC — das lief beim Gegenprüfen nicht, die Klasse stammt aus der bereits
-  verifizierten `window-rewrite`-Liste in `waybar/config.jsonc.tmpl`.
+  get_tree`).
+- **KeePassXC hat keinen festen Platz mehr** (bis 25.11.2026 Workspace 6,
+  auf Wunsch entfernt) — es geht dort auf, wo man gerade ist.
 
 ## Keybind-Übersicht
 
