@@ -61,7 +61,6 @@ window#waybar {
 #battery,
 #custom-keybinds,
 #custom-notification,
-#custom-recording,
 #custom-screenrec,
 #idle_inhibitor,
 #tray {
@@ -89,31 +88,6 @@ window#waybar {
     color: @yellow;
 }
 
-/* Aufnahmemodus. "Rec off" ist der Normalfall und deshalb gedaempft wie ein
-   ausgeschaltetes BT. "Rec" bekommt die volle Mauve-Flaeche wie ein aktiver
-   Workspace — nicht Gelb: es ist kein Zustand, den man wieder abstellen MUSS
-   (wie "Wach"), sondern der gewollte Arbeitsmodus. Sichtbar muss er trotzdem
-   sein, sonst sitzt man im Meeting und wundert sich, warum niemand einen hoert.
-   "Rec ?!" ist dagegen wirklich kaputt — halb geschaltet, meist weil der
-   sudo-Helfer fehlt — und darf deshalb als einziger Zustand rot werden. */
-#custom-recording.idle {
-    color: @overlay1;
-}
-
-#custom-recording.active {
-    color: @base;
-    background: @mauve;
-}
-
-#custom-recording.partial {
-    color: @red;
-}
-
-/* Interface nicht angeschlossen: kein Fehler, nur nichts zu tun. */
-#custom-recording.absent {
-    color: @overlay1;
-}
-
 /* Laufende Bildschirmaufnahme (dot_local/bin/record). Rot mit voller Flaeche,
    und das ist der einzige Ort, an dem Rot hier NICHT "kaputt" heisst: es ist
    die eine Farbe, die jeder von einer laufenden Aufnahme kennt, und genau die
@@ -134,8 +108,8 @@ window#waybar {
    der nur sichtbar ist, wenn es etwas zu sehen gibt, ist keiner.
 
    Ungelesenes bekommt Mauve — sichtbar, aber kein Alarm. Bewusst nur die
-   Schriftfarbe und nicht die volle Flaeche wie beim Aufnahmemodus: eine
-   ungelesene Meldung ist kein Betriebszustand des Rechners.
+   Schriftfarbe und nicht die volle Flaeche: eine ungelesene Meldung ist kein
+   Betriebszustand des Rechners.
 
    "Nicht stoeren" ist Gelb, aus demselben Grund wie "Wach": kein Fehler, aber
    ein Zustand, den man aktiv wieder abstellen muss — und der einzige, in dem

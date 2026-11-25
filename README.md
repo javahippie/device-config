@@ -409,89 +409,11 @@ RNNoise ist VAD-gesteuert — waehrend erkannter Sprache steht das Gate offen
 ist Absicht und kein Defekt.
 
 
-## Aufnahmemodus (nur `cube`)
+## Audio-Realtime (PipeWire)
 
-Waybar-Schalter zwischen "Interface für Meetings" und "Interface für die DAW".
-Modul `custom/recording`, Script `dot_local/bin/recording-mode`, sitzt in der
-Bar links neben `Vol`.
-
-| Anzeige | Bedeutung |
-| --- | --- |
-| `Rec off` (gedämpft) | Alltag: Scarlett im Surround-Profil, ein Stereo-Sink, RNNoise am Mikro, CPU im Sparmodus |
-| `Rec` (Mauve) | Aufnahme: Scarlett auf `pro-audio`, CPU auf `performance` + EPP `performance`, C-States > 100 µs aus |
-| `Rec ?!` (rot) | Halb geschaltet — praktisch immer eine fehlende oder nicht greifende sudoers-Regel |
-| `Rec —` (gedämpft) | Interface nicht angeschlossen |
-
-**Warum ein Schalter und keine Dauereinstellung.** `pro-audio` liefert bewusst
-keinen fertigen Stereo-Sink, sondern nackte Ports — Slack, Firefox & Co. finden
-darin kein Ausgabegerät, das sie ohne Handarbeit bespielen könnten. WirePlumber
-stuft das Profil deshalb mit Priorität 1 ein (das Surround-Profil hat 1301) und
-wählt es nie von selbst. Für Meetings ist es unbrauchbar, für die DAW ist alles
-andere Ballast: `hw:0` roh, alle 10 Ein- und 6 Ausgänge einzeln, keine
-ALSA-Plugin- und keine Channel-Remap-Schicht.
-
-**Wozu das Ganze.** Roundtrip-Latenz bei Gitarre über Amp-Sim. Vorher rund
-26 ms (480 Samples Quantum + 240 Samples Headroom, Interface im
-Surround-Profil), damit spielt es sich spürbar hinterher. Mit `pro-audio` und
-kleinem Puffer sind ~7 ms bei 48 kHz und ~4 ms bei 96 kHz erreichbar — zum
-Vergleich: ein Amp in einem Meter Entfernung "hat" schon 3 ms. Hardware-Direct-
-Monitoring im Scarlett hilft hier NICHT, weil man das bearbeitete Signal hören
-will, nicht das cleane.
-
-**Reihenfolge:** erst den Button auf `Rec`, dann die DAW starten. Umgekehrt
-zieht der Profilwechsel dem laufenden Programm das Gerät unter den Füßen weg.
-
-**Die Hostweiche steht an drei Stellen** und muss zusammen gepflegt werden:
-
-| Datei | gatet |
-| --- | --- |
-| `home/.chezmoiignore` | das Script selbst |
-| `home/dot_config/waybar/config.jsonc.tmpl` | den Button in der Bar |
-| `bootstrap.sh` | Root-Helfer + sudoers-Regel |
-
-`home/dot_config/waybar/style.css` ist bewusst NICHT gegatet: CSS-Regeln für ein
-nicht vorhandenes Modul sind wirkungslos, eine vierte Weiche wäre nur zusätzliches
-Risiko.
-
-**Der Root-Teil.** Governor, EPP und C-States liegen in `/sys` und brauchen
-root. Statt dem Benutzer `sudo` auf `tee` zu geben (das wäre effektiv
-passwortloses root) macht es ein eigener Helfer, `system/recording-mode-cpu`,
-freigegeben über `system/recording-mode.sudoers` für genau zwei Aufrufe —
-`… on` und `… off`, sonst nichts. Zwei Details, an denen es sonst still
-scheitert:
-
-- Die Helfer-Datei MUSS `root:root 0755` sein. Gehört sie dem Benutzer, kann
-  der ihren Inhalt austauschen und per NOPASSWD-Regel als root ausführen
-  lassen — die Regel wäre dann passwortloses root mit einem Zwischenschritt.
-  `bootstrap.sh` benutzt deshalb `install -o root -g root -m 0755`, nicht `cp`.
-- Der Zielname in `/etc/sudoers.d/` trägt KEINE Endung. sudo überspringt dort
-  alles, was einen Punkt im Namen hat: aus `recording-mode.sudoers` würde eine
-  Datei, die korrekt installiert ist, sauber parst und trotzdem nie gelesen
-  wird.
-
-`bootstrap.sh` prüft nach dem Installieren beides: `visudo -c` (parst die
-Datei?) und einen echten `sudo -n`-Testaufruf (greift die Regel?). Das zweite
-ist nicht redundant — genau diese Lücke hat beim ersten Einrichten Zeit
-gekostet.
-
-**C-States.** Im Aufnahmemodus fliegen alle Idle-States mit mehr als 100 µs
-Aufweckzeit raus, auf dem Ryzen 9 7900 ist das C3 mit 350 µs. Bei 128 Samples
-@ 48 kHz sind das rund 13 % des gesamten Zyklusbudgets, fällig genau dann, wenn
-der Kern aus dem Leerlauf geholt wird. C1 (1 µs) und C2 (18 µs) bleiben an, die
-kosten nichts und sparen echte Wärme. Gefiltert wird über die gemessene Latenz,
-nicht über den Namen — "C3" heißt nicht auf jeder CPU dasselbe, die Zahl in
-`latency` schon.
-
-**Zustand wird nirgends gespeichert.** Jeder Aufruf liest frisch aus PipeWire
-und `/sys`. Ein von Hand mit `wpctl` umgestelltes Profil oder ein abgezogenes
-Interface fällt der Anzeige damit sofort auf, statt gegen eine gemerkte
-Wahrheit zu laufen. Ein Klick auf `Rec ?!` führt zurück in den Alltagsmodus,
-nicht noch einmal in denselben Fehler — ein halb geschalteter Zustand ist immer
-ein kaputter Helfer, und den repariert kein Mausklick.
-
-**Realtime** — nicht Teil dieses Schalters, aber Voraussetzung dafür, dass er
-etwas bringt. Ohne Realtime knackt es bei kleinen Puffern, egal was Profil und
-Governor tun. Zwei Fallen, beide am 2026-09-01 geschlossen:
+Voraussetzung für kleine Puffer, z.B. Gitarre über Amp-Sim in der DAW. Ohne
+Realtime knackt es bei kleinen Puffern.
+Zwei Fallen, beide am 2026-09-01 geschlossen:
 
 - Fedora liefert `/etc/security/limits.d/` mit `@pipewire - rtprio 70` aus, die
   Regel greift aber nur für Mitglieder der Gruppe `pipewire` — und in die trägt
@@ -512,7 +434,7 @@ Session-Start, ein neues Terminal reicht nicht. Gegenprobe: `ulimit -r` muss
 Der Flatpak-Override dagegen steht nirgends im Repo und geht bei einer
 Neuinstallation verloren — die DAW ist bewusst nicht Teil dieses Repos.
 
-**Danach noch offen:** `api.alsa.headroom` steht für das Scarlett auf 240
+**Noch offen:** `api.alsa.headroom` steht für das Scarlett auf 240
 Samples = 5 ms, die konstant auf jeden Puffer obendrauf kommen. Eine
 WirePlumber-Drop-in-Regel neben `99-rnnoise.conf` kann das auf 0–32 ziehen.
 Und 96 kHz halbiert die Millisekunden bei gleicher Blockgröße.
@@ -1112,6 +1034,23 @@ hinweg **nicht gesperrt**. Im Session-Log (`~/.cache/wayland-errors`) steht
 `sh: Zeile 1: hyprlock: Kommando nicht gefunden` — das Paket-Aufräumen vom
 Mittag hat hyprlock mitgenommen, s. „Nachlese 13.09.2026".
 
+**Nachtrag 28.09.2026: erster Ausfall nach dem Rückweg.** Die Stichprobe vom
+13.09. hält für den sauberen S3 weiter — seit dem Umstecken 9 komplette
+Zyklen ohne eine Fehlerzeile. Was sie nicht abgedeckt hat, ist der
+*abgebrochene* S3: am 28.09. um 11:57 hat ein USB-Weck-Signal den Suspend
+noch im Geräte-Suspend abgebrochen, der Kernel hat alle Geräte zurückgerollt,
+und dabei ist die SMU der RX 6400 gestorben — dieselbe Kette wie im August
+(`SMU: No response`, `RunDcBtc failed`, `resume of IP block <smu> failed
+-62`, dann die `sdma0`-Timeout-Schleife). Bild schwarz, Rechner wach, keine
+Sleep-LED. Der Unterschied zum August: damals lag die Karte bei solchen
+Abbrüchen in D3hot und hat sie unbeschadet überstanden; seit sie das Display
+treibt, steht sie in D0, und in D0 überlebt sie das Zurückrollen ohne den
+Power-Cycle eines echten S3 nicht (im ganzen Boot kein `MODE1 reset`).
+Bilanz seit dem Rückweg: 10 Suspends, 9 sauber, 1 Abbruch = 1 toter
+Bildschirm. Auslöser und Gegenmaßnahme (udev-Regel gegen das Weckrecht der
+Eingabegeräte) stehen im Abschnitt „Suspend hängt sich auf" unter „28.09.2026". Die
+Rückfallebene bleibt, wie oben beschrieben: Kabel an `HDMI-A-2`, Reboot.
+
 ## Workspaces auf zwei Monitoren (book)
 
 **Gewollt.** Workspace 1 auf dem internen Panel, 2-9 auf dem externen Monitor.
@@ -1512,8 +1451,9 @@ Tastatur — das stimmt nicht, denn das funktioniert hier ohnehin nicht (s. o.).
 Sie kostet also nichts und wäre sogar robuster als die Buchse: eine Regel
 greift auch dann noch, wenn der Empfänger nach einem Umbau wieder in einer
 Chipsatz-Buchse landet. Die Buchsenlösung hat dafür den Vorteil, ohne
-zusätzliche Datei auszukommen. Beides ist vertretbar; aktuell steckt nur die
-Buchse.
+zusätzliche Datei auszukommen. Beides ist vertretbar; bis zum 28.09.2026
+steckte nur die Buchse — seitdem gibt es die Regel doch, aus einem anderen
+Grund als dem hier beschriebenen (s. u.).
 
 **Nicht genommen: `acpi_mask_gpe=0x02`.** Der maskierte GPE nimmt nur die
 *Meldung* über den GPIO-Pfad weg; das PME liegt weiter an, und der Kernel nennt
@@ -1529,6 +1469,109 @@ $ cat /sys/power/pm_wakeup_irq
 **Merksatz fürs nächste Mal.** `Wakeup pending. Abort CPU freeze` ist keine
 Aussage über das Gerät, das zuckt, sondern über den PCIe-Zweig, an dem es
 steckt. Erst `pm_wakeup_irq` lesen, dann den Zweig auflösen — nicht raten.
+
+### 28.09.2026: zweiter Abbruchgrund, und die dGPU in D0 überlebt ihn nicht
+
+**Symptom.** Zurück am Rechner: Monitor schwarz, keine Reaktion auf Eingaben,
+aber die Status-LED zeigt keinen Standby. Zu Recht — der Rechner hat nie
+geschlafen.
+
+**Was im Journal steht** (`journalctl -b -1`, 11:57:07 bis 11:57:11):
+
+1. swayidle löst nach 15 min `systemctl suspend` aus, `PM: suspend entry
+   (deep)`, Dateisysteme gesynct, Prozesse eingefroren. Bis hierhin normal.
+2. Im Geräte-Suspend verweigert der USB-Controller `11:00.4` — ein
+   CPU-seitiger, nicht der Chipsatz-Zweig von oben:
+
+   ```
+   xhci_hcd 0000:11:00.4: PM: pci_pm_suspend(): hcd_pci_suspend returns -16
+   xhci_hcd 0000:11:00.4: PM: failed to suspend async: error -16
+   PM: Some devices failed to suspend, or early wake event detected
+   ```
+
+   `-16` ist `EBUSY` und kommt aus `hcd_pci_suspend`: am Root-Hub lag ein
+   Weck-Signal an, als der Controller schlafen sollte. Das ist ein anderer
+   Mechanismus als das PME# vom 25.08. — kein dauerhaft gezogener Pin,
+   sondern ein Gerät, das genau in diesem Moment ein Remote-Wakeup gemeldet
+   hat. Kein `Abort CPU freeze`, der Abbruch kommt früher.
+3. Der Kernel rollt zurück und weckt alle Geräte wieder. Die iGPU kommt (`SMU
+   is resumed successfully!`), die RX 6400 nicht:
+
+   ```
+   amdgpu 0000:03:00.0: SMU: No response msg_reg: 36 resp_reg: 0
+   amdgpu 0000:03:00.0: RunDcBtc failed!
+   amdgpu 0000:03:00.0: resume of IP block <smu> failed -62
+   amdgpu 0000:03:00.0: PM: failed to resume async: error -62
+   ```
+
+   systemd meldet `Failed to put system to sleep. System resumed again:
+   Device or resource busy`, `suspend.target` schlägt fehl, `SuspendState=mem`
+   verhindert wie vorgesehen jeden Fallback. Ab 11:57:13 die bekannte
+   `sdma0`-Schleife, alle zwei Sekunden, eine Stunde lang.
+
+**Warum die Karte diesmal stirbt und im August nicht.** Oben steht, dass die
+`deep`-Abbrüche im August die Karte „jedes Mal unbeschadet" gelassen haben und
+die SMU erst im s2idle-Bein starb. Das war richtig — und galt für eine Karte
+in D3hot, die kein Display trieb. Seit dem 13.09. hängt der Monitor an der
+RX 6400, ein aktiver CRTC hält sie in D0, und aus D0 heraus durchläuft sie
+beim Suspend ihren vollen Pfad. Wird der abgebrochen, wird sie wieder
+aufgeweckt, ohne dass die Stromversorgung je weg war — genau die Situation,
+die im August das s2idle-Bein erzeugt hat. Der saubere S3 ist davon nicht
+betroffen: dort kommt die Karte über `MODE1 reset` zurück, und das hat seit
+dem 13.09. neunmal funktioniert. Im Boot vom 28.09. steht kein einziger
+`MODE1 reset`.
+
+**Woher das Weck-Signal kam.** An `11:00.4` hängen (Bus 5, hinter einem
+Realtek-Hub `5-2` mit Billboard-Gerät `5-2.4`, also dem USB-Hub des
+Monitors) der Logi-Bolt-Empfänger `046d:c548` auf `5-2.1` und die Hama
+EWM-500 `3151:3023` auf `5-2.2` — beide mit `power/wakeup = enabled`, dazu
+Webcam und Billboard ohne Weckrecht. Am 25.08. saßen Empfänger und Maus noch
+an `11:00.3`; irgendwann seitdem sind sie in den Monitor-Hub gewandert.
+Welches der beiden gezuckt hat, ist nach dem Reboot nicht mehr feststellbar
+(`wakeup_count` wird beim Boot genullt). Es ist auch egal: beide sollen es
+nicht dürfen.
+
+**Der Fix: die udev-Regel, die oben als Alternative stand.**
+`udev/70-usb-no-wakeup.rules`, installiert von `bootstrap.sh`:
+
+```
+SUBSYSTEM=="usb", ATTR{idVendor}=="046d", ATTR{idProduct}=="c548", ATTR{power/wakeup}="disabled"
+SUBSYSTEM=="usb", ATTR{idVendor}=="3151", ATTR{idProduct}=="3023", ATTR{power/wakeup}="disabled"
+```
+
+Ohne Weckrecht werden die Geräte beim System-Suspend nicht für Remote-Wakeup
+scharf geschaltet, es kann also kein Signal am Root-Hub anliegen. Kosten:
+keine — Wecken per Tastatur oder Maus hat auf diesem Board nie funktioniert
+(s. 25.08., `wakeup_count=0`), geweckt wird über den Power-Button. Prüfen —
+mit `udevadm settle` dazwischen, denn `udevadm trigger` kehrt zurück, bevor
+udevd die Ereignisse abgearbeitet hat; ohne das Warten steht da noch
+`enabled`, wie beim ersten Versuch am 28.09.:
+
+```console
+$ sudo udevadm trigger --subsystem-match=usb && sudo udevadm settle
+$ cat /sys/bus/usb/devices/5-2.1/power/wakeup /sys/bus/usb/devices/5-2.2/power/wakeup
+disabled
+disabled
+```
+
+Die Buchsen-Nummern wandern mit dem Steckplatz; robuster ist
+`grep -l . /sys/bus/usb/devices/*/idVendor` nach `046d` bzw. `3151`.
+
+**Was die Regel nicht löst.** Jeder andere Grund, aus dem ein S3 abbricht,
+tötet die Karte in D0 genauso — die Regel nimmt nur den einen bekannten
+Auslöser weg. Wer das Restrisiko nicht will, geht die Rückfallebene aus dem
+Abschnitt davor: Kabel an `HDMI-A-2` der iGPU, dann liegt die Karte wieder in
+D3hot und überlebt Abbrüche. Nicht probiert: `amdgpu.gpu_recovery=1` oder
+`reset_method=1` — der Kernel meldet „device wedged, but no recovery
+needed" und hält den Ring-Reset für erfolgreich, ein voller GPU-Reset würde
+also gar nicht angestoßen; ob er die SMU zurückholen würde, ist offen.
+
+**Nebenbefund, der die Symptombeschreibung oben korrigiert.** Der
+Power-Button hat diesmal funktioniert: kurzer Druck um 12:57:58, logind
+`System is powering down`, Session beendet um 12:58:03, Kernel aus um
+12:58:29. Am 24.08. hing das Herunterfahren an der Session; am 28.09. hat
+Sway sich vom toten Device gelöst. Vor dem harten Reset also erst 30 Sekunden
+auf den kurzen Druck warten.
 
 ## Fester Workspace pro App (nur `cube`)
 
@@ -1655,8 +1698,7 @@ Statusaufruf, der einmal läuft und sich beendet, sondern ein Abonnement — der
 Prozess hängt am Daemon und schreibt bei jeder Änderung eine neue JSON-Zeile.
 Waybar erkennt genau daran den Dauerbetrieb. Ein `interval` würde den Prozess im
 Takt abschießen und neu starten, ein `signal` wäre überflüssig, weil es nichts
-zu pollen gibt. Die Anzeige steht dadurch sofort statt nach bis zu einer Sekunde
-(anders als bei `custom/recording`, das wirklich pollt).
+zu pollen gibt. Die Anzeige steht dadurch sofort statt nach bis zu einer Sekunde.
 
 Text statt Glyphe wie überall — es ist weiterhin kein Nerd Font installiert. Der
 DND-Zustand steht deshalb als **Wort** da (`DND`) und nicht nur als Gelbton: das
@@ -1930,9 +1972,7 @@ record toggle [modus]  # was die Tasten tun
   räumt das von selbst weg. Die PID-Datei allein gilt dabei nicht als Wahrheit —
   nach einem Absturz kann die Nummer längst einem fremden Prozess gehören,
   deshalb wird zusätzlich `/proc/<pid>/comm` geprüft.
-- **Waybar-Modul ist `custom/screenrec`** — nicht zu verwechseln mit
-  `custom/recording`, das ist der *Audio*-Aufnahmemodus (Scarlett + CPU, nur
-  cube). Deshalb auch ein anderes Signal: 8 statt 7. Ohne Aufnahme liefert
+- **Waybar-Modul ist `custom/screenrec`** (Signal 8). Ohne Aufnahme liefert
   `record status` leeren Text, und Waybar blendet das Modul komplett aus — es ist
   nur zu sehen, wenn es etwas zu sagen hat. Mit Aufnahme zeigt es `REC m:ss` auf
   roter Fläche; das ist der einzige Ort in `style.css`, an dem Rot nicht "kaputt"
@@ -1960,7 +2000,9 @@ Popup ist weg, `Esc` verwirft spurlos. `dot_local/bin/todo`:
 ```sh
 todo                  # Overlay              — SUPER+T
 todo list             # offene Punkte; Enter hakt den gewählten ab — SUPER+SHIFT+T
+                      # mit Vikunja-Token darunter der Abschnitt "── Vikunja ──"
 todo add "Milch"      # ohne Popup, für die Shell
+todo vikunja          # offene Vikunja-Aufgaben auf STDOUT, für die Shell
 todo clean            # abgelegte Zeilen löschen
 todo edit             # Datei im Editor (xdg-open -> Emacs, s. mimeapps.list)
 todo status
@@ -2047,6 +2089,79 @@ ohnehin (`SUPER+D`, cliphist, keybinds, wifi, bt) und steht per `fuzzel.ini` auf
   kein Zustand, den man wieder anklickt.
 - Kein Waybar-Modul mit Zähler. Wer es will, hat mit `todo status` die Zahl
   schon; das wäre ein `custom/`-Modul nach dem Muster von `custom/keybinds`.
+
+### Vikunja-Abschnitt in `todo list` (17.09.2026)
+
+Die Langfristliste liegt in [Vikunja](https://vikunja.javahippie.net) (v2.6.0,
+selbst gehostet). Damit man sie nicht in einem Browser-Tab suchen muss, zeigt
+`SUPER+SHIFT+T` unter den Tagespunkten einen zweiten Abschnitt:
+
+```
+heute noch: Rechnung
+Saiten wechseln
+── Vikunja ──
+Steuererklärung  (Privat, faellig seit 12.09.)
+Backup prüfen  (Privat, bis 20.09.)
+Bogen bestellen  (Inbox)
+```
+
+Fälliges zuerst, dann der Rest; `Enter` hakt auch dort ab. Wer nichts
+konfiguriert, sieht nichts davon — der Abschnitt hängt an *einer* Datei:
+
+```sh
+# Vikunja: Avatar -> Einstellungen -> API-Tokens -> neuer Token mit
+#   Tasks: Read all, Read one, Update   |   Projects: Read all
+mkdir -p ~/.config/vikunja && chmod 700 ~/.config/vikunja
+printf 'tk_...\n' > ~/.config/vikunja/token && chmod 600 ~/.config/vikunja/token
+todo status           # "Vikunja:  N offen (https://vikunja.javahippie.net)"
+```
+
+- **Nur lesen und abhaken, nicht anlegen.** `SUPER+T` schreibt weiter in die
+  Datei: das Popup soll auch ohne Netz und ohne Wartezeit aufgehen, und was
+  man auf Tastendruck notiert, ist ein Tagespunkt, kein Projekt-Task. Wer etwas
+  nach Vikunja will, tut das dort — die Liste hier ist die Sicht darauf.
+- **Der Token liegt in einer Datei, nicht im Secret Service.** KeePassXC
+  stellt den hier zwar bereit (s. `packages.txt`), muss dafür aber laufen
+  *und* entsperrt sein — um 05:00 nach dem Aufwachen ist er das nicht, und
+  `todo list` soll nicht an einem Passwortdialog hängen. Der Token ist eng
+  beschränkt (Tasks lesen/ändern, Projekte lesen), ein Verlust kostet ein
+  Widerrufen in Vikunja. `chmod 600`, Verzeichnis liegt außerhalb des Repos
+  (public!), `$VIKUNJA_TOKEN` überschreibt die Datei, `$VIKUNJA_URL` die
+  Instanz. **Kein Token, kein Abschnitt** — `list` verhält sich dann genau
+  wie vor dem 17.09.
+- **Der Token geht als curl-Konfig über eine Prozess-Substitution** (`-K
+  <(...)`) hinein, nicht als `-H`-Argument: Argumente stehen in
+  `/proc/<pid>/cmdline` und damit für jeden Nutzer der Maschine in `ps`.
+  Zuerst war es `-K -` über STDIN — dann kam beim Abhaken der POST-Body
+  (`--data-binary @-`) leer an, weil beides von STDIN las.
+- **Kein Cache.** Jedes `SUPER+SHIFT+T` macht zwei Requests (`/tasks` mit
+  `filter=done = false`, `/projects` für die Namen), zusammen etwa 200 ms.
+  Ohne Netz steht statt der Aufgaben eine Zeile `(nicht erreichbar: …)`, die
+  Tagespunkte darüber bleiben bedienbar. `-m 8` deckelt das Warten.
+  Vikunja liefert höchstens 50 Einträge pro Seite (`max_items_per_page` in
+  `/info`), das Skript blättert bis zu 10 Seiten.
+- **Abgehakt wird mit der vollständigen Aufgabe.** `POST /tasks/{id}` ist
+  ein Ersetzen, kein PATCH: das Skript holt die Aufgabe, setzt `done=true` und
+  schickt sie zurück. Wiederholende Aufgaben setzt Vikunja dabei selbst auf
+  den nächsten Termin und meldet `done=false` — geprüft wird deshalb nur, dass
+  eine Aufgabe mit derselben Id zurückkam.
+- **Rückweg über den Zeilentext, wie bei der Datei**: die Anzeigezeile
+  `Titel  (Projekt, bis TT.MM.)` wird gegen ein `id<TAB>Zeile`-Verzeichnis
+  gesucht, erster Treffer gewinnt. Tabs und Umbrüche im Titel werden zu
+  Leerzeichen, sonst fände sich die Zeile nicht wieder; gebaut wird sie per
+  String-Interpolation in `jq`, nicht mit `@tsv` — das verdoppelt Backslashes,
+  und `C:\temp` wäre danach nicht mehr auffindbar. Heißt ein Tagespunkt
+  zufällig genau wie eine Vikunja-Zeile, gewinnt die Datei.
+- Die Kopfzeile `── Vikunja ──` und die Hinweise (`nichts offen`, `nicht
+  erreichbar`) sind wählbar — fuzzel kennt keine passiven Einträge — tun aber
+  nichts. `── ` liegt in JetBrains Mono (`fc-list ':charset=2500'`), kein
+  Emoji, keine Nerd-Font-Abhängigkeit.
+- `todo vikunja` gibt den Abschnitt ohne Popup auf STDOUT aus, `todo status`
+  zeigt Zahl und Erreichbarkeit — beides zum Prüfen, ob Token und Rechte
+  stimmen, ohne die Live-Session mit Overlays zu stören.
+- Getestet gegen einen lokalen Mock-Server (Seiten, 401, leere Antwort,
+  Titel mit Tab und Backslash, Abhaken); gegen die echte Instanz erst mit
+  Token.
 
 ## Compositor: Sway (und der Abschied von Hyprland)
 
@@ -2318,6 +2433,15 @@ beide Startwege ins Gehege kommen.
     Timeout zu laufen — wichtig auf `book`, wo es kein Key Light gibt. Alle
     `curl`-Aufrufe sind auf `--connect-timeout 2 --max-time 5` gedeckelt, damit
     hinter dem Keybind nichts hängen bleibt.
+  - **Fehler kommen als Notification**, nicht nur auf stderr: hinter `sway exec`
+    sieht niemand stderr, der Toggle scheiterte sonst stumm. Bei "antwortet
+    nicht" und "kein Host konfiguriert" schickt das Skript deshalb zusätzlich
+    ein `notify-send -u critical` (gleiche Bauart wie `todo`/`wifi`/`bt`;
+    fehlt libnotify, bleibt es beim stderr-Text). Anlass 22.09.2026: das Light
+    antwortete auf die feste IP nicht mehr, obwohl es im Netz hing, und lief
+    erst wieder, nachdem es einmal über die Elgato-App geschaltet wurde — ob
+    WLAN-Aussetzer oder hängende HTTP-API, ist von außen nicht zu
+    unterscheiden. Die Notification nennt diesen Handgriff gleich mit.
 
 ## Tastaturbeleuchtung (nur `book`)
 
@@ -2564,6 +2688,8 @@ wird dafür:
 | R-Interpreter | `R-core` | Fedora |
 | CRAN-Pakete bauen | `R-core-devel` | Fedora |
 | R in Emacs (ESS) | `ess` | **GNU ELPA**, via bootstrap.sh |
+| Git in Emacs (Magit) | `magit` | **NonGNU ELPA**, via bootstrap.sh |
+| Clojure in Emacs | `clojure-mode` + `paredit` | **NonGNU ELPA**, via bootstrap.sh |
 | LaTeX in Emacs | `emacs-auctex` | Fedora |
 | TeX Live | `texlive-scheme-small` | Fedora |
 | Build-Treiber | `latexmk` | Fedora |
@@ -2589,6 +2715,10 @@ Arbeitsmuster (Skriptpuffer plus lebende R-Konsole) ohne diesen Anhang.
 - `C-c C-v` zeigt die Hilfe zum Objekt unter dem Cursor.
 - LaTeX: `C-c C-c` startet latexmk, `C-c C-v` öffnet das PDF an der passenden
   Stelle; ein Klick im PDF springt zurück in die Quelle.
+- Git: `C-x g` öffnet den Magit-Status des Repos, in dem die Datei liegt. Dort
+  `s` stage, `u` unstage, `c c` commit (Nachricht im Puffer, `C-c C-c` schließt
+  ab), `P p` push, `F p` pull, `l l` Log, `d d` Diff; `?` zeigt alles weitere.
+  `C-x M-g` ist dasselbe Menü ohne Status-Puffer.
 
 **Was man wissen muss, sonst hält man es für kaputt:**
 
@@ -2597,6 +2727,14 @@ Arbeitsmuster (Skriptpuffer plus lebende R-Konsole) ohne diesen Anhang.
   kennt; MELPA bleibt bewusst aus. GNU ELPA signiert, die Installation legt neben
   `ess-26.5.0/` eine `ess-26.5.0.signed`; das ersetzt die gepinnte Prüfsumme, die
   bei minikube & Co. nötig ist.
+- **Magit kommt aus NonGNU ELPA, nicht aus Fedora — obwohl Fedora eins hat.**
+  `emacs-magit` ist dort 4.2.0 vom Dezember 2024 (Stand 10/2026) und läuft gegen das
+  eingebaute transient 0.7, das in `emacs-common` steckt. NonGNU ELPA liefert 4.7.1,
+  dazu transient 0.13 aus GNU ELPA, alles signiert (`magit-4.7.1.signed` usw.).
+  Das Fedora-Paket darf **nicht** zusätzlich installiert werden: package.el zieht
+  das ELPA-transient dem eingebauten vor, und das alte Site-Lisp-Magit liefe dann
+  gegen eine Bibliothek, gegen die es nie gebaut wurde. Aktualisiert wird wie
+  ESS per `M-x package-upgrade`, nicht per dnf.
 - **Die 14 Byte-Compile-Fehler beim ESS-Einbau sind normal.** Sie betreffen
   ausnahmslos Dateien unter `ess-26.5.0/test/`, denen der Testhelfer `etest` fehlt
   — der liegt nicht im ELPA-Tarball. Nichts davon wird zur Laufzeit geladen.
@@ -2649,6 +2787,82 @@ zeigt PDFs im Zathura. Ein deutschsprachiges KOMA-Dokument mit `babel` und
 `microtype` übersetzt fehlerfrei; latexmk entschied dabei von allein, dass zwei
 Läufe nötig sind (wegen `\ref`), und mit dem `--synctex=1`, das AUCTeX über `%S`
 anhängt, entsteht die `.synctex.gz` für den Sprung ins PDF und zurück.
+
+## Java in Emacs (Eglot + jdtls + Maven) — Experiment
+
+Seit 19.10.2026 als Versuch, Java ohne IDE zu schreiben. Bewusst **ohne
+zusätzliches Emacs-Paket**: java-ts-mode, Eglot, Flymake, xref und
+`completion-preview-mode` sind in Emacs 30 eingebaut, transient für das
+Maven-Menü kommt ohnehin mit Magit. lsp-mode, lsp-java und eglot-java liegen alle
+nur auf MELPA und hätten die MELPA-Ausnahme (bisher nur Treemacs) erweitert.
+
+| Zweck | Was | Herkunft |
+|---|---|---|
+| Syntax-Highlighting, Einrückung | `java-ts-mode` + `libtree-sitter-java` | Emacs / Fedora |
+| Language Server | Eclipse **jdtls 1.62.0** | Tarball mit SHA-256, via bootstrap.sh nach `~/.local/opt/jdtls` |
+| LSP-Client | Eglot | Emacs |
+| Maven | `C-c m` (eigenes Transient-Menü in init.el) | — |
+
+**Bedienung.**
+
+- Eine `.java`-Datei öffnen genügt, jdtls startet von allein (pro Projekt = Git-Root
+  ein Prozess, ~1 GB RAM; er beendet sich mit dem letzten Puffer). Der erste Start
+  in einem Projekt importiert das Maven-Modell und dauert; bis dahin laufen
+  Anfragen in einen Timeout.
+- `M-.` Definition (auch in JDK und Abhängigkeiten), `M-,` zurück, `M-?` Verwendungen.
+- Vervollständigung: grauer Vorschlag hinter dem Cursor, `TAB` übernimmt;
+  `C-M-i` zeigt alle Kandidaten.
+- `M-n`/`M-p` nächster/voriger Fehler, `C-c l e` alle Fehler im Projekt.
+- `C-c l r` umbenennen, `C-c l a` Code-Actions (Quick-Fix, Import), `C-c l o`
+  Imports aufräumen, `C-c l f` formatieren, `C-c l i` Implementierungen,
+  `C-c l d` Javadoc im eigenen Fenster.
+- `C-c m` Maven-Menü: Schalter `-o` offline, `-q`, `-s` Tests überspringen, `-u` `-U`;
+  dann `c` compile, `t` test, `p` package, `v` verify, `i` install, `C` clean,
+  `I` clean install, `k` Test dieser Klasse, `m` Test der Methode unter dem Cursor,
+  `g` letzten Lauf wiederholen, `d` dependency:tree, `U` Updates der Abhängigkeiten,
+  `e` beliebige Ziele. Läuft im nächsten Verzeichnis mit `pom.xml` (also im Modul,
+  nicht im Reactor), mit `./mvnw`, falls das Projekt einen hat. Compilerfehler im
+  `*maven*`-Puffer sind anklickbar, `M-g n`/`M-g p` springen durch.
+
+**Was man wissen muss, sonst hält man es für kaputt:**
+
+- **jdtls' Autobuild ist aus, und das ist Absicht.** jdtls (intern Eclipse m2e)
+  kompiliert sonst mit ECJ in *dasselbe* `target/classes` wie Maven, auch fehlerhafte
+  Klassen, nämlich als Stub mit „Unresolved compilation problem“. Beim Testen am
+  19.10. meldete `mvn compile` danach **BUILD SUCCESS** trotz `return undefinedThing;`,
+  weil die `.class` neuer war als die Quelle. Ohne Autobuild bleibt `target/` leer,
+  bis Maven baut, und die Fehler in offenen Dateien zeigt jdtls trotzdem an
+  (nachgeprüft). Was fehlt: Fehler in Dateien, die gerade *nicht* offen sind, sieht
+  man erst nach einem `mvn compile`.
+- **Sprünge in JDK- und Jar-Klassen** kommen von jdtls als `jdt://…`-URI zurück,
+  nicht als Datei. Ein `file-name-handler` in init.el holt den Quelltext per
+  `java/classFileContents` (ohne Sources-Jar dekompiliert jdtls selbst) und legt ihn
+  unter `~/.cache/jdtls/sources/` ab. Diese Puffer sind schreibgeschützt und haben
+  bewusst **kein** Eglot. Eglot hielte das Cache-Verzeichnis sonst für ein eigenes
+  Projekt und startete einen zweiten jdtls. Aus `String.java` heraus kann man also
+  nicht weiterspringen.
+- **jdtls läuft immer mit dem neuesten installierten JDK** (aktuell Temurin 25 aus
+  mise), nicht mit dem aus `PATH`/`JAVA_HOME`. Grund: Er braucht Java ≥ 21, und
+  eine `.sdkmanrc` im Projekt kann dort ein 17 hinsetzen. *Kompiliert* wird trotzdem
+  gegen die passende Version: Alle JDKs aus SDKMAN und mise gehen als Runtimes
+  `JavaSE-<n>` an jdtls. Ein Projekt mit `<release>21</release>` löst `String`
+  gegen das JDK 21 auf (nachgeprüft am URI des Sprungziels).
+- **Lombok** wird automatisch als `-javaagent` angehängt, wenn ein Lombok-Jar in
+  `~/.m2` liegt (das neueste). Ohne das wäre jeder generierte Getter rot.
+- **Index pro Checkout** unter `~/.cache/jdtls/workspace/<name>-<hash>`. Der Wrapper
+  würde den Pfad sonst aus dem *Basisnamen* des Verzeichnisses bilden, zwei
+  Checkouts namens `api` teilten sich dann einen Index. Hängt jdtls einmal fest:
+  das Verzeichnis löschen, `M-x eglot-reconnect`.
+- **Kein Debugger.** Der nächste Schritt wäre `dape` (GNU ELPA, signiert) mit dem
+  java-debug-Plugin für jdtls. Das ist für den Versuch noch nicht eingerichtet.
+
+**Verifiziert** (`emacs --batch` gegen ein Wegwerf-Maven-Projekt mit JUnit 5 und
+Lombok, jdtls 1.62.0, Emacs 30.2): Verbindung steht, die Diagnose meldet genau den
+eingebauten Fehler und keine Lombok-Getter, `M-.` auf `toUpperCase` landet in
+`String.java` (JDK 21) und auf `assertEquals` in `Assertions.java` aus dem JUnit-Jar,
+`m` im Maven-Menü führt `-Dtest=GreeterTest#other` aus (1 Test), und `RET` auf dem
+Compilerfehler im `*maven*`-Puffer springt nach `Greeter.java:15`. **Interaktiv im
+Terminal ist es noch nicht ausprobiert.**
 
 ## Firefox: nativ statt Flatpak
 
@@ -3486,6 +3700,319 @@ Was das Tool **nicht** tut: die COPR `ashbuk/Hyprland-Fedora` abräumen. Die ist
 eine Repo-Definition, kein Paket — `sudo dnf copr remove ashbuk/Hyprland-Fedora`
 gehört zum selben Aufräumen, muss aber von Hand. Genauso wenig räumt es
 Konfigurationsreste im Home ab (`~/.config/wayvnc`).
+
+## Lokale LLMs (nur `cube`)
+
+Seit 13.10.2026. Zweck: Prompts, die nicht in die Cloud dürfen, auf dem eigenen
+Rechner — erster Anwendungsfall ist der kartograf-MCP-Server, über den ein
+lokales Modell XÖV-Standards befragen und interpretieren soll. Der Stack ist
+bewusst klein: **llama.cpp als Dauerdienst, OpenCode als Client, drei Modelle
+zur Auswahl.** Ein Vorgängerversuch vom August 2026 lag komplett außerhalb des
+Repos und wurde am 13.10. gelöscht; die Messwerte daraus sind hier übernommen,
+weil sie jede Entscheidung unten begründen.
+
+### Die Hardware, gemessen (26.08.2026)
+
+| | Wert |
+|---|---|
+| RAM-Bandbreite | 65,3 GB/s mit 12 Threads, **60,4 GB/s mit 24** (SMT schadet) |
+| RAM | 61 GiB nutzbar |
+| CPU | Ryzen 9 7900, 12 Kerne, AVX-512 + VNNI + BF16 |
+| dGPU | RX 6400 (gfx1034), **3,98 GiB VRAM**, ~128 GB/s |
+| iGPU | Raphael (gfx1036), treibt nur das Display |
+
+Die Konsequenz: die GPU ist nur etwa doppelt so schnell wie die CPU und hat
+einen 4-GB-Deckel. Sie erschließt keine Modellklasse, die die CPU nicht auch
+kann. **Das Kapital dieser Maschine sind die 64 GB RAM**, und das passende
+Modellformat dazu ist MoE (Mixture of Experts): 30 Milliarden Parameter auf
+der Platte, aber nur 3 Milliarden pro Token aktiv — das Modell liest sich wie
+ein 3B-Modell, antwortet aber wie ein 30B-Modell.
+
+Der Hybrid (Teile auf der GPU, Rest auf der CPU) wurde gegen die reine CPU
+gemessen, am laufenden `llama-server`, also inklusive Chat-Template und HTTP:
+
+| Qwen3-30B-A3B Q4 | Prefill | Generierung | Kontext |
+|---|---|---|---|
+| GPU-Hybrid, 32k | 126 tok/s | 15 tok/s | 32k (mehr passt nicht ins VRAM) |
+| CPU, q8_0-KV, Batch 512 | 121 tok/s | 21 tok/s | 65k |
+| **CPU, f16-KV, Batch 4096** | **175 tok/s** | **21 tok/s** | **65k** |
+
+Die CPU gewinnt in jeder Spalte, und die beiden Schalter, die den Unterschied
+machten, waren nicht das Backend, sondern Prefill-Batch 512 → 4096 (+34 %) und
+KV-Cache f16 statt q8_0 (+8 %). Beide stehen als Default in
+`llama.cpp/models.ini`. Daraus die Regel, die in der Preset-Datei steht:
+**große MoE-Modelle auf der CPU, die GPU nur für Embedder, Reranker oder
+Modelle bis etwa 4B.** Pro Modell ist das eine Sektion in der INI mit
+`device`, `n-gpu-layers` und `c` — das Ausprobieren kostet Zeit, das
+Konfigurieren nicht.
+
+### Warum was
+
+- **llama.cpp direkt, nicht Ollama.** Ollamas Engine *ist* llama.cpp. Was
+  fehlt, sind genau die Knöpfe von oben (`--n-cpu-moe`, Batchgröße, KV-Typ,
+  Threads), und der Kontext-Default von 4096 schneidet lange Prompts still ab —
+  für MCP-Antworten mit großen JSON-Dokumenten nicht langsam, sondern falsch.
+- **Upstream-Binary, nicht das Fedora-Paket.** `llama-cpp` in Fedora 44 ist
+  Build b6153 vom August 2025 und gegen HIP gebaut; rocBLAS kennt gfx1034
+  nicht (`dnf repoquery -l rocblas | grep -oE "gfx[0-9a-f]+" | sort -u`).
+  Upstream liefert fertige Vulkan-Builds, die über RADV auf jeder AMD-Karte
+  laufen. Gepinnt auf den stabilen Tag (**b11429 = Release v0.6.0**), nicht
+  auf einen der täglichen Builds, s. bootstrap.sh.
+- **Router-Modus statt ein Server pro Modell.** `llama-server` ohne `-m`
+  startet als Router: ein Port (8100), Modelle werden bei der ersten Anfrage
+  geladen, bis zu zwei bleiben im Speicher, das dritte verdrängt das älteste.
+  Kein Skript, das Server startet und stoppt, kein zweites Werkzeug
+  (llama-swap) dafür. Im Leerlauf ist kein Modell geladen und kein RAM belegt.
+- **`--api-key lokal`, obwohl nur 127.0.0.1.** Der Router erlaubt alle
+  CORS-Origins; ohne Schlüssel könnte jede im Browser geöffnete Webseite
+  Anfragen an `localhost:8100` schicken (llama.cpp warnt beim Start genau
+  davor). Der Schlüssel steht in Unit, `opencode.json` und `llm` — er ist
+  kein Geheimnis, sondern die Bremse dagegen. `/health` bleibt ohne Schlüssel
+  erreichbar.
+- **OpenCode als Client**, weil es MCP-Server und OpenAI-kompatible Provider
+  in einer Config zusammenbringt (`opencode/opencode.json`). Handinstalliert
+  wie llama.cpp, gleicher Mechanismus (`~/.local/opt/opencode/current`).
+
+### Aufbau
+
+| Datei | Zweck |
+|---|---|
+| `home/dot_config/systemd/user/llama-server.service` | der Router als User-Unit, `enable`d, Port 8100 |
+| `home/dot_config/llama.cpp/models.ini` | ein Preset pro Modell: Pfad, Kontext, Sampling, CPU/GPU |
+| `home/dot_config/opencode/opencode.json` | Provider `llamacpp` auf Port 8100, dieselben Modellnamen |
+| `home/dot_local/bin/executable_llm` | `llm status|load|unload|ask|logs|pull|web` |
+| `bootstrap.sh` (cube-Block) | lädt llama.cpp und OpenCode gepinnt nach `~/.local/opt` |
+| `home/.chezmoiignore` | Unit, Presets und OpenCode-Config nur auf cube |
+| `home/dot_bashrc` | `~/.local/opt/*/current` im PATH |
+
+Nicht im Repo: die Modelle unter `~/.local/share/llama.cpp/models` (rund
+50 GB) und die Binaries unter `~/.local/opt`. OpenCode legt neben seiner
+Config außerdem `node_modules/` und `package.json` an (Plugin-Abhängigkeiten);
+die sind unmanaged und gehören nicht ins Repo.
+
+Die drei Modelle (alle MoE mit ~3B aktiv, alle CPU):
+
+| Name in INI und OpenCode | Datei | Kontext | wofür |
+|---|---|---|---|
+| `gpt-oss-20b` | gpt-oss-20b-MXFP4, 12 GB | 128k | Default; schnellstes, sauberstes Tool-Calling |
+| `qwen3-30b-a3b-instruct` | Qwen3-30B-A3B-Instruct-2507 UD-Q4_K_XL, 17 GB | 65k | der gemessene Kandidat von oben |
+| `qwen3.6-35b-a3b` | Qwen3.6-35B-A3B UD-Q4_K_XL, 21 GB | 65k | stärkstes, Thinking-Modell |
+
+Sampling-Werte je Sektion stammen aus den Modellkarten; gpt-oss wird mit
+anderen Werten als temp 1.0 messbar schlechter.
+
+### Bedienung
+
+```sh
+llm status                      # welche Modelle kennt der Router, welche sind geladen
+llm ask Was ist XMeld?          # Rauchtest ohne Client, erstes Modell
+llm ask qwen3.6-35b-a3b TEXT    # bestimmtes Modell
+llm pull https://huggingface.co/…/resolve/main/<datei>.gguf   # neues Modell, danach INI-Sektion
+opencode                        # im Projektordner; /models wechselt das Modell
+```
+
+Erster Aufruf eines Modells dauert 10 bis 30 s (Laden von der NVMe), danach
+antwortet es sofort. Ein Modell, das gerade rechnet, treibt 12 Kerne auf 100 %;
+die Unit läuft mit `Nice=10`, damit die Session dabei bedienbar bleibt.
+
+Update von llama.cpp: neue Build-Nummer in bootstrap.sh eintragen, den
+Block ausführen (oder von Hand: Archiv nach `~/.local/opt/llama.cpp/<build>`
+entpacken, `current` umbiegen), `systemctl --user restart llama-server`.
+Rollback ist der Symlink zurück. OpenCode genauso.
+
+### kartograf-MCP in OpenCode
+
+Der MCP-Server aus `~/sources/lambdaschmiede/kartograf/kartograf-mcp` (stdio,
+ein Prozess je Client, 15 Werkzeuge von `list_standards` bis `diff_standards`)
+steht in `opencode.json` unter `mcp.kartograf`. Zwei Dinge daran sind
+Absicht:
+
+- **Absoluter Java-Pfad** (`~/.local/share/mise/installs/java/temurin-25…`),
+  nicht `java`. Das mise-Shim löst pro Verzeichnis auf, und außerhalb des
+  kartograf-Projekts ist das Java 21 — das Jar ist für 25 gebaut und stirbt
+  dann mit `UnsupportedClassVersionError`. Claude Code startet den Server im
+  Projektordner und merkt davon nichts; OpenCode startet ihn dort, wo man
+  gerade ist.
+- **`timeout` 180 s**, weil `load_standard` einen kompletten Standard parst.
+
+Gemessen am 13.10.2026: `opencode run` mit der Bitte um `list_standards`
+liefert nach **29 s** die korrekte Antwort (zwei XMeld-Versionen offline
+ladbar), wenn Systemprompt und Werkzeugliste schon im Prompt-Cache liegen.
+Der erste Turn nach einer Config-Änderung zahlt den vollen Prefill, etwa
+100 s. Einmal blieb ein Lauf direkt nach dem Eintragen des Servers sieben
+Minuten ohne jede Anfrage an den Router hängen; danach nie wieder, Ursache
+unbekannt. Diagnose dafür: `opencode mcp list` zeigt, ob der Server
+verbindet, `opencode run --print-logs --log-level DEBUG` zeigt, wo es hakt.
+
+### Gemessen am 13.10.2026 (gpt-oss-20b, Build b11429, CPU)
+
+Am laufenden Router, also inklusive Template und HTTP; nebenher lief ein
+kartograf-Import in Java mit etwa einem Viertel Kern.
+
+| | Wert |
+|---|---|
+| Laden von der NVMe bis erste Antwort | ~7 s |
+| Prefill, kurzer Prompt (82 Token) | 116 tok/s |
+| Prefill, OpenCode-Systemprompt (8290 Token) | 107 tok/s, **77 s** |
+| Generierung, allein | 19,9 tok/s |
+| Generierung, parallel zur Titel-Anfrage von OpenCode | 12 bis 15 tok/s |
+| Tool-Call über `/v1/chat/completions` mit `tools` | strukturierter `tool_calls`-Block, Argumente korrekt |
+| `opencode run` mit Glob + Read + Antwort | 1:45 min, davon 77 s der erste Prefill |
+
+Zwei Lehren daraus stehen als Config in `models.ini`: **`parallel = 1`**, weil
+zwei gleichzeitige Prefills auf einer CPU sich gegenseitig ausbremsen (der
+kleine fiel auf 7 tok/s), und der erste OpenCode-Turn kostet **eine gute
+Minute Prefill**, bevor überhaupt ein Token kommt. Danach greift der
+Prompt-Cache, Folge-Turns brauchen nur noch das Neue (85 bzw. 187 Token in den
+Messungen). Das ist der Preis für CPU-Inferenz, und er ist bei jedem Client mit
+großem Systemprompt gleich. Wer ihn nicht zahlen will, nimmt `llm ask` oder die
+Web-UI des Routers, beide schicken nur die Frage.
+
+### Die drei Modelle im Vergleich (13.10.2026, CPU, gleicher Ablauf)
+
+Je Modell: entladen, laden, ein Prompt mit rund 2000 Token (dieser
+README-Abschnitt, „in drei Sätzen zusammenfassen“, max. 600 Token Antwort),
+dann die Tool-Call-Frage von oben mit einer Werkzeugdefinition.
+
+| | gpt-oss-20b | Qwen3-30B-A3B-Instruct | Qwen3.6-35B-A3B |
+|---|---|---|---|
+| Laden bis erste Antwort | 8 s | 14 s | 18 s |
+| Prefill bei ~2000 Token | 140 tok/s | **166 tok/s** | 154 tok/s |
+| Generierung | 18,6 tok/s | **19,5 bis 23 tok/s** | 14,5 tok/s |
+| Zusammenfassung | brauchbar, 528 Token inkl. Denken | **brauchbar, 232 Token** | **leer**: 600 Token nur Denken |
+| Tool-Call | korrekt, 124 Token | **korrekt, 38 Token** | korrekt, 146 Token |
+
+Ergebnis: **Qwen3-30B-A3B-Instruct ist Default in `opencode.json`**, für
+Haupt- und Titelmodell. Es ist in jeder Zeile vorn oder gleichauf, und es
+denkt nicht: ein Tool-Call kostet 38 Token statt 124, das sind bei 20 tok/s
+vier Sekunden pro Werkzeugaufruf, die sich über eine MCP-Sitzung
+summieren. gpt-oss-20b bleibt als Zweitwahl mit 128k Kontext und gutem Ruf
+beim Tool-Calling; sein Denken ist der Preis dafür. Qwen3.6-35B ist in
+dieser Form **nicht für interaktive Arbeit** geeignet: 30 % langsamer und
+die Antwort kommt erst, wenn das Denken fertig ist — bei 600 Token Budget
+war das nie. Es bleibt für Fragen, bei denen Qualität vor Tempo geht;
+Thinking abschaltbar wäre es über `chat-template-kwargs` in der INI, das
+ist nicht gemessen.
+
+### Langer Kontext: wo die Zeit wirklich hingeht (13.10.2026)
+
+Eine OpenCode-Sitzung mit zehn kartograf-Aufrufen brauchte acht Minuten bei
+21k Token Kontext. Das Journal zeigt: **390 s Prefill, 80 s Generierung.**
+Der erste Turn allein 185 s, weil OpenCodes Build-Agent mit allen
+Code-Werkzeugen rund 11.000 Token Systemprompt mitbringt, dazu 3.200 Token
+für die 15 kartograf-Werkzeuge. Und bei 21k Kontext fällt die CPU von 166 auf
+78 tok/s Prefill und von 20 auf 6 tok/s Generierung, weil die Attention mit
+der Kontextlänge wächst und jedes Token den 2 GB großen KV-Cache mitliest.
+
+Genau die Attention passt aber in die 4 GB der RX 6400, wenn die Experten
+per `n-cpu-moe` auf der CPU bleiben. Derselbe 14k- bis 16k-Token-Prompt,
+danach eine kurze Folgefrage aus dem Cache:
+
+| | Prefill lang | Prefill Folge-Turn | Generierung |
+|---|---|---|---|
+| Qwen3-30B, CPU | 73 tok/s (220 s) | 11 tok/s | 7,2 tok/s |
+| Qwen3-30B, GPU-Hybrid | 88 tok/s (185 s) | 39 tok/s | 12,9 tok/s |
+| gpt-oss-20b, CPU | 108 tok/s (133 s) | 32 tok/s | 14,0 tok/s |
+| **gpt-oss-20b, GPU-Hybrid** | **150 tok/s (95 s)** | 31 tok/s | **14,2 tok/s** |
+
+Das kehrt die Rangfolge von oben um: bei kurzem Kontext war Qwen auf der CPU
+vorn, bei langem ist gpt-oss im Hybrid doppelt so schnell beim Prefill und
+doppelt so schnell beim Generieren. gpt-oss hilft seine Sliding-Window-
+Attention (jede zweite Schicht sieht nur 128 Token), die GPU hilft beiden.
+**Default in `opencode.json` ist deshalb `gpt-oss-20b-gpu`**, Kontext 32k,
+weil mehr KV nicht in die Karte passt. Qwen bleibt per `/models` erreichbar,
+in beiden Varianten. Nur ein GPU-Preset kann gleichzeitig geladen sein, die
+Karte ist mit einem voll (3,6 bis 4,1 GB belegt).
+
+Was der Hybrid NICHT löst: der Prefill der Experten läuft weiter auf der CPU,
+14k Token kosten auch so eineinhalb Minuten. Den Systemprompt zu verkleinern
+ist der größere Hebel, s. den Agenten `xoev` unten.
+
+### Der Agent `xoev`: OpenCode ohne Code-Werkzeuge
+
+OpenCodes Build-Agent schickt mit jedem ersten Turn rund 11.000 Token
+Systemprompt und Werkzeugbeschreibungen für Bash, Edit, Write, Glob, Grep,
+Webfetch und Todo. Für XÖV-Fragen ist das Ballast, der auf der CPU drei
+Minuten Prefill kostet. `opencode.json` definiert deshalb einen eigenen
+Primär-Agenten `xoev` (Default über `default_agent`):
+
+- `prompt` aus `opencode/prompts/xoev.md`: Arbeitsweise mit den
+  kartograf-Werkzeugen in zehn Zeilen, Antworten knapp und als Tabelle.
+- `permission` verweigert alle eingebauten Werkzeuge (`bash`, `edit`, `read`,
+  `glob`, `grep`, `list`, `task`, `webfetch`, `websearch`, `lsp`, `skill`,
+  `question`) und erlaubt `kartograf_*`; `todowrite`/`todoread` über das
+  ältere `tools`-Objekt, weil die Permission-Doku sie nicht kennt. Verweigerte
+  Werkzeuge verschwinden aus dem Prompt, das ist der ganze Trick.
+- `model` ist `gpt-oss-20b-gpu`, s. Messung oben.
+
+Gemessen am 13.10.2026, Frage nach den geladenen Standards, kalter Cache:
+
+| | Build-Agent | `xoev` |
+|---|---|---|
+| Token im ersten Turn | 14.432 | **2.763** |
+| Prefill erster Turn | 185 s | **18,5 s** |
+| ganzer Lauf mit einem Werkzeugaufruf | 1:45 min bis 7 min | **48 s** |
+
+Zum Programmieren mit lokalem Modell bleibt `build` erreichbar (Tab wechselt
+den Agenten), dann aber mit den 14k Token.
+
+### Modelle über OpenRouter verglichen (13.10.2026)
+
+Bevor Hardware gekauft wird: taugt die Modellklasse überhaupt? Dieselben
+Fragen, derselbe Agent `xoev`, derselbe kartograf-MCP-Server, nur das Modell
+wechselt über OpenRouter (Provider in `opencode.json` aktiviert, Key per
+`/connect` in `~/.local/share/opencode/auth.json`, nicht im Repo). Die
+Testfragen betreffen öffentliche Standards, deshalb ist die Cloud hier
+erlaubt; die echten Prompts bleiben lokal. Skript: `modelcheck.sh` im
+Scratch-Verzeichnis der Session, Ergebnisse je Modell als Markdown.
+
+Erster Lauf mit dem alten Werkzeugsatz (Frage: Antwortfelder der freien
+Suche mit Längen): **gpt-oss-20b und gpt-oss-120b brachen die Kette ab**
+(Denken, dann `stop`, kein Aufruf, keine Antwort), Qwen3-30B erwischte die
+falsche Nachricht, Nemotron und GLM blieben flach. Nur Qwen3.6-35B,
+Qwen3.5-122B und Claude Sonnet 5.5 lieferten brauchbare Tabellen. Daraus
+der Umbau des MCP-Servers (`fields`-Werkzeug, Suche in Wortstücken,
+Auto-Laden, Antwortdeckel; kartograf-Commit 0328778).
+
+Zweiter Lauf mit dem umgebauten Server, drei Fragen (Feldliste mit Längen,
+Codelistenwerte, Beispiel-XML mit Pflichtfeldern):
+
+| Modell | Frage 1 | Frage 2 | Frage 3 | Kosten alle drei |
+|---|---|---|---|---|
+| Qwen3.6-35B-A3B | 81 s, 10 Aufrufe, korrekt | 146 s, 5, korrekt | 81 s, 5, korrekt | 0,024 $ |
+| Qwen3-30B-A3B-Instruct | 117 s, 8, korrekt | 83 s, 5, korrekt | 65 s, 5, Tabelle ohne XML | 0,015 $ |
+| GLM-4.7-Flash | 76 s, 5, korrekt | 127 s, 5, korrekt | 87 s, 4, korrekt | 0,010 $ |
+| Qwen3.5-122B-A10B | 30 s, 7, korrekt | 22 s, 7, korrekt | 28 s, 5, korrekt | 0,052 $ |
+| Claude Sonnet 5.5 (Referenz) | 36 s, 11, korrekt | 20 s, 4, korrekt | 32 s, 4, korrekt | 0,25 $ |
+
+Alle fünf nehmen jetzt denselben Weg: `list_messages` mit den Wörtern der
+Frage, dann `fields` oder `codelist_entries` oder `example_xml`. Frage 2,
+die morgens nach sechs Minuten falsch beantwortet war, braucht jetzt vier
+bis fünf Aufrufe und liefert bei jedem Modell die 47 Werte.
+
+**Schlüsse:**
+- Die 30B-Klasse reicht für diesen Use Case, **wenn die Werkzeuge für sie
+  gebaut sind**. Vorher scheiterten drei von vier, nachher keines.
+- **gpt-oss ist raus**, 20B wie 120B: das Abbrechen der Kette ist ein
+  Verhalten der Familie, nicht der Quantisierung. **Default in
+  `opencode.json` ist deshalb `qwen3-30b-a3b-gpu`**: lokal hat es Frage 2
+  mit dem neuen Server in 5 Aufrufen korrekt beantwortet (648 s, allerdings
+  neben laufenden Maven-Builds gemessen; ohne Nebenlast eher 4 bis 5 min).
+  Schnell ist das nicht, aber richtig, und das war gpt-oss nicht.
+- Qwen3.6-35B-A3B ist in der Klasse am stärksten, GLM-4.7-Flash am
+  billigsten und ebenfalls korrekt, Qwen3-30B-Instruct liegt dazwischen.
+- Die 122B-Klasse ist spürbar schneller und knapper, aber auf 32 GB VRAM
+  nicht lokal; erst bei 128 GB (Strix Halo, Mac).
+
+### Offen (Stand 13.10.2026)
+
+- Qwen3.6-35B ohne Thinking messen (`chat-template-kwargs` mit
+  `enable_thinking: false` in seiner INI-Sektion); dann neu entscheiden.
+- Der kartograf-MCP-Server steht in `opencode.json` mit dem Jar aus
+  `kartograf-mcp/target/` — ein Build-Artefakt, das `mvn clean` wegwirft.
+  Sobald das Projekt eine feste Ablage hat, den Pfad nachziehen.
+- `Nice=10` und `threads = 12` sind begründet, aber am neuen Build nicht
+  nachgemessen; bei Gelegenheit `llama-bench` gegen 24 Threads.
 
 ## Betriebsmodus
 

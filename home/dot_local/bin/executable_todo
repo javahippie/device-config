@@ -40,13 +40,26 @@ fi
 # das noch gestern, um 05:00 heute. Sommerzeitwechsel macht date selbst richtig.
 TODO_DAY_START="${TODO_DAY_START:-5}"
 
+# Zweite Quelle fuer 'list': die offenen Aufgaben aus Vikunja erscheinen als
+# eigener Abschnitt "-- Vikunja --" unter den Tagespunkten, Enter hakt sie
+# dort ab. Nur lesen und abhaken — notiert wird weiterhin in die Datei, SUPER+T
+# bleibt offline und sofort. Zugang ist ein API-Token aus Vikunja
+# (Einstellungen -> API-Tokens), abgelegt in ~/.config/vikunja/token
+# (chmod 600, eine Zeile). Kein Token, kein Abschnitt: 'list' verhaelt sich
+# dann genau wie vorher. $VIKUNJA_TOKEN ueberschreibt die Datei.
+VIKUNJA_URL="${VIKUNJA_URL:-https://vikunja.javahippie.net}"
+VIKUNJA_TOKEN_FILE="${VIKUNJA_TOKEN_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/vikunja/token}"
+VIKUNJA_HEAD='── Vikunja ──'
+
 usage() {
     cat <<EOF
-Usage: todo [add [TEXT]|list|clean|edit|status]
+Usage: todo [add [TEXT]|list|vikunja|clean|edit|status]
 
   add      Overlay oeffnen und einen Punkt notieren (Default ohne Argument).
            Mit TEXT wird direkt geschrieben, ohne Popup — fuer die Shell.
-  list     Offene Punkte zeigen; Enter hakt den gewaehlten ab.
+  list     Offene Punkte zeigen; Enter hakt den gewaehlten ab. Mit Token
+           darunter der Abschnitt "$VIKUNJA_HEAD" mit den offenen Vikunja-Aufgaben.
+  vikunja  Offene Vikunja-Aufgaben auf STDOUT, ohne Popup — fuer die Shell.
   clean    Abgelegte Zeilen (erledigt/verfallen) aus der Datei loeschen.
   edit     Datei im Standardeditor oeffnen (xdg-open -> Emacs, s. mimeapps.list).
   status   Zaehlt und nennt Datei und Tag.
@@ -59,6 +72,9 @@ Format: "## JJJJ-MM-TT" ueber den offenen Punkten, darunter
 
 TAGESSPEICHER: beim ersten Aufruf nach ${TODO_DAY_START}:00 wandern alle noch
 offenen Punkte als "- [-]" ans Dateiende. Nur Dateien mit Datumszeile.
+
+Vikunja: $VIKUNJA_URL   (\$VIKUNJA_URL)
+Token:   $VIKUNJA_TOKEN_FILE   (\$VIKUNJA_TOKEN_FILE, \$VIKUNJA_TOKEN)
 EOF
 }
 
@@ -300,35 +316,179 @@ mark_done() {
     return "$status"
 }
 
+# ---------------------------------------------------------------- Vikunja
+# Die Datei bleibt die erste Quelle; Vikunja ist ein Anhang an 'list'. Nichts
+# davon wird gecacht: jedes SUPER+SHIFT+T fragt die Instanz (zwei kleine
+# Requests, ~200 ms), und ohne Netz erscheint statt der Aufgaben eine Zeile
+# "nicht erreichbar" — die Tagespunkte darueber gehen davon nicht kaputt.
+
+# Token: $VIKUNJA_TOKEN, sonst die erste nicht-leere Zeile der Token-Datei.
+# Getrimmt, weil jeder Editor eine Newline anhaengt. Rueckgabe 1 = kein Token,
+# und das ist der Schalter, der den ganzen Abschnitt abschaltet.
+vk_token() {
+    local t
+    if [ -n "${VIKUNJA_TOKEN:-}" ]; then printf '%s' "$VIKUNJA_TOKEN"; return 0; fi
+    [ -r "$VIKUNJA_TOKEN_FILE" ] || return 1
+    t="$(awk 'NF { sub(/^[ \t]+/, ""); sub(/[ \t\r]+$/, ""); print; exit }' "$VIKUNJA_TOKEN_FILE")"
+    [ -n "$t" ] || return 1
+    printf '%s' "$t"
+}
+
+need_jq() {
+    command -v jq >/dev/null 2>&1 || { echo "todo: jq fehlt (dnf install jq)" >&2; exit 1; }
+}
+
+# Der Token geht als curl-Konfig ueber eine Prozess-Substitution hinein, NICHT
+# als -H-Argument: Argumente stehen in /proc/<pid>/cmdline und damit fuer jeden
+# Nutzer der Maschine in 'ps'. Nicht '-K -' ueber STDIN, denn STDIN braucht
+# das Abhaken fuer den POST-Body (--data-binary @-) — beides zugleich von
+# STDIN, und der Body kam leer an. -f macht aus HTTP-Fehlern (401 bei falschem
+# Token, 403 bei fehlendem Recht) einen Exit-Code, -m 8 laesst das Overlay bei
+# haengendem Netz nicht ewig warten.
+vk_curl() {
+    curl -sS -f -m 8 -K <(printf 'header = "Authorization: Bearer %s"\n' "$VK_TOKEN") \
+         -H 'Content-Type: application/json' -H 'Accept: application/json' "$@"
+}
+
+# Vikunja liefert hoechstens 50 Eintraege pro Seite (max_items_per_page in
+# /info). Es werden Seiten geholt, bis eine nicht mehr voll ist, gedeckelt bei
+# 10 — mehr als 500 offene Aufgaben passen in kein Overlay. Ausgabe: ein
+# JSON-Array pro Seite, der Aufrufer legt sie mit 'jq -s add' zusammen.
+vk_get_all() {
+    local path="$1" page=1 out n
+    while :; do
+        out="$(vk_curl "$VIKUNJA_URL/api/v1$path&per_page=50&page=$page")" || return 1
+        n="$(printf '%s' "$out" | jq 'length')" || return 1
+        printf '%s\n' "$out"
+        [ "$n" -ge 50 ] && [ "$page" -lt 10 ] || break
+        page=$((page + 1))
+    done
+}
+
+# Offene Aufgaben als TSV "id<TAB>Anzeigezeile". Die Anzeigezeile ist
+# "Titel  (Projekt, bis TT.MM.)", Faelliges zuerst (nach Datum), dann der Rest
+# nach Id. Der Filter "done = false" ist Vikunjas eigene Filtersprache,
+# URL-kodiert. due_date ohne Datum ist "0001-01-01T…", deshalb der Vergleich
+# mit dem Jahr statt mit null. Tabs/Umbrueche im Titel werden zu Leerzeichen,
+# damit die Zeile eine Zeile bleibt und spaeter wieder gefunden wird.
+# Zusammengebaut wird mit String-Interpolation, nicht mit @tsv: @tsv wuerde
+# Backslashes im Titel verdoppeln, und der Rueckweg ueber den Text schluege
+# fehl — dasselbe Problem wie bei 'awk -v' in mark_done.
+vk_open_tasks() {
+    local tasks projects
+    tasks="$(vk_get_all '/tasks?filter=done%20%3D%20false&sort_by=due_date&order_by=asc')" || return 1
+    projects="$(vk_get_all '/projects?is_archived=false')" || return 1
+    printf '%s\n' "$tasks" | jq -r -s --arg today "$(date +%F)" \
+        --argjson projects "$(printf '%s\n' "$projects" | jq -s '[.[] | select(. != null)] | add // []')" '
+        ($projects | map({ (.id|tostring): .title }) | add // {}) as $p
+        | [.[] | select(. != null)] | add // []
+        | map(select(.done | not))
+        | map(. + { due: (if ((.due_date // "") | startswith("0001")) or (.due_date == null)
+                          then null else .due_date[0:10] end) })
+        | sort_by((.due // "9999"), .id)
+        | .[]
+        | (.title | gsub("[\\t\\r\\n]+"; " ") | gsub("^\\s+|\\s+$"; "")) as $title
+        | ($p[.project_id|tostring] // "?") as $proj
+        | (if .due == null then ""
+           elif .due < $today then ", faellig seit " + .due[8:10] + "." + .due[5:7] + "."
+           else ", bis " + .due[8:10] + "." + .due[5:7] + "." end) as $when
+        | "\(.id)\t\($title)  (\($proj)\($when))"
+    '
+}
+
+# Abhaken = die ganze Aufgabe holen, done=true setzen, zurueckschicken. Das
+# Update ist ein POST mit der vollstaendigen Aufgabe, kein PATCH: nur
+# {"done":true} zu schicken hiesse, alle anderen Felder leer mitzuschicken.
+# Wiederholende Aufgaben (repeat_after) setzt Vikunja dabei selbst auf den
+# naechsten Termin, das Ergebnis meldet dann done=false — deshalb wird nicht
+# auf done=true geprueft, sondern nur darauf, dass eine Aufgabe zurueckkam.
+vk_mark_done() {
+    local id="$1" task res
+    task="$(vk_curl "$VIKUNJA_URL/api/v1/tasks/$id")" || return 1
+    res="$(printf '%s' "$task" | jq -c '.done = true' \
+           | vk_curl -X POST --data-binary @- "$VIKUNJA_URL/api/v1/tasks/$id")" || return 1
+    [ "$(printf '%s' "$res" | jq -r '.id // empty')" = "$id" ]
+}
+
 cmd_list() {
     need_fuzzel
-    local items sel
+    local items sel vk="" vk_note="" entries passive id
     begin_day
     items="$(open_items)"
-    if [ -z "$items" ]; then
+    # Nur mit Token gibt es den Abschnitt; ohne bleibt alles wie vorher.
+    if VK_TOKEN="$(vk_token)"; then
+        need_jq
+        if ! vk="$(vk_open_tasks)"; then
+            vk=""; vk_note="  (nicht erreichbar: $VIKUNJA_URL)"
+            echo "todo: Vikunja nicht erreichbar: $VIKUNJA_URL" >&2
+        elif [ -z "$vk" ]; then
+            vk_note='  (nichts offen)'
+        fi
+        # Kopf- und Hinweiszeilen sind waehlbar (fuzzel kennt keine passiven
+        # Eintraege), tun aber nichts — s. unten.
+        passive="$(printf '%s\n%s' "$VIKUNJA_HEAD" "$vk_note")"
+        entries="$(printf '%s\n%s\n%s%s' "$items" "$VIKUNJA_HEAD" \
+                       "$(printf '%s\n' "$vk" | cut -f2-)" "$vk_note" | sed '/^$/d')"
+    else
+        passive=""
+        entries="$items"
+    fi
+    if [ -z "$entries" ]; then
         notify 'ToDo' 'Nichts offen.'
         echo "todo: keine offenen Punkte in $FILE" >&2
         return 0
     fi
-    sel="$(printf '%s\n' "$items" | fuzzel --dmenu --prompt='  Erledigt: ' \
-              --width=60 --lines=12 --minimal-lines --counter || true)"
+    sel="$(printf '%s\n' "$entries" | fuzzel --dmenu --prompt='  Erledigt: ' \
+              --width=60 --lines=16 --minimal-lines --counter || true)"
     sel="$(clean_text "${sel:-}")"
     [ -n "$sel" ] || return 0
+    # Kopfzeile oder Hinweis gewaehlt: nichts zu tun, kein Fehler.
+    if [ -n "$passive" ] && printf '%s\n' "$passive" | sed 's/^[ \t]*//' | grep -qxF -- "$sel"; then
+        return 0
+    fi
     # Getippter Text ohne Treffer kommt hier genauso an wie ein gewaehlter
     # Eintrag — fuzzel gibt in dmenu-Modus die Rohreingabe zurueck, wenn nichts
     # matcht. Deshalb wird geprueft statt blind geschrieben; sonst haekelt ein
     # Tippfehler still nichts ab und man haelt es fuer erledigt.
-    if ! printf '%s\n' "$items" | grep -qxF -- "$sel"; then
+    # Die Datei hat Vorrang: heisst ein Tagespunkt zufaellig genau wie eine
+    # Vikunja-Zeile, wird der Tagespunkt abgehakt.
+    if printf '%s\n' "$items" | grep -qxF -- "$sel"; then
+        if ! mark_done "$sel"; then
+            notify 'ToDo' "Nicht abgehakt: $sel"
+            echo "todo: konnte nicht abhaken: $sel" >&2
+            return 1
+        fi
+        notify 'ToDo erledigt' "$sel"
+        return 0
+    fi
+    # Vikunja-Zeile -> Id, ueber den Text wie bei der Datei (erstes Vorkommen).
+    # Text ueber ENVIRON, nicht 'awk -v' — Backslash-Problem, s. mark_done.
+    id=""
+    if [ -n "$vk" ]; then
+        id="$(TODO_WANT="$sel" awk -F'\t' 'BEGIN { want = ENVIRON["TODO_WANT"] }
+                                             $2 == want { print $1; exit }' <<<"$vk")"
+    fi
+    if [ -z "$id" ]; then
         notify 'ToDo' "Kein offener Punkt: $sel"
         echo "todo: kein offener Punkt: $sel" >&2
         return 1
     fi
-    if ! mark_done "$sel"; then
-        notify 'ToDo' "Nicht abgehakt: $sel"
-        echo "todo: konnte nicht abhaken: $sel" >&2
+    if ! vk_mark_done "$id"; then
+        notify 'Vikunja' "Nicht abgehakt: $sel"
+        echo "todo: Vikunja konnte #$id nicht abhaken: $sel" >&2
         return 1
     fi
-    notify 'ToDo erledigt' "$sel"
+    notify 'Vikunja erledigt' "$sel"
+}
+
+cmd_vikunja() {
+    local vk
+    VK_TOKEN="$(vk_token)" || {
+        echo "todo: kein Vikunja-Token in $VIKUNJA_TOKEN_FILE" >&2; return 1
+    }
+    need_jq
+    vk="$(vk_open_tasks)" || { echo "todo: Vikunja nicht erreichbar: $VIKUNJA_URL" >&2; return 1; }
+    [ -n "$vk" ] && printf '%s\n' "$vk" | cut -f2- || echo "todo: nichts offen in Vikunja" >&2
 }
 
 cmd_clean() {
@@ -357,13 +517,23 @@ cmd_edit() {
 }
 
 cmd_status() {
-    local open
+    local open vk
     begin_day
     open="$(open_items | grep -c . || true)"
     echo "Datei:    $FILE"
     echo "Tag:      $(file_stamp)"
     echo "Offen:    ${open:-0}"
     echo "Abgelegt: $(count_filed)"
+    if VK_TOKEN="$(vk_token)"; then
+        need_jq
+        if vk="$(vk_open_tasks)"; then
+            echo "Vikunja:  $(printf '%s' "$vk" | grep -c . || true) offen ($VIKUNJA_URL)"
+        else
+            echo "Vikunja:  nicht erreichbar ($VIKUNJA_URL)"
+        fi
+    else
+        echo "Vikunja:  aus (kein Token in $VIKUNJA_TOKEN_FILE)"
+    fi
 }
 
 # Ohne Argument setzt ${1:-add} den Default ein, OHNE dass ein Argument da
@@ -372,6 +542,7 @@ cmd_status() {
 case "${1:-add}" in
     add)            shift || true; cmd_add "$@" ;;
     list|pick|done) cmd_list ;;
+    vikunja|vk)     cmd_vikunja ;;
     clean)          cmd_clean ;;
     edit|open)      cmd_edit ;;
     status)         cmd_status ;;

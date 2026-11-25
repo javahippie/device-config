@@ -1,0 +1,111 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "enabled_providers": [
+    "llamacpp",
+    "openrouter"
+  ],
+  "default_agent": "xoev",
+  "model": "llamacpp/qwen3-30b-a3b-gpu",
+  "small_model": "llamacpp/qwen3-30b-a3b-gpu",
+  "agent": {
+    "xoev": {
+      "description": "XÖV-Standards über kartograf befragen, ohne Code-Werkzeuge",
+      "mode": "primary",
+      "prompt": "{file:./prompts/xoev.md}",
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "read": "deny",
+        "glob": "deny",
+        "grep": "deny",
+        "list": "deny",
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "lsp": "deny",
+        "skill": "deny",
+        "question": "deny",
+        "kartograf_*": "allow"
+      },
+      "tools": {
+        "todowrite": false,
+        "todoread": false
+      }
+    }
+  },
+  "provider": {
+    "llamacpp": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "llama.cpp (lokal, Port 8100)",
+      "options": {
+        "baseURL": "http://127.0.0.1:8100/v1",
+        "apiKey": "lokal",
+        "timeout": 900000
+      },
+      "models": {
+        "gpt-oss-20b-gpu": {
+          "name": "gpt-oss-20b MXFP4 (GPU-Hybrid, 32k)",
+          "tool_call": true,
+          "reasoning": true,
+          "temperature": true,
+          "limit": {
+            "context": 32768,
+            "output": 8192
+          }
+        },
+        "qwen3-30b-a3b-gpu": {
+          "name": "Qwen3-30B-A3B-Instruct-2507 Q4_K_XL (GPU-Hybrid, 32k)",
+          "tool_call": true,
+          "reasoning": false,
+          "temperature": true,
+          "limit": {
+            "context": 32768,
+            "output": 8192
+          }
+        },
+        "gpt-oss-20b": {
+          "name": "gpt-oss-20b MXFP4 (CPU, 128k)",
+          "tool_call": true,
+          "reasoning": true,
+          "temperature": true,
+          "limit": {
+            "context": 131072,
+            "output": 16384
+          }
+        },
+        "qwen3-30b-a3b-instruct": {
+          "name": "Qwen3-30B-A3B-Instruct-2507 Q4_K_XL (CPU, 65k)",
+          "tool_call": true,
+          "reasoning": false,
+          "temperature": true,
+          "limit": {
+            "context": 65536,
+            "output": 8192
+          }
+        },
+        "qwen3.6-35b-a3b": {
+          "name": "Qwen3.6-35B-A3B Q4_K_XL (CPU, 65k, Thinking)",
+          "tool_call": true,
+          "reasoning": true,
+          "temperature": true,
+          "limit": {
+            "context": 65536,
+            "output": 16384
+          }
+        }
+      }
+    }
+  },
+  "mcp": {
+    "kartograf": {
+      "type": "local",
+      "command": [
+        "/home/zoellert/.local/share/mise/installs/java/temurin-25.0.4+101.0.LTS/bin/java",
+        "-jar",
+        "/home/zoellert/sources/lambdaschmiede/kartograf/kartograf-mcp/target/kartograf-mcp.jar"
+      ],
+      "enabled": true,
+      "timeout": 180000
+    }
+  }
+}

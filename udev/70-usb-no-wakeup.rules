@@ -1,0 +1,33 @@
+# Kein Remote-Wakeup fuer Logi-Bolt-Empfaenger (046d:c548) und Hama EWM-500
+# (3151:3023). Betrifft nur den cube, auf dem book laufen die Regeln ins Leere.
+#
+# Warum: ein anliegendes Weck-Signal eines USB-Geraets bricht auf diesem Board
+# den S3-Suspend im Geraete-Suspend ab ("xhci_hcd 0000:11:00.4:
+# hcd_pci_suspend returns -16", "early wake event detected"). Der Kernel rollt
+# dann alle Geraete zurueck, ohne dass die Kiste je geschlafen hat. Seit dem
+# 13.09.2026 treibt die RX 6400 das Display und steht dabei in D0 -- und in
+# diesem Zustand ueberlebt ihre SMU das Zurueckrollen nicht ("SMU: No
+# response", "RunDcBtc failed", "resume of IP block <smu> failed -62").
+# Danach laeuft der sdma0-Ring in einer Timeout-Schleife: Bild schwarz,
+# Rechner wach. Genau so am 28.09.2026 um 11:57 (Journal Boot -1); Bilanz
+# seit dem Rueckweg zur dGPU: 10 Suspends, 9 sauber, 1 Abbruch = 1 toter
+# Bildschirm. Details in der README unter "Suspend haengt sich auf".
+#
+# Was die Regel kostet: nichts. Wecken per Tastatur oder Maus funktioniert
+# auf diesem Board ohnehin nicht (README, 25.08.2026: wakeup_count des
+# Empfaengers bleibt 0, geweckt wird ueber den Power-Button). Ohne Weckrecht
+# werden die beiden Geraete beim System-Suspend gar nicht erst fuer Remote-
+# Wakeup scharf geschaltet und koennen den Suspend nicht mehr abbrechen.
+#
+# Was sie NICHT loest: jeder andere Abbruchgrund toetet die Karte in D0
+# genauso. Rueckfallebene bleibt das Kabel an HDMI-A-2 der iGPU.
+#
+# ATTR statt ATTRS: greift nur auf dem usb_device-Knoten, der power/wakeup
+# hat, nicht auf den Interfaces. Nummer 70, damit sie nach den uaccess-Regeln
+# und vor 73-seat-late.rules laeuft -- die Reihenfolge ist hier egal, es
+# soll nur nicht mit 40/60 kollidieren. Installiert von bootstrap.sh nach
+# /etc/udev/rules.d/. Pruefen nach dem Anstecken:
+#   cat /sys/bus/usb/devices/*/power/wakeup   # fuer 046d:c548 und 3151:3023: disabled
+
+SUBSYSTEM=="usb", ATTR{idVendor}=="046d", ATTR{idProduct}=="c548", ATTR{power/wakeup}="disabled"
+SUBSYSTEM=="usb", ATTR{idVendor}=="3151", ATTR{idProduct}=="3023", ATTR{power/wakeup}="disabled"

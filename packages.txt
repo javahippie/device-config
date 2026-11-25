@@ -192,6 +192,10 @@ firefox                      # NICHT als Flatpak (s. flatpaks.txt) — KeePassXC
                               # braucht Native Messaging, das geht in der Flatpak-Sandbox
                               # nicht zuverlässig. Einzige Ausnahme von "GUI nur Flatpak".
 emacs                        # Theme: Catppuccin Mocha, vendored in dot_config/emacs/themes/
+libtree-sitter-java          # Grammatik fuer java-ts-mode in Emacs. War schon da, aber nur als
+                              # weiche Abhaengigkeit (`rpm -q --whatrequires`: nichts) — ein
+                              # `dnf autoremove` oder install_weak_deps=False nimmt sie sonst mit.
+                              # jdtls selbst ist kein Paket, s. bootstrap.sh.
 htop
 btop
 curl
@@ -482,6 +486,13 @@ pandoc-cli                    # ACHTUNG Paketname: das Kommando heisst `pandoc`,
 #   emacs-markdown-mode — gibt es in Fedora gar nicht (`dnf search emacs-markdown`:
 #     keine Uebereinstimmung). Kommt aus NonGNU ELPA, ebenfalls signiert und
 #     ebenfalls von bootstrap.sh installiert. Vorschau laeuft ueber pandoc (s. o.).
+#   emacs-magit — gibt es in Fedora, aber als 4.2.0 vom Dezember 2024 (Stand 10/2026),
+#     und laeuft gegen das eingebaute transient 0.7 aus emacs-common. Kommt stattdessen als 4.7.1
+#     aus NonGNU ELPA (signiert, installiert von bootstrap.sh), mit transient 0.13
+#     aus GNU ELPA. Das Fedora-Paket darf NICHT zusaetzlich installiert werden:
+#     package.el zieht das ELPA-transient dem eingebauten vor, und das alte Magit
+#     aus /usr/share/emacs/site-lisp liefe dann gegen eine Bibliothek, gegen die es
+#     nie gebaut wurde. Begruendung in bootstrap.sh.
 #   emacs-treemacs — ebenfalls kein Fedora-Paket. Kommt als EINZIGES Emacs-Paket
 #     hier aus MELPA, weil GNU/NonGNU ELPA es nicht fuehren, und ist damit die
 #     bewusste Ausnahme von der Signatur-Regel: MELPA signiert nicht. Unsigniert

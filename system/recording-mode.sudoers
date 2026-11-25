@@ -1,8 +1,0 @@
-# Erlaubt genau zwei Aufrufe ohne Passwort — mehr nicht. Die Argumente sind
-# Teil der Regel: 'recording-mode-cpu' ohne Argument oder mit einem anderen
-# waere nicht abgedeckt und wuerde wieder nach dem Passwort fragen.
-#
-# Die Sicherheit dieser Regel haengt daran, dass /usr/local/bin/recording-mode-cpu
-# root:root 0755 ist. Ist die Datei fuer zoellert schreibbar, ist die Regel
-# gleichbedeutend mit vollem passwortlosem root.
-zoellert ALL=(root) NOPASSWD: /usr/local/bin/recording-mode-cpu on, /usr/local/bin/recording-mode-cpu off

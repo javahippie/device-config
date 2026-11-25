@@ -3,17 +3,19 @@
 # hier drin und nicht in den Zieldateien.
 #
 # Pfade sind relativ zu $HOME (Zielseite), nicht zum Quellverzeichnis: hier
-# steht also .local/bin/recording-mode und nicht dot_local/bin/executable_...
+# steht also .config/opencode und nicht dot_config/opencode.
 #
 # Wichtig zu wissen: chezmoi LÖSCHT ignorierte Dateien nicht, es legt sie nur
-# nicht an. Wer das Script schon auf einem Host hatte, muss es dort von Hand
+# nicht an. Wer die Datei schon auf einem Host hatte, muss es dort von Hand
 # entfernen.
 
 {{ if ne .chezmoi.hostname "cube" -}}
-# Aufnahmemodus (Scarlett auf pro-audio + CPU aus dem Sparmodus): hängt an
-# einem fest angeschlossenen Audiointerface und einer Desktop-CPU. Auf dem
-# book gibt es beides nicht — der Button wäre dort ein Schalter ins Leere.
-# Die passende Waybar-Weiche steht in dot_config/waybar/config.jsonc.tmpl,
-# die Systemschicht in bootstrap.sh; beide gaten auf denselben Hostnamen.
-.local/bin/recording-mode
+# Lokale LLMs (llama.cpp-Router + OpenCode): haengt an 64 GB RAM und einer
+# Desktop-CPU, auf dem book waere ein 20-GB-Modell weder ladbar noch sinnvoll.
+# Die Hostweiche dazu steht ausserdem in bootstrap.sh (Binaries + Unit). Das
+# Script .local/bin/llm bleibt ungegatet: ohne laufenden Router meldet es das
+# nur, statt etwas kaputtzumachen.
+.config/systemd/user/llama-server.service
+.config/llama.cpp
+.config/opencode
 {{ end -}}

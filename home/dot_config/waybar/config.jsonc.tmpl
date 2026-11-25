@@ -97,7 +97,7 @@
     "spacing": 4,
 
     "modules-center": ["clock"],
-    "modules-right": ["custom/screenrec", "idle_inhibitor", "custom/keybinds", {{ if eq .chezmoi.hostname "cube" }}"custom/recording", {{ end }}"pulseaudio", "bluetooth", "network", "battery", "custom/notification", "tray"],
+    "modules-right": ["custom/screenrec", "idle_inhibitor", "custom/keybinds", "pulseaudio", "bluetooth", "network", "battery", "custom/notification", "tray"],
 
     // Haelt den Rechner wach, solange laengere Hintergrund-Jobs laufen.
     // Klick schaltet um: "Idle" = normale Kette (5 min Lock, 15 min Suspend),
@@ -156,7 +156,7 @@
     // schreibt bei jeder Aenderung eine neue JSON-Zeile. Waybar erkennt genau
     // daran den Dauerbetrieb und liest die Zeilen einfach mit. Ein interval
     // wuerde den Prozess im Takt abschiessen und neu starten; ein signal
-    // (wie bei custom/recording) ist ueberfluessig, weil nichts zu pollen ist.
+    // ist ueberfluessig, weil nichts zu pollen ist.
     // Anzeige steht damit sofort, nicht erst nach bis zu einer Sekunde.
     //
     // Kein "exec-if": swaync steht in packages.txt und ist ab sofort der
@@ -200,12 +200,8 @@
     },
 
     // Laufende Bildschirmaufnahme (dot_local/bin/record, wf-recorder).
-    // NICHT zu verwechseln mit custom/recording weiter unten — das ist der
-    // Audio-Aufnahmemodus (Scarlett + CPU). Deshalb auch ein anderes Signal:
-    // 8 hier, 7 dort.
-    //
-    // Auf BEIDEN Hosts, anders als custom/recording: aufnehmen kann man
-    // ueberall, dafuer braucht es keine bestimmte Hardware.
+    // Auf BEIDEN Hosts: aufnehmen kann man ueberall, dafuer braucht es keine
+    // bestimmte Hardware.
     //
     // Ohne Aufnahme liefert `record status` leeren Text — Waybar blendet das
     // Modul dann komplett aus. Es ist also nur zu sehen, wenn es etwas zu
@@ -226,37 +222,6 @@
         "interval": 1,
         "signal": 8
     },
-{{ if eq .chezmoi.hostname "cube" }}
-    // Aufnahmemodus (dot_local/bin/recording-mode): schiebt das Scarlett ins
-    // pro-audio-Profil und die CPU aus dem Sparmodus — und wieder zurueck.
-    // Text statt Glyphe wie der Rest der Bar.
-    //
-    // NUR AUF DEM CUBE. Das Modul haengt an einem fest angeschlossenen
-    // Focusrite und einer Desktop-CPU; auf dem book waere es ein Schalter ins
-    // Leere. Die Weiche steht an drei Stellen und muss zusammen gepflegt
-    // werden: hier, in .chezmoiignore (das Script selbst) und in bootstrap.sh
-    // (Root-Helfer + sudoers-Regel). Das CSS in style.css ist bewusst NICHT
-    // gegatet — Regeln fuer ein nicht vorhandenes Modul sind wirkungslos, und
-    // eine vierte Weiche waere mehr Risiko als der Gewinn.
-    //
-    // return-type json, damit ein Aufruf Text, Tooltip UND CSS-Klasse liefert.
-    // Der Zustand wird dabei jedes Mal frisch aus PipeWire und /sys gelesen und
-    // nirgends zwischengespeichert — ein von Hand mit wpctl umgestelltes Profil
-    // oder ein abgezogenes Interface faellt der Anzeige damit sofort auf,
-    // statt sie gegen eine gemerkte Wahrheit laufen zu lassen.
-    //
-    // "signal": 7 muss zu RECMODE_WAYBAR_SIGNAL im Script passen. Nach dem
-    // Umschalten schickt das Script pkill -RTMIN+7 waybar, damit die Bar sofort
-    // nachzieht; das interval ist nur der Rueckfall fuer Aenderungen, die nicht
-    // ueber den Button liefen.
-    "custom/recording": {
-        "exec": "~/.local/bin/recording-mode status",
-        "return-type": "json",
-        "interval": 10,
-        "signal": 7,
-        "on-click": "~/.local/bin/recording-mode toggle"
-    },
-{{ end }}
     "clock": {
         "format": "{:%H:%M   %a, %d.%m.}"
     },

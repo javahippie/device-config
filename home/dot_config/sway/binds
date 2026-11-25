@@ -125,7 +125,8 @@ bindsym $mod+c exec cliphist list | fuzzel --dmenu | cliphist decode | wl-copy
 # garantierten ~/.local/bin im PATH, sonst scheitern die Bindings still.
 # Sway fuehrt `exec` ueber /bin/sh -c aus, die Tilde wird also expandiert.
 
-# --- ToDo --- (s. dot_local/bin/todo; Datei <XDG-Dokumente>/todo.md)
+# --- ToDo --- (s. dot_local/bin/todo; Datei <XDG-Dokumente>/todo.md,
+#               'list' zeigt mit Token in ~/.config/vikunja/token auch Vikunja)
 bindsym $mod+t exec ~/.local/bin/todo
 bindsym $mod+Shift+t exec ~/.local/bin/todo list
 

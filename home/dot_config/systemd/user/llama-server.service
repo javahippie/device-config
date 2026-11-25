@@ -1,0 +1,56 @@
+# llama.cpp als Dauerdienst im Router-Modus (nur cube, s. .chezmoiignore).
+#
+# EIN Endpunkt, 127.0.0.1:8100, OpenAI-kompatibel. Dahinter laedt der Router
+# Modelle erst bei der ersten Anfrage und haelt bis zu --models-max davon im
+# Speicher. Der Router selbst kostet im Leerlauf nichts: kein Modell geladen,
+# kein RAM belegt. Welche Modelle es gibt und mit welchen Parametern sie laufen,
+# steht in ~/.config/llama.cpp/models.ini — NICHT hier. Die Unit kennt nur den
+# Port und die Preset-Datei, damit ein neues Modell keine Unit-Aenderung ist.
+#
+# Warum llama.cpp direkt und nicht Ollama: Ollamas Engine IST llama.cpp, nur
+# ohne die Knoepfe, die hier den Unterschied machen (--n-cpu-moe, Batchgroesse,
+# KV-Typ, Threads) und mit einem stillen 4k-Kontext-Default, der lange Prompts
+# abschneidet, ohne es zu sagen. Warum kein ROCm: rocBLAS in Fedora ist nicht
+# fuer gfx1034 (RX 6400) gebaut; der Vulkan-Build laeuft ueber RADV ohne jede
+# Sonderbehandlung. Details und Messwerte im README unter "Lokale LLMs".
+#
+# Binary liegt handinstalliert unter ~/.local/opt/llama.cpp/current (Symlink auf
+# die Build-Nummer, bootstrap.sh legt es an). Ein Update ist: neuen Build daneben
+# entpacken, Symlink umbiegen, Unit neu starten. Rollback ist Symlink zurueck.
+[Unit]
+Description=llama.cpp Router (lokale LLMs, OpenAI-kompatibel auf 127.0.0.1:8100)
+Documentation=https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md
+
+[Service]
+Type=simple
+ExecStart=%h/.local/opt/llama.cpp/current/llama-server \
+    --host 127.0.0.1 \
+    --port 8100 \
+    --models-preset %h/.config/llama.cpp/models.ini \
+    --models-max 2 \
+    --api-key lokal
+# --api-key ist kein Geheimnis (steht in opencode.json und im llm-Script), es
+# ist eine CORS-Bremse: der Router erlaubt alle Origins, und ohne Schluessel
+# koennte jede im Browser geoeffnete Webseite Anfragen an localhost:8100
+# schicken. llama.cpp warnt beim Start genau davor. /health bleibt offen.
+# Zwei Modelle gleichzeitig: 2 x ~20 GB MoE-Q4 passen in die 64 GB, drei nicht
+# mehr neben Firefox, Java und dem KV-Cache. Beim dritten fliegt das aelteste.
+
+# Nice statt Vollgas: ein Prompt treibt 12 Threads auf 100 %, und ohne das hier
+# ruckelt Sway sichtbar, waehrend das Modell rechnet. Kostet an tok/s nichts,
+# solange sonst nichts rechnet — die Threads bekommen ihre Kerne ja
+# trotzdem, nur mit niedrigerer Prioritaet gegenueber der Session.
+Nice=10
+# Wenn der Speicher knapp wird, soll der OOM-Killer das Modell nehmen, nicht
+# Sway oder die IDE. Die Modell-Instanzen sind Kindprozesse des Routers und
+# erben den Wert.
+OOMScoreAdjust=500
+# Kinder (die Modell-Instanzen) sterben mit dem Router — Standard bei
+# KillMode=control-group, hier nur zur Dokumentation explizit.
+KillMode=control-group
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

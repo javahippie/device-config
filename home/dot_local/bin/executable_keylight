@@ -29,6 +29,15 @@ fi
 # blockieren, wenn das Licht vom Netz ist.
 CURL=(curl -sf --connect-timeout 2 --max-time 5)
 
+# Hinter dem Keybind (sway exec) sieht niemand stderr — ein Fehler bliebe stumm,
+# und man drückt ins Leere. Deshalb zusätzlich eine Desktop-Notification, wie in
+# den Nachbarskripten (todo, wifi, bt): notify-send kommt aus libnotify, swaync
+# zeigt an. Fehlt notify-send, bleibt es beim stderr-Text.
+notify() {
+    command -v notify-send >/dev/null 2>&1 \
+        && notify-send -a keylight -u critical -t 4000 "Key Light" "$1" || true
+}
+
 usage() {
     cat <<EOF
 Usage: keylight [--host HOST] <on|off|toggle|status|brightness N|temp KELVIN>
@@ -49,6 +58,7 @@ if [ "${1:-}" = "--host" ]; then
 fi
 
 if [ -z "$HOST" ]; then
+    notify "kein Host konfiguriert ($CONF)"
     echo "keylight: kein Host konfiguriert." >&2
     echo "  echo 'KEYLIGHT_HOST=192.168.x.y' > $CONF" >&2
     echo "  (oder --host angeben)" >&2
@@ -58,6 +68,10 @@ fi
 URL="http://${HOST}:9123/elgato/lights"
 
 unreachable() {
+    # Kein Unterschied zwischen "vom Netz" und "API hängt": beides sah am
+    # 22.09.2026 gleich aus und löste sich erst, nachdem die Elgato-App das
+    # Gerät einmal angestupst hatte. Der Hinweis darauf spart die Sucherei.
+    notify "$HOST antwortet nicht — WLAN/Strom prüfen oder einmal über die Elgato-App schalten"
     echo "keylight: $HOST antwortet nicht" >&2
     exit 1
 }

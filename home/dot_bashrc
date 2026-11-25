@@ -13,6 +13,18 @@ fi
 if ! [[ "$PATH" =~ "$HOME/.local/bin:$HOME/bin:" ]]; then
     PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 fi
+
+# Handinstallierte Werkzeuge, die es nicht als Fedora-Paket gibt oder dort zu
+# alt sind (llama.cpp, OpenCode): jedes liegt unter ~/.local/opt/<tool>/<version>
+# mit einem Symlink `current` darauf, bootstrap.sh legt sie an. Update heisst
+# neue Version daneben, Symlink umbiegen; Rollback ist Symlink zurueck. Auf einem
+# Host ohne ~/.local/opt findet der Glob nichts und die Schleife tut nichts.
+for d in "$HOME"/.local/opt/*/current; do
+    if [ -d "$d" ]; then
+        case ":$PATH:" in *":$d:"*) ;; *) PATH="$d:$PATH" ;; esac
+    fi
+done
+unset d
 export PATH
 
 # Drop-in-Verzeichnis, das Fedora vorsieht — hier landet, was maschinenspezifisch

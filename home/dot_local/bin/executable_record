@@ -46,7 +46,7 @@ set -euo pipefail
 FPS="${RECORD_FPS:-30}"
 
 # Waybar-Modul custom/screenrec. Muss zu "signal" in waybar/config.jsonc.tmpl
-# passen — 7 ist dort schon vom Aufnahmemodus (Audio) belegt.
+# passen.
 WAYBAR_SIGNAL=8
 
 STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/record"
@@ -279,7 +279,12 @@ stop() {
     # einem Video geht: ein Video in die Zwischenablage zu legen kann keine App
     # gebrauchen, der PFAD dagegen laesst sich in einen Datei-Dialog oder ein
     # Terminal einwerfen. Fehlt wl-copy, ist das kein Grund zur Fehlermeldung.
-    command -v wl-copy >/dev/null 2>&1 && printf '%s' "$file" | wl-copy || true
+    #
+    # 9>&-: wl-copy forkt sich in den Hintergrund und bedient die Zwischenablage,
+    # bis jemand etwas anderes kopiert. Mit geerbtem fd 9 hielt es so lange das
+    # Lock aus take_lock, und jeder neue Start endete in "anderer Aufruf laeuft
+    # gerade" (13.11.2026) — dieselbe Falle wie beim wf-recorder in start().
+    command -v wl-copy >/dev/null 2>&1 && printf '%s' "$file" | wl-copy 9>&- || true
 
     notify "Aufnahme fertig" "$(basename "$file")"
     echo "$file"

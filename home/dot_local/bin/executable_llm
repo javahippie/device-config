@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# llm — Handgriffe fuer den lokalen llama.cpp-Router (llama-server.service,
+# 127.0.0.1:8100). Alles hier geht auch mit curl und journalctl von Hand; das
+# Script spart nur das Nachschlagen der Endpunkte und Pfade.
+#
+#   llm status            welche Modelle der Router kennt und welche geladen sind
+#   llm reload            models.ini neu einlesen (nach jeder Aenderung dort noetig;
+#                         laufende Instanzen behalten ihre Werte bis unload/load)
+#   llm load <modell>     Modell vorab laden (sonst passiert das bei der ersten Anfrage)
+#   llm unload <modell>   Modell aus dem Speicher werfen
+#   llm ask [modell] TEXT eine Frage ohne Client, Antwort auf stdout — der Rauchtest
+#   llm logs              journalctl -f der Unit
+#   llm pull <URL>        GGUF nach ~/.local/share/llama.cpp/models laden (curl -C -,
+#                         abgebrochene Downloads setzen auf); danach Sektion in
+#                         ~/.config/llama.cpp/models.ini anlegen
+#   llm web               Web-UI des Routers im Browser
+#
+# Modellnamen sind die Sektionsnamen aus models.ini. Ohne laufenden Router
+# meldet jedes Kommando das und bricht ab, statt sich aufzuhaengen.
+set -euo pipefail
+
+URL=http://127.0.0.1:8100
+MODELS="$HOME/.local/share/llama.cpp/models"
+# Derselbe statische Schluessel wie in llama-server.service und opencode.json.
+# Kein Geheimnis, sondern eine CORS-Bremse: ohne Schluessel koennte jede Webseite
+# im Browser den Router auf localhost ansprechen (llama.cpp warnt genau davor).
+AUTH="Authorization: Bearer lokal"
+
+need_router() {
+    # --max-time klein: ein toter Router soll sofort auffallen, nicht nach 2 min.
+    curl -fsS --max-time 3 "$URL/health" >/dev/null 2>&1 \
+        || { echo "llm: kein Router auf $URL (systemctl --user status llama-server)" >&2; exit 1; }
+}
+
+case "${1:-}" in
+    status)
+        need_router
+        # Drei Spalten: Name, Status, Dateiname. jq ist auf dem Rechner (packages.txt).
+        # Dateiname aus dem --model-Argument der Instanz; .path ist bei
+        # Preset-Modellen null, das Feld gibt es nur fuer Cache-Modelle.
+        curl -fsS -H "$AUTH" "$URL/models" | jq -r '
+            ["MODELL","STATUS","DATEI"],
+            (.data[] | [.id, .status.value,
+                ((.status.args | index("--model")) as $i
+                 | if $i then .status.args[$i+1] | split("/") | last else "-" end)])
+            | @tsv' | column -t -s $'\t'
+        ;;
+    reload)
+        need_router
+        # ?reload=1 liest Presets und Modellverzeichnis neu. Laufende Modelle,
+        # deren Eintrag sich geaendert hat, werden dabei entladen (llama.cpp-Doku).
+        curl -fsS -H "$AUTH" "$URL/models?reload=1" | jq -r '.data[] | "\(.id)\t\(.status.value)"' | column -t -s $'\t'
+        ;;
+    load|unload)
+        need_router
+        [ -n "${2:-}" ] || { echo "llm: $1 <modell>" >&2; exit 2; }
+        curl -fsS -X POST "$URL/models/$1" -H "$AUTH" -H 'Content-Type: application/json' \
+            -d "{\"model\":\"$2\"}" && echo
+        ;;
+    ask)
+        need_router
+        shift
+        # Erstes Argument ist das Modell, wenn der Router es kennt, sonst Teil
+        # der Frage. So geht `llm ask Was ist XMeld?` genauso wie
+        # `llm ask qwen3.6-35b-a3b Was ist XMeld?`.
+        model=""
+        if [ -n "${1:-}" ] && curl -fsS -H "$AUTH" "$URL/models" | jq -e --arg m "$1" '.data[] | select(.id==$m)' >/dev/null; then
+            model="$1"; shift
+        fi
+        [ -n "${1:-}" ] || { echo "llm: ask [modell] TEXT" >&2; exit 2; }
+        [ -n "$model" ] || model=$(curl -fsS -H "$AUTH" "$URL/models" | jq -r '.data[0].id')
+        jq -cn --arg m "$model" --arg q "$*" \
+            '{model:$m, messages:[{role:"user",content:$q}]}' \
+        | curl -fsS "$URL/v1/chat/completions" -H "$AUTH" -H 'Content-Type: application/json' -d @- \
+        | jq -r '.choices[0].message.content'
+        ;;
+    logs)
+        exec journalctl --user -u llama-server.service -f
+        ;;
+    pull)
+        [ -n "${2:-}" ] || { echo "llm: pull <URL>" >&2; exit 2; }
+        mkdir -p "$MODELS"
+        f="$MODELS/$(basename "${2%%\?*}")"
+        # .part bis zum Ende, damit der Router nie eine halbe Datei als Modell
+        # listet; -C - setzt bei Abbruch auf, --retry faengt Hugging-Face-Hickser.
+        curl -fL -C - --retry 5 --retry-delay 10 --progress-bar -o "$f.part" "$2"
+        mv "$f.part" "$f"
+        echo "$f"
+        echo "jetzt Sektion in ~/.config/llama.cpp/models.ini anlegen, dann: llm reload"
+        ;;
+    web)
+        need_router
+        xdg-open "$URL" >/dev/null 2>&1 &
+        ;;
+    *)
+        sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+        exit 2
+        ;;
+esac

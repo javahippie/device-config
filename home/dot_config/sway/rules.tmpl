@@ -46,6 +46,20 @@ for_window [app_id="^org\.gnome\.Calculator$"] floating enable, resize set 400 6
 # ist auf beiden Hosts das vorhersagbarere Ergebnis.
 for_window [app_id="^mpv-audio$"] floating enable, resize set 700 260, move position center
 
+# Thunderbirds Nebenfenster (Termin-/Aufgabendialoge, Erinnerungen) schweben.
+# Sie melden kein Elternfenster, darum floatet Sway sie nicht von selbst.
+#
+# Negativ statt Positivliste, weil der Termindialog schlicht den Terminnamen
+# als Titel traegt ("IDA Architekturboard 2026-Q4") — dafuer gibt es kein
+# Muster. Das Hauptfenster heisst immer "<Tab> - Mozilla Thunderbird" und
+# bleibt damit gekachelt. Das `.+` am Ende verhindert, dass das Hauptfenster
+# floatet, solange es beim Mappen noch keinen Titel hat; Sway prueft die
+# Regel bei jeder Titelaenderung erneut.
+#
+# Die app_id ist die Flatpak-ID, NICHT das `thunderbird-esr` aus
+# StartupWMClass der Desktop-Datei (live per get_tree nachgesehen).
+for_window [app_id="^org\.mozilla\.thunderbird_esr$" title="^(?!.*Mozilla Thunderbird$).+"] floating enable, move position center
+
 # KEINE persistenten Workspaces. Sway kennt sie nicht, und es braucht sie hier
 # auch nicht: das sway/workspaces-Modul der Waybar erzeugt seine
 # `persistent-workspaces` selbst, ohne Zutun des Compositors

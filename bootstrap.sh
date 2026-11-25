@@ -32,8 +32,8 @@ echo "==> Gruppe 'pipewire': Realtime-Prioritaeten fuer Audio"
 # bekommt Prioritaet 20 statt der in pipewire.conf angefragten 60. Hoerbar wird
 # das als Knacken, sobald der Puffer klein wird.
 #
-# Hostunabhaengig, obwohl der Aufnahmemodus weiter unten cube-only ist:
-# RT-faehiges PipeWire will man auf jeder Maschine, es kostet nichts.
+# Hostunabhaengig: RT-faehiges PipeWire will man auf jeder Maschine, es kostet
+# nichts.
 #
 # Angenehmer Nebeneffekt: das Rlimit vererbt sich ueber die PAM-Session auch in
 # Flatpak-Sandboxes. Eine Anwendung dort braucht dann keine eigene
@@ -66,67 +66,20 @@ if [ -f flatpaks.txt ]; then
     [ "${#FLATS[@]}" -gt 0 ] && flatpak install --user -y --noninteractive flathub "${FLATS[@]}"
 fi
 
-echo "==> udev-Regeln: Stream Deck und ITE-8291-Tastaturbeleuchtung ohne root nutzbar"
-# Beide Regeln sind hostunabhängig: fehlt die Hardware, laufen sie ins Leere.
+echo "==> udev-Regeln: Stream Deck und ITE-8291-Tastaturbeleuchtung ohne root, kein USB-Wakeup"
+# Alle drei Regeln sind hostunabhängig: fehlt die Hardware, laufen sie ins Leere.
+# 70-usb-no-wakeup: Logi-Bolt-Empfaenger und Hama-Maus verlieren das Weckrecht,
+# weil ein anliegendes USB-Weck-Signal den S3 abbricht und die RX 6400 in D0
+# das Zurueckrollen nicht ueberlebt (28.09.2026, s. README "Suspend haengt
+# sich auf"). Kostet nichts: Wecken per Tastatur geht auf dem Board ohnehin nicht.
 sudo cp udev/40-streamdeck.rules /etc/udev/rules.d/40-streamdeck.rules
 sudo cp udev/60-ite8291-kbdlight.rules /etc/udev/rules.d/60-ite8291-kbdlight.rules
+sudo cp udev/70-usb-no-wakeup.rules /etc/udev/rules.d/70-usb-no-wakeup.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger
-
-# Aufnahmemodus: Root-Helfer + sudoers-Regel fuer dot_local/bin/recording-mode.
-#
-# NUR AUF DEM CUBE. Anders als die udev-Regeln daruerber laeuft das hier nicht
-# einfach ins Leere, wenn die Hardware fehlt: die sudoers-Regel wuerde auf dem
-# book ein Kommando ohne Passwort freigeben, das dort niemand braucht. Weniger
-# passwortloses root ist immer besser, also gaten statt drauflos installieren.
-#
-# Die Hostweiche gibt es an DREI Stellen, die zusammen gepflegt werden muessen:
-#   hier                                        Root-Helfer + sudoers
-#   home/.chezmoiignore                         das Script selbst
-#   home/dot_config/waybar/config.jsonc.tmpl    der Button in der Bar
-# Das CSS in style.css ist bewusst ungegatet — Regeln fuer ein nicht
-# vorhandenes Modul sind wirkungslos, eine vierte Weiche waere nur Risiko.
-if [ "$(hostname -s)" = cube ]; then
-    echo "==> Aufnahmemodus: CPU-Helfer und sudoers-Regel (nur cube)"
-
-    # install statt cp, mit explizitem Eigentuemer und Modus. Das ist hier
-    # keine Sorgfaltsgeste: der Helfer laeuft gleich per NOPASSWD als root.
-    # Gehoerte die Datei dem Benutzer, koennte der ihren Inhalt austauschen
-    # und als root ausfuehren lassen — die Regel waere dann passwortloses
-    # root mit einem Zwischenschritt. root:root 0755 schliesst das.
-    sudo install -o root -g root -m 0755 \
-        system/recording-mode-cpu /usr/local/bin/recording-mode-cpu
-
-    # 0440 ist Pflicht: sudo ignoriert Dateien in sudoers.d mit anderen Rechten
-    # kommentarlos. Und der Zielname traegt bewusst KEINE Endung — sudo
-    # ueberspringt dort alles, was einen Punkt im Namen hat. Aus einer Datei
-    # namens 'recording-mode.sudoers' wuerde also eine, die stillschweigend nie
-    # gelesen wird: installiert, korrekt, wirkungslos.
-    sudo install -o root -g root -m 0440 \
-        system/recording-mode.sudoers /etc/sudoers.d/recording-mode
-
-    # Erst pruefen, dann behalten. Eine kaputte Datei in sudoers.d legt sudo
-    # vollstaendig lahm — einschliesslich des sudo, mit dem man sie wieder
-    # herauswerfen wollte. Das waere ein Reboot ins Rettungssystem.
-    if ! sudo visudo -c -q; then
-        echo "    !! sudoers-Syntaxfehler — Regel wird wieder entfernt"
-        sudo rm -f /etc/sudoers.d/recording-mode
-        exit 1
-    fi
-
-    # Gegenprobe, dass die Regel auch WIRKT. 'visudo -c' sagt nur, dass die
-    # Datei parst — nicht, dass sie greift. Genau diese Luecke hat beim ersten
-    # Einrichten Zeit gekostet: Helfer lag da, Datei parste, und der Button
-    # blieb trotzdem im halb geschalteten Zustand haengen.
-    if sudo -n /usr/local/bin/recording-mode-cpu off >/dev/null 2>&1; then
-        echo "    Regel greift: 'recording-mode' kann die CPU ohne Passwort schalten"
-    else
-        echo "    !! Regel greift NICHT — 'sudo -n /usr/local/bin/recording-mode-cpu off' verlangt ein Passwort"
-        echo "       Pruefen: sudo ls -l /etc/sudoers.d/recording-mode (muss -r--r----- root root sein)"
-        echo "       und ob /etc/sudoers ein '@includedir /etc/sudoers.d' enthaelt."
-    fi
-
-fi
+# trigger kehrt zurueck, bevor udevd fertig ist -- wer direkt danach
+# /sys/.../power/wakeup liest, sieht noch den alten Wert (so am 28.09.2026).
+sudo udevadm settle
 
 # RGB-Tastaturbeleuchtung im "book". Nur wenn der Controller wirklich steckt —
 # auf dem cube wäre das Tool sinnlose Fracht. Version gepinnt wie beim
@@ -253,14 +206,13 @@ echo "==> Java/AWT: Sway als non-reparenting WM bekanntmachen"
 # Swing-Anwendung auf dieser Session — die vollständige Herleitung steht in der
 # installierten Datei selbst.
 #
-# BEWUSST NICHT auf cube eingegrenzt, anders als der Aufnahmemodus weiter oben:
-# beide Hosts fahren Sway, und das Problem hängt am Compositor, nicht an der
+# BEWUSST NICHT auf cube eingegrenzt: beide Hosts fahren Sway, und das Problem hängt am Compositor, nicht an der
 # Hardware.
 #
 # 0644 root:root wie ausgeliefert — /etc/environment wird von pam_env für JEDE
-# Anmeldung gelesen und muss deshalb für alle lesbar sein. Hier hängt, anders
-# als bei der sudoers-Regel oben, nichts an den Rechten: der Inhalt wird nicht
-# ausgeführt, sondern nur als KEY=WERT übernommen.
+# Anmeldung gelesen und muss deshalb für alle lesbar sein. Sonst hängt nichts
+# an den Rechten: der Inhalt wird nicht ausgeführt, sondern nur als KEY=WERT
+# übernommen.
 sudo install -o root -g root -m 0644 \
     system/java-nonreparenting.environment /etc/environment
 
@@ -300,14 +252,27 @@ else
     echo "    bereits installiert, übersprungen"
 fi
 
-echo "==> Emacs-Pakete aus ELPA — ESS, markdown-mode und Treemacs"
-# Keines der drei ist in Fedora (`dnf search emacs-ess` / `emacs-markdown` /
-# `emacs-treemacs`: jeweils keine Übereinstimmung).
+echo "==> Emacs-Pakete aus ELPA — ESS, markdown-mode, Magit, Treemacs, clojure-mode, Paredit"
+# Die ersten drei gibt es in Fedora nicht oder nicht brauchbar (`dnf search
+# emacs-ess` / `emacs-markdown` / `emacs-treemacs`: jeweils keine Übereinstimmung;
+# emacs-magit existiert, s. u.).
 #
-# ess und markdown-mode kommen aus GNU bzw. NonGNU ELPA — den zwei Archiven, die
-# Emacs 30 ab Werk kennt. Beide signieren, die Installation legt neben
-# <paket>-<ver>/ eine <paket>-<ver>.signed ab; das ersetzt die gepinnte SHA-256,
-# die bei minikube & Co. nötig ist.
+# ess, markdown-mode und magit kommen aus GNU bzw. NonGNU ELPA — den zwei
+# Archiven, die Emacs 30 ab Werk kennt. Beide signieren, die Installation legt
+# neben <paket>-<ver>/ eine <paket>-<ver>.signed ab; das ersetzt die gepinnte
+# SHA-256, die bei minikube & Co. nötig ist.
+#
+# magit: Fedora hat zwar ein emacs-magit, aber 4.2.0 vom Dezember 2024 (Stand
+# 10/2026) und läuft gegen das eingebaute transient 0.7 aus emacs-common. NonGNU ELPA liefert
+# 4.7.1 samt transient 0.13 aus GNU ELPA, alles signiert — derselbe Weg wie bei
+# ess. Beides zugleich wäre die schlechteste Variante: package.el zieht die
+# ELPA-Kopie von transient vor der eingebauten, und das alte Fedora-Magit liefe
+# dann gegen eine Bibliothek, gegen die es nie gebaut wurde. Also NUR ELPA.
+# Magit zieht sieben Abhängigkeiten nach (compat, cond-let, llama, with-editor,
+# transient, magit-section, seq) — alle aus GNU/NonGNU ELPA, keine aus MELPA.
+#
+# clojure-mode und paredit: beide aus NonGNU ELPA (signiert). MELPA hat sie
+# zwar auch, mit Datumsversion — die Prioritaeten unten halten sie auf NonGNU.
 #
 # treemacs gibt es NUR auf MELPA, und MELPA signiert nicht. Das ist die bewusste
 # Ausnahme von der Regel oben und der einzige Grund, warum MELPA hier überhaupt
@@ -328,7 +293,7 @@ echo "==> Emacs-Pakete aus ELPA — ESS, markdown-mode und Treemacs"
 # ist, und fiele sonst auf ~/.emacs.d zurück (nachgemessen). ESS läge dann an
 # einer Stelle, an der der spätere Emacs es nie sucht.
 EMACS_ELPA="$HOME/.config/emacs/elpa"
-for pkg in ess markdown-mode treemacs; do
+for pkg in ess markdown-mode magit treemacs clojure-mode paredit; do
     if compgen -G "$EMACS_ELPA/$pkg-[0-9]*" >/dev/null; then
         echo "    $pkg bereits installiert, übersprungen"
         continue
@@ -343,6 +308,32 @@ for pkg in ess markdown-mode treemacs; do
         (package-refresh-contents)
         (package-install '$pkg))"
 done
+
+echo "==> Java-Language-Server (Eclipse jdtls) nach ~/.local/opt/jdtls"
+# Fuer Eglot in Emacs (java-ts-mode, s. dot_config/emacs/init.el). Kein
+# Fedora-Paket, kein Flathub — Eclipse liefert ein Tarball mit .sha256 daneben.
+# Gepinnt wie llama.cpp unten: Milestone-Build, nicht "latest", und bewusst
+# nicht der Build vom selben Tag (1.63.0 erschien am 19.10. um 13:22, an dem
+# Tag, an dem das hier entstand). Update = Version + Dateiname hier aendern.
+# Gilt fuer beide Hosts: ~53 MB, gestartet wird jdtls erst beim ersten .java.
+JDTLS_VERSION=1.62.0
+JDTLS_TARBALL=jdt-language-server-1.62.0-202610131109.tar.gz
+JDTLS_DIR="$HOME/.local/opt/jdtls"
+if [ ! -x "$JDTLS_DIR/$JDTLS_VERSION/bin/jdtls" ]; then
+    TMP_JDTLS="$(mktemp -d)"
+    curl -fsSL -o "$TMP_JDTLS/$JDTLS_TARBALL" \
+        "https://download.eclipse.org/jdtls/milestones/$JDTLS_VERSION/$JDTLS_TARBALL"
+    curl -fsSL -o "$TMP_JDTLS/sum" \
+        "https://download.eclipse.org/jdtls/milestones/$JDTLS_VERSION/$JDTLS_TARBALL.sha256"
+    # Die .sha256 enthaelt nur den Hash, ohne Dateinamen — sha256sum -c braucht beides.
+    (cd "$TMP_JDTLS" && echo "$(awk '{print $1}' sum)  $JDTLS_TARBALL" | sha256sum -c --quiet)
+    mkdir -p "$JDTLS_DIR/$JDTLS_VERSION"
+    tar -xzf "$TMP_JDTLS/$JDTLS_TARBALL" -C "$JDTLS_DIR/$JDTLS_VERSION"
+    rm -rf "$TMP_JDTLS"
+else
+    echo "    bereits installiert ($JDTLS_VERSION), übersprungen"
+fi
+ln -sfn "$JDTLS_VERSION" "$JDTLS_DIR/current"
 
 echo "==> Suspend: nur S3, kein s2idle-Fallback"
 # systemd probiert per Default `SuspendState=mem standby freeze` der Reihe nach
@@ -441,6 +432,50 @@ EOF
 # Folge davon: SDDM startet die Session OHNE Login-Shell, ~/.local/bin ist also
 # nicht im PATH. Deshalb rufen sway/binds und sway/base 'keylight' und
 # 'wallpaper' mit vollem Pfad auf — robuster als eine Login-Shell-Krücke.
+
+# Lokale LLMs: llama.cpp-Router und OpenCode (nur cube).
+#
+# Beides handinstalliert unter ~/.local/opt/<tool>/<version> mit Symlink
+# `current`, weil dnf hier nicht hilft: Fedoras llama-cpp ist Build b6153 vom
+# August 2025 und gegen HIP gebaut, das die RX 6400 (gfx1034) nicht kennt;
+# OpenCode gibt es gar nicht als Paket. Versionen sind GEPINNT, bewusst kein
+# "latest": ein Modell, das gestern lief, soll heute genauso laufen. Update ist
+# eine Zeile hier plus Symlink. Die Hostweiche dazu steht ausserdem in
+# home/.chezmoiignore (Unit, Presets, OpenCode-Config).
+#
+# NUR CUBE: 64 GB RAM und 12 Kerne sind die Voraussetzung, auf dem book waere
+# ein 20-GB-Modell nicht einmal ladbar. Modelle selbst laedt das Script NICHT,
+# das sind 50 GB aus Hugging Face: `llm pull <URL>` nach dem ersten Login.
+if [ "$(hostname -s)" = cube ]; then
+    echo "==> Lokale LLMs: llama.cpp + OpenCode nach ~/.local/opt (nur cube)"
+    LLAMA_BUILD=b11429      # = Release v0.6.0 vom 05.10.2026 (stabiler Tag, kein Tagesbuild)
+    OPENCODE_VERSION=v1.19.0
+    OPT="$HOME/.local/opt"
+    mkdir -p "$OPT/llama.cpp" "$OPT/opencode" "$HOME/.local/share/llama.cpp/models"
+
+    if [ ! -x "$OPT/llama.cpp/$LLAMA_BUILD/llama-server" ]; then
+        # Vulkan-Build: laeuft ueber RADV auf jeder AMD-Karte, ohne ROCm.
+        # --strip-components=1, weil das Archiv ein Verzeichnis mit Build-Nummer
+        # enthaelt, der Name hier aber selbst schon der Versionsordner ist.
+        mkdir -p "$OPT/llama.cpp/$LLAMA_BUILD"
+        curl -fsSL "https://github.com/ggml-org/llama.cpp/releases/download/$LLAMA_BUILD/llama-$LLAMA_BUILD-bin-ubuntu-vulkan-x64.tar.gz" \
+            | tar -xz -C "$OPT/llama.cpp/$LLAMA_BUILD" --strip-components=1
+    fi
+    ln -sfn "$LLAMA_BUILD" "$OPT/llama.cpp/current"
+
+    if [ ! -x "$OPT/opencode/$OPENCODE_VERSION/opencode" ]; then
+        mkdir -p "$OPT/opencode/$OPENCODE_VERSION"
+        curl -fsSL "https://github.com/anomalyco/opencode/releases/download/$OPENCODE_VERSION/opencode-linux-x64.tar.gz" \
+            | tar -xz -C "$OPT/opencode/$OPENCODE_VERSION"
+    fi
+    ln -sfn "$OPENCODE_VERSION" "$OPT/opencode/current"
+
+    # Die Unit kommt per chezmoi; enable --now ist hier unkritisch, anders als
+    # bei sddm unten: der Router laedt ohne Anfrage kein Modell und belegt
+    # im Leerlauf nichts.
+    systemctl --user daemon-reload
+    systemctl --user enable --now llama-server.service
+fi
 
 # enable, NICHT --now: --now würde die gerade laufende TTY-Session abschießen.
 sudo systemctl set-default graphical.target

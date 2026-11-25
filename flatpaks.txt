@@ -7,6 +7,10 @@ sh.cider.Cider          # kommerziell: braucht Cider-Lizenz + Apple-Music-Abo
 im.riot.Riot            # Element
 com.slack.Slack
 org.signal.Signal
+com.github.IsmaelMartinez.teams_for_linux  # MS Teams (Community-Wrapper um die Web-App;
+                        # nativen Client gibt es seit 2022 nicht mehr, Wine taugt nicht).
+                        # Screensharing via xdg-desktop-portal-wlr: bis Sway 1.12 nur Monitore.
+de.bund.ausweisapp.ausweisapp2
 me.amankhanna.opendeck  # Stream Deck, GPL, spielt Original-Elgato-Plugins ab.
                         # Braucht zusätzlich udev/40-streamdeck.rules (bootstrap.sh).
 org.onlyoffice.desktopeditors  # Office-Suite. BEWUSST nicht LibreOffice, Grund ist
